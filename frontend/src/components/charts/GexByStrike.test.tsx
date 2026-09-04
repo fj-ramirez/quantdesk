@@ -63,9 +63,9 @@ describe('buildGexByStrikeOption', () => {
     // (spot=600 -> 630 would need strikes out to 630). Mirrors the situation the QQQ mock
     // fixture is built to exercise: a short chain relative to spot.
     const rows: StrikeGex[] = [
-      { strike: 598, call_gex: 1, put_gex: -1, net_gex: 0 },
-      { strike: 600, call_gex: 2, put_gex: -1, net_gex: 1 },
-      { strike: 602, call_gex: 3, put_gex: -1, net_gex: 2 },
+      { strike: 598, call_gex: 1, put_gex: -1, net_gex: 0, abs_gex: 2, contracts: 2, open_interest: 150 },
+      { strike: 600, call_gex: 2, put_gex: -1, net_gex: 1, abs_gex: 3, contracts: 2, open_interest: 210 },
+      { strike: 602, call_gex: 3, put_gex: -1, net_gex: 2, abs_gex: 4, contracts: 2, open_interest: 180 },
     ];
     const option = buildGexByStrikeOption({
       rows,

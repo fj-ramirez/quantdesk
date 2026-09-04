@@ -43,7 +43,7 @@ export function GammaProfileDemo() {
         <GammaProfile
           allProfile={all.data.profile}
           exZeroDteProfile={exZeroDte.data.profile}
-          spot={all.data.levels.spot}
+          spot={all.data.spot}
           flipPoint={all.data.levels.flip_point}
         />
       ) : null}

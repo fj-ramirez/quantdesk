@@ -48,7 +48,6 @@ export type Settlement = 'AM' | 'PM';
 // ---------------------------------------------------------------------------------------
 
 export interface SnapshotInfo {
-  /** GUESS: assumed a Postgres serial integer PK; T11 may return a string/UUID instead. */
   id: number;
   underlying: Underlying;
   /** ISO 8601, tz-aware UTC — docs/schema.md: `ChainSnapshot.captured_at` is "the
@@ -60,38 +59,83 @@ export interface SnapshotInfo {
   delayed_minutes: number;
   is_eod: boolean;
   spot: number;
+  contract_count: number;
 }
 
-/** Mirrors the `gex_levels` table columns (TASKS.md T09) one-to-one — read fact.
- * `flip_point` is legitimately `null` when `flip_point()` (T08) finds no sign change in
- * the ±10% grid: do not coerce it to 0 or NaN anywhere downstream. */
+/** Verified against the live `/openapi.json` (T11).
+ *
+ * Every strike-valued level is nullable, and this is the daily case, not an edge case: the
+ * EOD capture runs at 16:20 ET, after every same-day contract has expired, so the
+ * `ZERO_DTE` result of *every* EOD snapshot carries `net_gex: 0` with null walls. Reading
+ * these as plain numbers is how you get "wall at strike 0" on the dashboard.
+ * `flip_point` is additionally null whenever the profile has no sign change in the grid.
+ *
+ * Walls are net-based (argmax/argmin of net strike GEX), which `docs/validation.md`
+ * confirmed matches a real vendor exactly on all four values. `max_call_gex_strike` /
+ * `max_put_gex_strike` are the per-side reading, which collapses onto one dominant strike
+ * and is not a tradeable level — label it clearly if it is ever shown. */
 export interface KeyLevels {
   net_gex: number;
-  call_wall: number;
-  put_wall: number;
-  max_abs_strike: number;
+  call_gex: number;
+  put_gex: number;
+  abs_gex: number;
+  call_wall: number | null;
+  call_wall_gex: number | null;
+  put_wall: number | null;
+  put_wall_gex: number | null;
+  max_abs_strike: number | null;
+  max_abs_gex: number | null;
+  max_net_strike: number | null;
+  min_net_strike: number | null;
+  max_call_gex_strike: number | null;
+  max_call_gex: number | null;
+  max_put_gex_strike: number | null;
+  max_put_gex: number | null;
   flip_point: number | null;
-  spot: number;
-  computed_at: string;
+  spot: number | null;
+  computed_at: string | null;
+  top_positive: StrikeGex[];
+  top_negative: StrikeGex[];
 }
 
-/** One row of `gex_by_strike` (T09) — read fact. */
+/** One row of `gex_by_strike` (T09) — verified against `/openapi.json`. */
 export interface StrikeGex {
   strike: number;
   call_gex: number;
   put_gex: number;
   net_gex: number;
+  abs_gex: number;
+  contracts: number;
+  open_interest: number;
 }
 
-/** GUESS: TASKS.md T09 only names `gex_levels` and `gex_by_strike` tables; by-expiry
- * totals are computed by T08's `by_expiry(df)` but no persisted shape is specified. This
- * mirrors `StrikeGex`'s split (call/put/net) with `expiry` in place of `strike`. */
+/** Verified against `/openapi.json` (T11). */
 export interface ExpiryGex {
   /** ISO date, e.g. "2026-09-18". */
   expiry: string;
+  dte: number;
   net_gex: number;
   call_gex: number;
   put_gex: number;
+  abs_gex: number;
+  contracts: number;
+  open_interest: number;
+}
+
+/** Per-snapshot counts explaining what the engine admitted and excluded. Worth surfacing:
+ * `expired` is ~626 on a post-close SPX chain and `extreme_iv` explains any gap against a
+ * vendor figure via `extreme_iv_gex_excluded`. */
+export interface GexDiagnostics {
+  contracts: number;
+  included: number;
+  expired: number;
+  missing_open_interest: number;
+  zero_open_interest: number;
+  missing_iv: number;
+  missing_iv_gex_vendor: number;
+  extreme_iv: number;
+  extreme_iv_open_interest: number;
+  extreme_iv_gex_excluded: number;
 }
 
 /** GUESS: T08's `gamma_profile()` returns parallel `(spot_grid, total_gex)` arrays per its
@@ -103,34 +147,44 @@ export interface GammaProfilePoint {
   total_gex: number;
 }
 
-/** `GET /gex/{underlying}/latest` and `/gex/{underlying}/snapshots/{id}` response
- * (TASKS.md T11: "GexResult JSON (levels + by_strike + by_expiry + profile)"). The
- * `levels`/`by_strike` shapes are read facts; `by_expiry`/`profile`/the envelope fields
- * around them are GUESSes — confirm against T11's actual payload first. */
+/** `GET /gex/{underlying}/latest` and `/gex/{underlying}/snapshots/{id}` response.
+ * Verified against `/openapi.json` (T11).
+ *
+ * `filter` is a plain string, not `ExpiryFilter`: an explicit expiry list echoes back as
+ * `"EXPIRIES:2026-09-18"`, which is outside the enum. */
 export interface GexResult {
   underlying: Underlying;
-  filter: ExpiryFilter;
+  filter: string;
+  spot: number;
   snapshot: SnapshotInfo;
   levels: KeyLevels;
   by_strike: StrikeGex[];
   by_expiry: ExpiryGex[];
   profile: GammaProfilePoint[];
+  diagnostics: GexDiagnostics;
+  /** Every expiry present in the snapshot, ISO dates. */
+  expiries: string[];
 }
 
-/** `GET /gex/{underlying}/levels/history` row. GUESS: field set mirrors `gex_levels` plus
- * the owning snapshot's `captured_at`/`is_eod`, since the endpoint's whole job is "levels
- * over time" (TASKS.md T11, consumed by the T15 `/history` page). */
+/** `GET /gex/{underlying}/levels/history` row — verified against `/openapi.json`.
+ * Read straight from `gex_levels`, so the same nullability applies as `KeyLevels`; a
+ * history chart must break its line at nulls rather than plotting them as zero. */
 export interface LevelHistoryRow {
   snapshot_id: number;
   captured_at: string;
   is_eod: boolean;
-  filter: ExpiryFilter;
-  net_gex: number;
-  call_wall: number;
-  put_wall: number;
-  max_abs_strike: number;
+  filter: string;
+  net_gex: number | null;
+  call_wall: number | null;
+  call_wall_gex: number | null;
+  put_wall: number | null;
+  put_wall_gex: number | null;
+  max_abs_strike: number | null;
+  max_call_gex_strike: number | null;
+  max_put_gex_strike: number | null;
   flip_point: number | null;
-  spot: number;
+  spot: number | null;
+  computed_at: string;
 }
 
 /** One contract as returned by `/chains/{underlying}/latest` — read fact, field names and

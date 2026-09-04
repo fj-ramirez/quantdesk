@@ -15,6 +15,9 @@ import type { ChainResponse, ExpiryFilter, GexResult, LevelHistoryRow, SnapshotS
 import gexSpxFixture from './fixtures/gex-spx.json';
 import gexSpyFixture from './fixtures/gex-spy.json';
 import gexQqqFixture from './fixtures/gex-qqq.json';
+import gexSpxZeroDteFixture from './fixtures/gex-spx-zero-dte.json';
+import gexSpyZeroDteFixture from './fixtures/gex-spy-zero-dte.json';
+import gexQqqZeroDteFixture from './fixtures/gex-qqq-zero-dte.json';
 import snapshotsFixture from './fixtures/snapshots.json';
 import levelsHistoryFixture from './fixtures/levels-history.json';
 import chainLatestFixture from './fixtures/chain-latest.json';
@@ -23,6 +26,17 @@ const GEX_BY_UNDERLYING: Record<Underlying, GexResult> = {
   SPX: gexSpxFixture as GexResult,
   SPY: gexSpyFixture as GexResult,
   QQQ: gexQqqFixture as GexResult,
+};
+
+// The real EOD capture runs at 16:20 ET, after every same-day contract has expired, so
+// `filter=ZERO_DTE` returns null walls/spot/max-strike every evening -- the daily case, not
+// an edge case (see api/types.ts's `KeyLevels` docstring). The generic `scaled()` helper
+// below cannot produce this shape (it just multiplies numbers by a scale factor), so
+// ZERO_DTE gets its own dedicated fixture instead of going through that path.
+const GEX_ZERO_DTE_BY_UNDERLYING: Record<Underlying, GexResult> = {
+  SPX: gexSpxZeroDteFixture as GexResult,
+  SPY: gexSpyZeroDteFixture as GexResult,
+  QQQ: gexQqqZeroDteFixture as GexResult,
 };
 
 const FILTER_SCALE: Record<ExpiryFilter, number> = {
@@ -71,6 +85,7 @@ export const handlers = [
     if (!isUnderlying(underlying)) return notFound(`unknown underlying ${underlying}`);
     const filterParam = new URL(request.url).searchParams.get('filter');
     const filter = isExpiryFilter(filterParam) ? filterParam : 'ALL';
+    if (filter === 'ZERO_DTE') return HttpResponse.json(GEX_ZERO_DTE_BY_UNDERLYING[underlying]);
     return HttpResponse.json(scaled(GEX_BY_UNDERLYING[underlying], filter));
   }),
 
@@ -79,7 +94,7 @@ export const handlers = [
     if (!isUnderlying(underlying)) return notFound(`unknown underlying ${underlying}`);
     const filterParam = new URL(request.url).searchParams.get('filter');
     const filter = isExpiryFilter(filterParam) ? filterParam : 'ALL';
-    const result = scaled(GEX_BY_UNDERLYING[underlying], filter);
+    const result = filter === 'ZERO_DTE' ? GEX_ZERO_DTE_BY_UNDERLYING[underlying] : scaled(GEX_BY_UNDERLYING[underlying], filter);
     const snapshotId = Number(params.snapshotId);
     return HttpResponse.json({
       ...result,

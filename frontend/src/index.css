@@ -134,3 +134,46 @@ code {
   padding: 4px 8px;
   background: var(--code-bg);
 }
+
+/*
+ * Dashboard (T16). `#root` above sets `text-align: center` for the marketing-template
+ * shell this app started from; a table of levels and two data charts read better left-
+ * aligned, so the dashboard resets it locally rather than fighting centered text on every
+ * child component.
+ *
+ * Breakpoint: charts stack in one column up to 880px (a phone, and a laptop window that
+ * isn't maximized), and sit side by side above it -- GexByStrike and GammaProfile are each
+ * built with an internal min sensible width (their ECharts canvases have a fixed `height`
+ * but scale their own width), so neither needs a bespoke breakpoint of its own.
+ */
+.dashboard {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  padding: 16px;
+  text-align: left;
+}
+
+.dashboard-charts {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 16px;
+  align-items: start;
+
+  @media (min-width: 880px) {
+    grid-template-columns: 1fr 1fr;
+  }
+}
+
+.dashboard-hint {
+  margin: 0;
+  font-size: 12px;
+  color: var(--text);
+}
+
+.dashboard-hint kbd {
+  font-family: var(--mono);
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  padding: 0 4px;
+}

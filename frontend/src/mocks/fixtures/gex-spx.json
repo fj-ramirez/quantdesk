@@ -8,215 +8,421 @@
     "source": "cboe",
     "delayed_minutes": 15,
     "is_eod": false,
-    "spot": 7711.4
+    "spot": 7711.4,
+    "contract_count": 28650
   },
   "levels": {
     "net_gex": 48912826098,
+    "call_gex": 320156679906,
+    "put_gex": -271243853807,
+    "abs_gex": 591400533713,
     "call_wall": 7850,
+    "call_wall_gex": 31323957469,
     "put_wall": 7550,
+    "put_wall_gex": -24838546097,
     "max_abs_strike": 7850,
+    "max_abs_gex": 40675892063,
+    "max_net_strike": 7850,
+    "min_net_strike": 7550,
+    "max_call_gex_strike": 7850,
+    "max_call_gex": 35999924766,
+    "max_put_gex_strike": 7550,
+    "max_put_gex": -30397153606,
     "flip_point": 7649.71,
     "spot": 7711.4,
-    "computed_at": "2026-09-04T15:45:00Z"
+    "computed_at": "2026-09-04T15:45:00Z",
+    "top_positive": [
+      {
+        "strike": 7850,
+        "call_gex": 35999924766,
+        "put_gex": -4675967297,
+        "net_gex": 31323957469,
+        "abs_gex": 40675892063,
+        "contracts": 3,
+        "open_interest": 1848
+      },
+      {
+        "strike": 7900,
+        "call_gex": 31875502058,
+        "put_gex": -4589424580,
+        "net_gex": 27286077478,
+        "abs_gex": 36464926638,
+        "contracts": 2,
+        "open_interest": 1640
+      },
+      {
+        "strike": 7800,
+        "call_gex": 31812133715,
+        "put_gex": -5102794973,
+        "net_gex": 26709338742,
+        "abs_gex": 36914928688,
+        "contracts": 2,
+        "open_interest": 1659
+      },
+      {
+        "strike": 7950,
+        "call_gex": 22507046051,
+        "put_gex": -4576538979,
+        "net_gex": 17930507072,
+        "abs_gex": 27083585030,
+        "contracts": 2,
+        "open_interest": 1231
+      },
+      {
+        "strike": 7750,
+        "call_gex": 22425253619,
+        "put_gex": -6635424678,
+        "net_gex": 15789828940,
+        "abs_gex": 29060678297,
+        "contracts": 2,
+        "open_interest": 1317
+      }
+    ],
+    "top_negative": [
+      {
+        "strike": 7550,
+        "call_gex": 5558607509,
+        "put_gex": -30397153606,
+        "net_gex": -24838546097,
+        "abs_gex": 35955761115,
+        "contracts": 2,
+        "open_interest": 1618
+      },
+      {
+        "strike": 7500,
+        "call_gex": 5423749185,
+        "put_gex": -27991329755,
+        "net_gex": -22567580570,
+        "abs_gex": 33415078940,
+        "contracts": 2,
+        "open_interest": 1507
+      },
+      {
+        "strike": 7600,
+        "call_gex": 6191053296,
+        "put_gex": -25840376169,
+        "net_gex": -19649322873,
+        "abs_gex": 32031429465,
+        "contracts": 2,
+        "open_interest": 1447
+      },
+      {
+        "strike": 7450,
+        "call_gex": 5402655710,
+        "put_gex": -20433136973,
+        "net_gex": -15030481263,
+        "abs_gex": 25835792683,
+        "contracts": 2,
+        "open_interest": 1176
+      },
+      {
+        "strike": 7650,
+        "call_gex": 8346420441,
+        "put_gex": -17653581799,
+        "net_gex": -9307161358,
+        "abs_gex": 26000002240,
+        "contracts": 2,
+        "open_interest": 1184
+      }
+    ]
   },
   "by_strike": [
     {
       "strike": 6900,
       "call_gex": 5400000000,
       "put_gex": -4575000001,
-      "net_gex": 824999999
+      "net_gex": 824999999,
+      "abs_gex": 9975000001,
+      "contracts": 2,
+      "open_interest": 485
     },
     {
       "strike": 6950,
       "call_gex": 5400000000,
       "put_gex": -4575000034,
-      "net_gex": 824999966
+      "net_gex": 824999966,
+      "abs_gex": 9975000034,
+      "contracts": 2,
+      "open_interest": 485
     },
     {
       "strike": 7000,
       "call_gex": 5400000000,
       "put_gex": -4575000936,
-      "net_gex": 824999064
+      "net_gex": 824999064,
+      "abs_gex": 9975000936,
+      "contracts": 2,
+      "open_interest": 485
     },
     {
       "strike": 7050,
       "call_gex": 5400000000,
       "put_gex": -4575019124,
-      "net_gex": 824980876
+      "net_gex": 824980876,
+      "abs_gex": 9975019124,
+      "contracts": 2,
+      "open_interest": 485
     },
     {
       "strike": 7100,
       "call_gex": 5400000000,
       "put_gex": -4575291864,
-      "net_gex": 824708136
+      "net_gex": 824708136,
+      "abs_gex": 9975291864,
+      "contracts": 2,
+      "open_interest": 485
     },
     {
       "strike": 7150,
       "call_gex": 5400000000,
       "put_gex": -4578326585,
-      "net_gex": 821673415
+      "net_gex": 821673415,
+      "abs_gex": 9978326585,
+      "contracts": 2,
+      "open_interest": 485
     },
     {
       "strike": 7200,
       "call_gex": 5400000001,
       "put_gex": -4603315451,
-      "net_gex": 796684550
+      "net_gex": 796684550,
+      "abs_gex": 10003315452,
+      "contracts": 2,
+      "open_interest": 486
     },
     {
       "strike": 7250,
       "call_gex": 5400000022,
       "put_gex": -4754992855,
-      "net_gex": 645007168
+      "net_gex": 645007168,
+      "abs_gex": 10154992877,
+      "contracts": 2,
+      "open_interest": 493
     },
     {
       "strike": 7300,
       "call_gex": 5400000644,
       "put_gex": -5429464509,
-      "net_gex": -29463865
+      "net_gex": -29463865,
+      "abs_gex": 10829465153,
+      "contracts": 2,
+      "open_interest": 522
     },
     {
       "strike": 7350,
       "call_gex": 5400013831,
       "put_gex": -7604282433,
-      "net_gex": -2204268602
+      "net_gex": -2204268602,
+      "abs_gex": 13004296264,
+      "contracts": 2,
+      "open_interest": 617
     },
     {
       "strike": 7400,
       "call_gex": 5400221779,
       "put_gex": -12595334441,
-      "net_gex": -7195112663
+      "net_gex": -7195112663,
+      "abs_gex": 17995556220,
+      "contracts": 2,
+      "open_interest": 835
     },
     {
       "strike": 7450,
       "call_gex": 5402655710,
       "put_gex": -20433136973,
-      "net_gex": -15030481263
+      "net_gex": -15030481263,
+      "abs_gex": 25835792683,
+      "contracts": 2,
+      "open_interest": 1176
     },
     {
       "strike": 7500,
       "call_gex": 5423749185,
       "put_gex": -27991329755,
-      "net_gex": -22567580570
+      "net_gex": -22567580570,
+      "abs_gex": 33415078940,
+      "contracts": 2,
+      "open_interest": 1507
     },
     {
       "strike": 7550,
       "call_gex": 5558607509,
       "put_gex": -30397153606,
-      "net_gex": -24838546097
+      "net_gex": -24838546097,
+      "abs_gex": 35955761115,
+      "contracts": 2,
+      "open_interest": 1618
     },
     {
       "strike": 7600,
       "call_gex": 6191053296,
       "put_gex": -25840376169,
-      "net_gex": -19649322873
+      "net_gex": -19649322873,
+      "abs_gex": 32031429465,
+      "contracts": 2,
+      "open_interest": 1447
     },
     {
       "strike": 7650,
       "call_gex": 8346420441,
       "put_gex": -17653581799,
-      "net_gex": -9307161358
+      "net_gex": -9307161358,
+      "abs_gex": 26000002240,
+      "contracts": 2,
+      "open_interest": 1184
     },
     {
       "strike": 7700,
       "call_gex": 13595787081,
       "put_gex": -10581966512,
-      "net_gex": 3013820570
+      "net_gex": 3013820570,
+      "abs_gex": 24177753593,
+      "contracts": 2,
+      "open_interest": 1104
     },
     {
       "strike": 7750,
       "call_gex": 22425253619,
       "put_gex": -6635424678,
-      "net_gex": 15789828940
+      "net_gex": 15789828940,
+      "abs_gex": 29060678297,
+      "contracts": 2,
+      "open_interest": 1317
     },
     {
       "strike": 7800,
       "call_gex": 31812133715,
       "put_gex": -5102794973,
-      "net_gex": 26709338742
+      "net_gex": 26709338742,
+      "abs_gex": 36914928688,
+      "contracts": 2,
+      "open_interest": 1659
     },
     {
       "strike": 7850,
       "call_gex": 35999924766,
       "put_gex": -4675967297,
-      "net_gex": 31323957469
+      "net_gex": 31323957469,
+      "abs_gex": 40675892063,
+      "contracts": 3,
+      "open_interest": 1848
     },
     {
       "strike": 7900,
       "call_gex": 31875502058,
       "put_gex": -4589424580,
-      "net_gex": 27286077478
+      "net_gex": 27286077478,
+      "abs_gex": 36464926638,
+      "contracts": 2,
+      "open_interest": 1640
     },
     {
       "strike": 7950,
       "call_gex": 22507046051,
       "put_gex": -4576538979,
-      "net_gex": 17930507072
+      "net_gex": 17930507072,
+      "abs_gex": 27083585030,
+      "contracts": 2,
+      "open_interest": 1231
     },
     {
       "strike": 8000,
       "call_gex": 13654919050,
       "put_gex": -4575122622,
-      "net_gex": 9079796428
+      "net_gex": 9079796428,
+      "abs_gex": 18230041672,
+      "contracts": 2,
+      "open_interest": 845
     },
     {
       "strike": 8050,
       "call_gex": 8374798730,
       "put_gex": -4575007296,
-      "net_gex": 3799791434
+      "net_gex": 3799791434,
+      "abs_gex": 12949806026,
+      "contracts": 2,
+      "open_interest": 615
     },
     {
       "strike": 8100,
       "call_gex": 6200588469,
       "put_gex": -4575000324,
-      "net_gex": 1625588144
+      "net_gex": 1625588144,
+      "abs_gex": 10775588793,
+      "contracts": 2,
+      "open_interest": 520
     },
     {
       "strike": 8150,
       "call_gex": 5560904447,
       "put_gex": -4575000011,
-      "net_gex": 985904436
+      "net_gex": 985904436,
+      "abs_gex": 10135904458,
+      "contracts": 2,
+      "open_interest": 492
     },
     {
       "strike": 8200,
       "call_gex": 5424150923,
       "put_gex": -4575000000,
-      "net_gex": 849150923
+      "net_gex": 849150923,
+      "abs_gex": 9999150923,
+      "contracts": 2,
+      "open_interest": 486
     },
     {
       "strike": 8250,
       "call_gex": 5402707113,
       "put_gex": -4575000000,
-      "net_gex": 827707113
+      "net_gex": 827707113,
+      "abs_gex": 9977707113,
+      "contracts": 2,
+      "open_interest": 485
     },
     {
       "strike": 8300,
       "call_gex": 5400226614,
       "put_gex": -4575000000,
-      "net_gex": 825226614
+      "net_gex": 825226614,
+      "abs_gex": 9975226614,
+      "contracts": 2,
+      "open_interest": 485
     },
     {
       "strike": 8350,
       "call_gex": 5400014167,
       "put_gex": -4575000000,
-      "net_gex": 825014167
+      "net_gex": 825014167,
+      "abs_gex": 9975014167,
+      "contracts": 2,
+      "open_interest": 485
     },
     {
       "strike": 8400,
       "call_gex": 5400000661,
       "put_gex": -4575000000,
-      "net_gex": 825000661
+      "net_gex": 825000661,
+      "abs_gex": 9975000661,
+      "contracts": 2,
+      "open_interest": 485
     },
     {
       "strike": 8450,
       "call_gex": 5400000023,
       "put_gex": -4575000000,
-      "net_gex": 825000023
+      "net_gex": 825000023,
+      "abs_gex": 9975000023,
+      "contracts": 2,
+      "open_interest": 485
     },
     {
       "strike": 8500,
       "call_gex": 5400000001,
       "put_gex": -4575000000,
-      "net_gex": 825000001
+      "net_gex": 825000001,
+      "abs_gex": 9975000001,
+      "contracts": 2,
+      "open_interest": 485
     }
   ],
   "by_expiry": [
@@ -224,37 +430,61 @@
       "expiry": "2026-09-04",
       "net_gex": 10760821742,
       "call_gex": 11298862829,
-      "put_gex": -538041087
+      "put_gex": -538041087,
+      "dte": 0,
+      "abs_gex": 11836903916,
+      "contracts": 6303,
+      "open_interest": 283635
     },
     {
       "expiry": "2026-09-08",
       "net_gex": 4891282610,
       "call_gex": 5135846741,
-      "put_gex": -244564131
+      "put_gex": -244564131,
+      "dte": 4,
+      "abs_gex": 5380410872,
+      "contracts": 2865,
+      "open_interest": 128925
     },
     {
       "expiry": "2026-09-11",
       "net_gex": 3913026088,
       "call_gex": 4108677392,
-      "put_gex": -195651304
+      "put_gex": -195651304,
+      "dte": 7,
+      "abs_gex": 4304328696,
+      "contracts": 2292,
+      "open_interest": 103140
     },
     {
       "expiry": "2026-09-18",
       "net_gex": 13695591307,
       "call_gex": 14380370872,
-      "put_gex": -684779565
+      "put_gex": -684779565,
+      "dte": 14,
+      "abs_gex": 15065150437,
+      "contracts": 8022,
+      "open_interest": 360990
     },
     {
       "expiry": "2026-10-16",
       "net_gex": 9782565220,
       "call_gex": 10271693481,
-      "put_gex": -489128261
+      "put_gex": -489128261,
+      "dte": 42,
+      "abs_gex": 10760821742,
+      "contracts": 5730,
+      "open_interest": 257850
     },
     {
       "expiry": "2026-11-20",
       "net_gex": 5869539132,
       "call_gex": 6163016089,
-      "put_gex": -293476957
+      "put_gex": -293476957,
+      "dte": 77,
+      "abs_gex": 6456493046,
+      "contracts": 3438,
+      "open_interest": 154710
     }
   ],
   "profile": [
@@ -422,5 +652,26 @@
       "spot": 8482.54,
       "total_gex": 660323152323
     }
+  ],
+  "spot": 7711.4,
+  "diagnostics": {
+    "contracts": 28650,
+    "included": 28478,
+    "expired": 0,
+    "missing_open_interest": 57,
+    "zero_open_interest": 1433,
+    "missing_iv": 29,
+    "missing_iv_gex_vendor": 0,
+    "extreme_iv": 86,
+    "extreme_iv_open_interest": 3440,
+    "extreme_iv_gex_excluded": 1250000
+  },
+  "expiries": [
+    "2026-09-04",
+    "2026-09-08",
+    "2026-09-11",
+    "2026-09-18",
+    "2026-10-16",
+    "2026-11-20"
   ]
 }

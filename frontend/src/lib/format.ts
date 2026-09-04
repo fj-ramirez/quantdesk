@@ -40,16 +40,26 @@ export function formatPrice(value: number | null | undefined): string {
   });
 }
 
-/** Signed distance from spot in points: (7750, 7710.17) -> "+39.83". */
-export function formatDistance(level: number | null | undefined, spot: number): string {
+/** Signed distance from spot in points: (7750, 7710.17) -> "+39.83".
+ * `spot` is nullable because `KeyLevels.spot` is: an empty selection (e.g. ZERO_DTE after
+ * the close) has no spot to measure against, and no distance exists to report. */
+export function formatDistance(
+  level: number | null | undefined,
+  spot: number | null | undefined,
+): string {
   if (level == null || !Number.isFinite(level)) return DASH;
+  if (spot == null || !Number.isFinite(spot)) return DASH;
   const diff = level - spot;
   return `${diff >= 0 ? "+" : ""}${diff.toFixed(2)}`;
 }
 
 /** Signed distance from spot in percent: (7750, 7710.17) -> "+0.52%". */
-export function formatDistancePct(level: number | null | undefined, spot: number): string {
-  if (level == null || !Number.isFinite(level) || !spot) return DASH;
+export function formatDistancePct(
+  level: number | null | undefined,
+  spot: number | null | undefined,
+): string {
+  if (level == null || !Number.isFinite(level)) return DASH;
+  if (spot == null || !Number.isFinite(spot) || spot === 0) return DASH;
   const pct = ((level - spot) / spot) * 100;
   return `${pct >= 0 ? "+" : ""}${pct.toFixed(2)}%`;
 }

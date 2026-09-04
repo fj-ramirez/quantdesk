@@ -32,7 +32,7 @@ export function GexByStrikeDemo() {
       {data && (
         <GexByStrike
           rows={data.by_strike}
-          spot={data.levels.spot}
+          spot={data.spot}
           callWall={data.levels.call_wall}
           putWall={data.levels.put_wall}
           flipPoint={data.levels.flip_point}

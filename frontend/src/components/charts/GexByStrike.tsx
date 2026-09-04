@@ -81,8 +81,12 @@ export interface GexByStrikeProps {
    * summed server-side per PLAN.md §3.2). */
   rows: StrikeGex[];
   spot: number;
-  callWall: number;
-  putWall: number;
+  /** `data.levels.call_wall` — legitimately `null` whenever the filter admits no contracts
+   * (the everyday post-close `ZERO_DTE` case). Renders with no call-wall marker/border,
+   * never a wall at strike 0. */
+  callWall: number | null;
+  /** `data.levels.put_wall` — same nullability and rendering rule as `callWall` above. */
+  putWall: number | null;
   /** `data.levels.flip_point` — legitimately `null` when the gamma profile has no sign
    * change in the grid (verified against the real SPX/QQQ chain; the QQQ mock fixture
    * exercises this). Renders with no flip marker, never a line at 0. */
@@ -97,8 +101,8 @@ export interface GexByStrikeProps {
 interface BuildOptionParams {
   rows: StrikeGex[];
   spot: number;
-  callWall: number;
-  putWall: number;
+  callWall: number | null;
+  putWall: number | null;
   flipPoint: number | null;
   colors: GexByStrikeColors;
 }
@@ -182,7 +186,7 @@ export function buildGexByStrikeOption({
     });
   }
 
-  const wallMarkPoint = (name: string, wallStrike: number, wallValue: number | undefined, color: string) =>
+  const wallMarkPoint = (name: string, wallStrike: number | null, wallValue: number | undefined, color: string) =>
     wallValue === undefined
       ? undefined
       : {

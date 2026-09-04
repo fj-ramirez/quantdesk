@@ -4,16 +4,36 @@ import { ThemeProvider } from '../theme/ThemeContext';
 import { KeyLevels } from './KeyLevels';
 import type { KeyLevels as KeyLevelsData, SnapshotInfo } from '../api/types';
 
-// Numbers lifted from the real SPX fixture (src/mocks/fixtures/gex-spx.json) so the signed
-// distances below are checked against genuine data, not fabricated round numbers.
+// Numbers lifted from the real, enriched SPX fixture (src/mocks/fixtures/gex-spx.json) so
+// the signed distances below are checked against genuine data, not fabricated round
+// numbers. top_positive/top_negative aren't exercised by KeyLevels (it only reads the wall
+// and flip fields), but they're still real values from that fixture, not placeholders.
 const SPX_LEVELS: KeyLevelsData = {
   net_gex: 48_912_826_098,
+  call_gex: 320_156_679_906,
+  put_gex: -271_243_853_807,
+  abs_gex: 591_400_533_713,
   call_wall: 7850,
+  call_wall_gex: 31_323_957_469,
   put_wall: 7550,
+  put_wall_gex: -24_838_546_097,
   max_abs_strike: 7850,
+  max_abs_gex: 40_675_892_063,
+  max_net_strike: 7850,
+  min_net_strike: 7550,
+  max_call_gex_strike: 7850,
+  max_call_gex: 35_999_924_766,
+  max_put_gex_strike: 7550,
+  max_put_gex: -30_397_153_606,
   flip_point: 7649.71,
   spot: 7711.4,
   computed_at: '2026-09-04T15:45:00Z',
+  top_positive: [
+    { strike: 7850, call_gex: 35_999_924_766, put_gex: -4_675_967_297, net_gex: 31_323_957_469, abs_gex: 40_675_892_063, contracts: 3, open_interest: 1848 },
+  ],
+  top_negative: [
+    { strike: 7550, call_gex: 5_558_607_509, put_gex: -30_397_153_606, net_gex: -24_838_546_097, abs_gex: 35_955_761_115, contracts: 2, open_interest: 1618 },
+  ],
 };
 const SPX_SNAPSHOT: SnapshotInfo = {
   id: 1001,
@@ -23,18 +43,37 @@ const SPX_SNAPSHOT: SnapshotInfo = {
   delayed_minutes: 15,
   is_eod: false,
   spot: 7711.4,
+  contract_count: 28650,
 };
 
 // The real QQQ fixture: profile never crosses zero across the ±10% grid, so `flip_point`
 // is legitimately `null` — not a placeholder, not a bug.
 const QQQ_LEVELS: KeyLevelsData = {
   net_gex: 13_523_110_420,
+  call_gex: 41_468_843_738,
+  put_gex: -27_945_733_319,
+  abs_gex: 69_414_577_057,
   call_wall: 620,
+  call_wall_gex: 4_065_503_527,
   put_wall: 585,
+  put_wall_gex: -2_300_359_966,
   max_abs_strike: 620,
+  max_abs_gex: 5_045_650_715,
+  max_net_strike: 620,
+  min_net_strike: 585,
+  max_call_gex_strike: 620,
+  max_call_gex: 4_555_577_121,
+  max_put_gex_strike: 585,
+  max_put_gex: -3_075_963_716,
   flip_point: null,
   spot: 600.18,
   computed_at: '2026-09-04T15:45:00Z',
+  top_positive: [
+    { strike: 620, call_gex: 4_555_577_121, put_gex: -490_073_594, net_gex: 4_065_503_527, abs_gex: 5_045_650_715, contracts: 3, open_interest: 795 },
+  ],
+  top_negative: [
+    { strike: 585, call_gex: 775_603_749, put_gex: -3_075_963_716, net_gex: -2_300_359_966, abs_gex: 3_851_567_465, contracts: 2, open_interest: 600 },
+  ],
 };
 const QQQ_SNAPSHOT: SnapshotInfo = {
   id: 1003,
@@ -44,6 +83,7 @@ const QQQ_SNAPSHOT: SnapshotInfo = {
   delayed_minutes: 15,
   is_eod: false,
   spot: 600.18,
+  contract_count: 11006,
 };
 
 function renderKeyLevels(levels: KeyLevelsData, snapshot: SnapshotInfo) {
