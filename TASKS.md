@@ -62,7 +62,11 @@ Acceptance: `uv run python -m app.providers.cboe SPX` prints spot, contract coun
 ### T03 · Sonnet · T01
 **MarketData.app fallback provider**
 
-Implement `backend/app/providers/marketdata.py` against the option chain endpoint (`https://api.marketdata.app/v1/options/chain/{symbol}/`) with token from `MARKETDATA_TOKEN`. Use cached mode (1 credit per call) so the free tier's 100 credits/day suffice. Map to `ChainSnapshot`. Fixture-based tests. Register both providers in `backend/app/providers/__init__.py` behind a `get_provider(name)` factory reading `PROVIDER` from config.
+Implement `backend/app/providers/marketdata.py` against the option chain endpoint (`https://api.marketdata.app/v1/options/chain/{symbol}/`) with token from `MARKETDATA_TOKEN`. Map to `ChainSnapshot`. Fixture-based tests. Register both providers in `backend/app/providers/__init__.py` behind a `get_provider(name)` factory reading `PROVIDER` from config.
+
+- **Corrected against the live docs 2026-09-04.** `mode=cached` is documented as **paid-plan only** and returns `402` on Free Forever, so the "1 credit per call, 100 credits/day covers three symbols" premise above does not hold on the free tier. The free default is `mode=historical` — the prior *closed session* — which matches the 24 h latency PLAN.md §1 already lists for this source. `delayed_minutes` is therefore **1440**, not 15. This provider is a break-glass fallback for when Cboe fails, not an equivalent second source.
+- MarketData.app takes **plain `SPX`** with no underscore prefix (unlike Cboe's `_SPX`), and returns both `SPX` and `SPXW` roots in one call. Its per-contract `iv` is **already decimal**, same as Cboe — do not rescale.
+- **Status: built but never run against the real API** (no account). Fixtures under `backend/tests/fixtures/marketdata/` are synthesized from the documented schema and tagged with a `_provenance` field. Verify with `MARKETDATA_TOKEN=<token> uv run python -m app.providers.marketdata SPX` before relying on it.
 
 Acceptance: switching `PROVIDER=marketdata` in `.env` makes the same CLI from T02 work.
 
