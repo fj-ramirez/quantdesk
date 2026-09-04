@@ -1,0 +1,24 @@
+{
+  "_provenance": "SYNTHESIZED BY HAND from https://www.marketdata.app/docs/api/options/chain/ (fetched 2026-09-04). NOT a recorded response — there is no MarketData.app account/token available. Values are plausible but invented; do not treat as real market data.",
+  "s": "ok",
+  "optionSymbol": [
+    "SPY260918C00670000",
+    "SPY260918P00670000",
+    "SPY261016C00675000"
+  ],
+  "underlying": ["SPY", "SPY", "SPY"],
+  "side": ["call", "put", "call"],
+  "strike": [670, 670, 675],
+  "bid": [14.20, 13.10, 16.80],
+  "ask": [14.35, 13.25, 16.95],
+  "last": [14.28, 13.18, 16.88],
+  "openInterest": [22000, 18500, 4100],
+  "volume": [5400, 3900, 810],
+  "iv": [0.1150, 0.1170, 0.1240],
+  "delta": [0.54, -0.46, 0.57],
+  "gamma": [0.021, 0.021, 0.017],
+  "theta": [-0.31, -0.29, -0.24],
+  "vega": [0.82, 0.81, 1.02],
+  "underlyingPrice": [672.10, 672.10, 672.10],
+  "updated": [1788545100, 1788545110, 1788545130]
+}

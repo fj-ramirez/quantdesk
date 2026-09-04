@@ -1,0 +1,27 @@
+{
+  "_provenance": "SYNTHESIZED BY HAND from https://www.marketdata.app/docs/api/options/chain/ (fetched 2026-09-04). NOT a recorded response — there is no MarketData.app account/token available. Values are plausible but invented; do not treat as real market data.",
+  "s": "ok",
+  "optionSymbol": [
+    "SPX260918C06700000",
+    "SPXW260918C06700000",
+    "SPX260918P06700000",
+    "SPXW261016C06800000",
+    "SPXW261016P06800000",
+    "SPX270617C07000000"
+  ],
+  "underlying": ["SPX", "SPX", "SPX", "SPX", "SPX", "SPX"],
+  "side": ["call", "call", "put", "call", "put", "call"],
+  "strike": [6700, 6700, 6700, 6800, 6800, 7000],
+  "bid": [145.20, 146.00, 138.40, 210.10, 198.30, 520.00],
+  "ask": [146.10, 146.90, 139.30, 211.40, 199.60, 524.00],
+  "last": [145.80, 146.50, 138.90, 210.75, 198.90, 522.00],
+  "openInterest": [12500, 8700, 9800, null, 0, 310],
+  "volume": [3200, 1500, 2100, 640, null, 45],
+  "iv": [0.1180, 0.1195, 0.0, 0.1305, 0.1290, 0.1620],
+  "delta": [0.55, 0.552, -0.45, 0.58, -0.42, 0.60],
+  "gamma": [0.0021, 0.0022, 0.0021, 0.0016, 0.0016, 0.0009],
+  "theta": [-3.10, -3.15, -2.95, -2.40, -2.20, -1.80],
+  "vega": [8.20, 8.25, 8.10, 11.30, 11.10, 15.60],
+  "underlyingPrice": [6725.30, 6725.30, 6725.30, 6725.30, 6725.30, 6725.30],
+  "updated": [1788545100, 1788545110, 1788545120, 1788545130, 1788545140, 1788545160]
+}

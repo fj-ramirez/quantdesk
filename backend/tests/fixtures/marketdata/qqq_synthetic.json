@@ -1,0 +1,24 @@
+{
+  "_provenance": "SYNTHESIZED BY HAND from https://www.marketdata.app/docs/api/options/chain/ (fetched 2026-09-04). NOT a recorded response — there is no MarketData.app account/token available. Values are plausible but invented; do not treat as real market data.",
+  "s": "ok",
+  "optionSymbol": [
+    "QQQ260918C00600000",
+    "QQQ260918P00600000",
+    "QQQ261218C00610000"
+  ],
+  "underlying": ["QQQ", "QQQ", "QQQ"],
+  "side": ["call", "put", "call"],
+  "strike": [600, 600, 610],
+  "bid": [18.40, 12.90, 15.60],
+  "ask": [18.55, 13.05, 15.75],
+  "last": [18.48, 12.98, 15.68],
+  "openInterest": [9600, 7200, 2100],
+  "volume": [2100, 1750, 390],
+  "iv": [0.1420, 0.1440, 0.1510],
+  "delta": [0.53, -0.47, 0.56],
+  "gamma": [0.018, 0.018, 0.015],
+  "theta": [-0.28, -0.27, -0.22],
+  "vega": [0.71, 0.70, 0.88],
+  "underlyingPrice": [602.55, 602.55, 602.55],
+  "updated": [1788545100, 1788545110, 1788545150]
+}
