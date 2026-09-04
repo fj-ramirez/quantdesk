@@ -31,3 +31,7 @@ dist-ssr/
 # Logs
 *.log
 npm-debug.log*
+
+# Agent worktrees
+.claude/
+.ruff_cache/

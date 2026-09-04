@@ -39,7 +39,7 @@ Design `backend/app/providers/base.py` and `backend/app/models/chain.py`. This i
 - `ChainSnapshot`: `underlying`, `spot`, `captured_at` (tz-aware UTC), `source` (provider name), `delayed_minutes`, `contracts: list[OptionContract]`.
 - `OptionChainProvider` abstract class: `name`, `async fetch_chain(underlying: str) -> ChainSnapshot`, `delayed_minutes`.
 - `parse_occ_symbol(s: str) -> (root, expiry, right, strike)` handling roots of 1–6 chars, and SPX vs SPXW (SPX monthlies are AM-settled on the third Friday; SPXW are PM-settled). Document the rule for `settlement`.
-- Decide and document: IV stored as decimal (0.18) not percent; Cboe delivers IV as a percent-like number in some fields, so the Cboe adapter must normalize.
+- Decide and document: IV stored as decimal (0.18) not percent. (Resolved in T01, and see the corrected note under T02: Cboe's *per-contract* `iv` is already decimal and must NOT be scaled; only the index-level `iv30` is percent-like.)
 - Write `backend/tests/test_occ_symbol.py` with cases: `SPX260918C00200000`, `SPXW260904P07700000`, `SPY260904C00500000`, `QQQ261218P00400000`.
 
 Acceptance: interface documented in module docstrings; tests pass; a short `docs/schema.md` explains every field and unit.
@@ -51,7 +51,9 @@ Implement `backend/app/providers/cboe.py`.
 
 - URL pattern: `https://cdn.cboe.com/api/global/delayed_quotes/options/{symbol}.json`, where index symbols get an underscore prefix (`_SPX`). Use a browser-like `User-Agent`. `httpx.AsyncClient` with 30 s timeout and 3 retries with backoff.
 - Response shape: top-level `timestamp`, `data.current_price`, `data.options[]` each with `option` (OCC symbol), `bid`, `ask`, `iv`, `open_interest`, `volume`, `delta`, `gamma`, `vega`, `theta`, `last_trade_price`, `last_trade_time`.
-- Map to `ChainSnapshot` using `parse_occ_symbol` from T01. Normalize IV units per T01's decision. Set `delayed_minutes=15`.
+- Map to `ChainSnapshot` using `parse_occ_symbol` from T01. Set `delayed_minutes=15`.
+- **IV units — corrected against live data 2026-09-04, supersedes the note in T01 below.** Cboe's *per-contract* `iv` is **already a decimal fraction** (ATM SPX 2026-09-18 call quoted `iv: 0.1061`; full chain range 0.054–7.97, mean 0.243). **Do not divide it by 100.** The percent-like field is the index-level `data.iv30` (`11.242` = 11.24 %), which the schema does not carry. Map a vendor `iv` of `0.0` to `None` — the schema rejects it, since it is a sentinel, not a measurement.
+- **Timestamps — Cboe mixes timezones in one payload.** The top-level `timestamp` is naive **UTC**; every `last_trade_time` is naive **America/New_York**. Both verified 2026-09-04. Attach the correct tzinfo per field; a blanket assumption is wrong for half of them.
 - Save a real response for each of SPX, SPY, QQQ as fixtures in `backend/tests/fixtures/cboe/` (trim SPX to a few hundred contracts to keep the repo small, but keep at least three expiries including one SPX and one SPXW).
 - Tests: parse each fixture; contract count matches; a known contract's fields map correctly; timestamp is tz-aware.
 
