@@ -1,0 +1,218 @@
+[
+  {
+    "id": 1003,
+    "underlying": "QQQ",
+    "captured_at": "2026-09-04T15:45:00Z",
+    "source": "cboe",
+    "spot": 600.18,
+    "contract_count": 11006,
+    "is_eod": false
+  },
+  {
+    "id": 1002,
+    "underlying": "SPY",
+    "captured_at": "2026-09-04T15:45:00Z",
+    "source": "cboe",
+    "spot": 770.35,
+    "contract_count": 12456,
+    "is_eod": false
+  },
+  {
+    "id": 1001,
+    "underlying": "SPX",
+    "captured_at": "2026-09-04T15:45:00Z",
+    "source": "cboe",
+    "spot": 7711.4,
+    "contract_count": 28650,
+    "is_eod": false
+  },
+  {
+    "id": 2014,
+    "underlying": "QQQ",
+    "captured_at": "2026-09-03T20:20:00Z",
+    "source": "cboe",
+    "spot": 601.89,
+    "contract_count": 10811,
+    "is_eod": true
+  },
+  {
+    "id": 2007,
+    "underlying": "SPY",
+    "captured_at": "2026-09-03T20:20:00Z",
+    "source": "cboe",
+    "spot": 772.55,
+    "contract_count": 12219,
+    "is_eod": true
+  },
+  {
+    "id": 2000,
+    "underlying": "SPX",
+    "captured_at": "2026-09-03T20:20:00Z",
+    "source": "cboe",
+    "spot": 7733.41,
+    "contract_count": 28037,
+    "is_eod": true
+  },
+  {
+    "id": 2015,
+    "underlying": "QQQ",
+    "captured_at": "2026-09-02T20:20:00Z",
+    "source": "cboe",
+    "spot": 600.22,
+    "contract_count": 10822,
+    "is_eod": true
+  },
+  {
+    "id": 2008,
+    "underlying": "SPY",
+    "captured_at": "2026-09-02T20:20:00Z",
+    "source": "cboe",
+    "spot": 770.4,
+    "contract_count": 12238,
+    "is_eod": true
+  },
+  {
+    "id": 2001,
+    "underlying": "SPX",
+    "captured_at": "2026-09-02T20:20:00Z",
+    "source": "cboe",
+    "spot": 7711.88,
+    "contract_count": 28074,
+    "is_eod": true
+  },
+  {
+    "id": 2016,
+    "underlying": "QQQ",
+    "captured_at": "2026-09-01T20:20:00Z",
+    "source": "cboe",
+    "spot": 596.73,
+    "contract_count": 10833,
+    "is_eod": true
+  },
+  {
+    "id": 2009,
+    "underlying": "SPY",
+    "captured_at": "2026-09-01T20:20:00Z",
+    "source": "cboe",
+    "spot": 765.92,
+    "contract_count": 12257,
+    "is_eod": true
+  },
+  {
+    "id": 2002,
+    "underlying": "SPX",
+    "captured_at": "2026-09-01T20:20:00Z",
+    "source": "cboe",
+    "spot": 7667.05,
+    "contract_count": 28111,
+    "is_eod": true
+  },
+  {
+    "id": 2017,
+    "underlying": "QQQ",
+    "captured_at": "2026-08-31T20:20:00Z",
+    "source": "cboe",
+    "spot": 595.66,
+    "contract_count": 10844,
+    "is_eod": true
+  },
+  {
+    "id": 2010,
+    "underlying": "SPY",
+    "captured_at": "2026-08-31T20:20:00Z",
+    "source": "cboe",
+    "spot": 764.55,
+    "contract_count": 12276,
+    "is_eod": true
+  },
+  {
+    "id": 2003,
+    "underlying": "SPX",
+    "captured_at": "2026-08-31T20:20:00Z",
+    "source": "cboe",
+    "spot": 7653.3,
+    "contract_count": 28148,
+    "is_eod": true
+  },
+  {
+    "id": 2018,
+    "underlying": "QQQ",
+    "captured_at": "2026-08-28T20:20:00Z",
+    "source": "cboe",
+    "spot": 596.74,
+    "contract_count": 10877,
+    "is_eod": true
+  },
+  {
+    "id": 2011,
+    "underlying": "SPY",
+    "captured_at": "2026-08-28T20:20:00Z",
+    "source": "cboe",
+    "spot": 765.94,
+    "contract_count": 12333,
+    "is_eod": true
+  },
+  {
+    "id": 2004,
+    "underlying": "SPX",
+    "captured_at": "2026-08-28T20:20:00Z",
+    "source": "cboe",
+    "spot": 7667.26,
+    "contract_count": 28259,
+    "is_eod": true
+  },
+  {
+    "id": 2019,
+    "underlying": "QQQ",
+    "captured_at": "2026-08-27T20:20:00Z",
+    "source": "cboe",
+    "spot": 593.39,
+    "contract_count": 10888,
+    "is_eod": true
+  },
+  {
+    "id": 2012,
+    "underlying": "SPY",
+    "captured_at": "2026-08-27T20:20:00Z",
+    "source": "cboe",
+    "spot": 761.64,
+    "contract_count": 12352,
+    "is_eod": true
+  },
+  {
+    "id": 2005,
+    "underlying": "SPX",
+    "captured_at": "2026-08-27T20:20:00Z",
+    "source": "cboe",
+    "spot": 7624.17,
+    "contract_count": 28296,
+    "is_eod": true
+  },
+  {
+    "id": 2020,
+    "underlying": "QQQ",
+    "captured_at": "2026-08-26T20:20:00Z",
+    "source": "cboe",
+    "spot": 592.95,
+    "contract_count": 10899,
+    "is_eod": true
+  },
+  {
+    "id": 2013,
+    "underlying": "SPY",
+    "captured_at": "2026-08-26T20:20:00Z",
+    "source": "cboe",
+    "spot": 761.07,
+    "contract_count": 12371,
+    "is_eod": true
+  },
+  {
+    "id": 2006,
+    "underlying": "SPX",
+    "captured_at": "2026-08-26T20:20:00Z",
+    "source": "cboe",
+    "spot": 7618.49,
+    "contract_count": 28333,
+    "is_eod": true
+  }
+]
