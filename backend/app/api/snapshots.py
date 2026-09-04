@@ -39,6 +39,13 @@ class CaptureResponse(BaseModel):
 
 
 class SnapshotOut(BaseModel):
+    """Deliberately omits `parquet_path`: it's a server-side filesystem detail (see T30 in
+    TASKS.md) -- a raw path relative to `DATA_DIR`, meaningless without knowing that base, and
+    the frontend has no use for it -- so it never leaves the backend via this response. Nothing
+    yet reads `Snapshot.parquet_path` back out through this route; the one place that needs the
+    real path is `app.storage.parquet.resolve_snapshot_path`, used server-side only.
+    """
+
     model_config = ConfigDict(from_attributes=True)
 
     id: int
@@ -48,7 +55,6 @@ class SnapshotOut(BaseModel):
     spot: float
     contract_count: int
     is_eod: bool
-    parquet_path: str
 
 
 @router.post("/capture", response_model=CaptureResponse, status_code=201)

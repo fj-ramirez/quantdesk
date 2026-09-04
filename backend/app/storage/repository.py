@@ -16,6 +16,7 @@ from sqlalchemy.orm import Session
 
 from app.models.chain import ChainSnapshot
 from app.models.db import Snapshot
+from app.storage.parquet import to_data_dir_relative_path
 
 __all__ = ["SnapshotRepository"]
 
@@ -35,15 +36,32 @@ class SnapshotRepository:
     def __init__(self, session: Session) -> None:
         self._session = session
 
-    def add(self, snapshot: ChainSnapshot, parquet_path: str | Path, *, is_eod: bool) -> Snapshot:
-        """Index a snapshot just written to Parquet. Returns the persisted row (with `id`)."""
+    def add(
+        self,
+        snapshot: ChainSnapshot,
+        parquet_path: str | Path,
+        *,
+        is_eod: bool,
+        data_dir: str | Path | None = None,
+    ) -> Snapshot:
+        """Index a snapshot just written to Parquet. Returns the persisted row (with `id`).
+
+        `parquet_path` is normalized to be relative to `data_dir` (posix separators) via
+        `app.storage.parquet.to_data_dir_relative_path` before it's stored -- see
+        `Snapshot.parquet_path`'s own docstring for why storing anything else (the raw,
+        already-`DATA_DIR`-joined value `write_snapshot` returns) makes the row unreadable
+        the moment `DATA_DIR` differs between where it was written and where it's read.
+        `data_dir` should be the same value passed to `write_snapshot` for this `parquet_path`
+        -- it defaults to `settings.DATA_DIR`, matching `write_snapshot`'s own default, so a
+        caller that didn't override one doesn't need to override the other.
+        """
         row = Snapshot(
             underlying=snapshot.underlying.value,
             captured_at=snapshot.captured_at,
             source=snapshot.source,
             spot=snapshot.spot,
             contract_count=len(snapshot),
-            parquet_path=Path(parquet_path).as_posix(),
+            parquet_path=to_data_dir_relative_path(parquet_path, data_dir),
             is_eod=is_eod,
         )
         self._session.add(row)
