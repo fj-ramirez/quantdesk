@@ -97,7 +97,12 @@ class Snapshot(Base):
     Deliberately thin: everything queryable without opening the Parquet file (for listing,
     filtering by date range, finding the latest snapshot per symbol) lives here;
     per-contract data stays in Parquet. `parquet_path` is stored relative to `DATA_DIR`
-    (posix separators) so the index stays valid if `DATA_DIR` itself moves between hosts.
+    (posix separators) so the index stays valid if `DATA_DIR` itself moves between hosts --
+    see `app.storage.parquet.to_data_dir_relative_path` (write side, used by
+    `app.storage.repository.SnapshotRepository.add`) and
+    `app.storage.parquet.resolve_snapshot_path` (read side). Every reader must go through
+    `resolve_snapshot_path` rather than joining `settings.DATA_DIR` itself -- that's the one
+    place the column's on-disk convention is decoded (TASKS.md T30).
     """
 
     __tablename__ = "snapshots"

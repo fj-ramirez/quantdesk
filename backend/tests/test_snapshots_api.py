@@ -122,7 +122,11 @@ def test_list_snapshots_returns_rows_newest_first(client, monkeypatch, session_f
 
     assert response.status_code == 200
     body = response.json()
-    assert [row["parquet_path"] for row in body] == ["spx-1.parquet", "spx-2.parquet", "spx-0.parquet"]
+    # Newest first, by `captured_at` (t0+30, t0+15, t0+0) -- `spot` was set to `6500.0 + i`
+    # in insertion order above, so it doubles as an identity check without depending on the
+    # filesystem path leaking into the response (see `SnapshotOut`'s docstring, T30).
+    assert [row["spot"] for row in body] == pytest.approx([6501.0, 6502.0, 6500.0])
+    assert all("parquet_path" not in row for row in body)
 
 
 def test_list_snapshots_respects_limit(client, monkeypatch, session_factory):

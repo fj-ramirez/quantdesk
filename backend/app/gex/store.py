@@ -35,10 +35,9 @@ from pathlib import Path
 from sqlalchemy import delete, insert
 from sqlalchemy.orm import Session, sessionmaker
 
-from app.config import settings
 from app.gex.engine import ExpiryFilter, compute_all, to_frame
 from app.models.db import GexByStrike, GexLevel, Snapshot, get_engine, get_sessionmaker
-from app.storage.parquet import read_snapshot
+from app.storage.parquet import read_snapshot, resolve_snapshot_path
 
 __all__ = ["DEFAULT_FILTERS", "compute_and_store", "get_session_factory"]
 
@@ -69,29 +68,6 @@ def get_session_factory() -> sessionmaker[Session]:
     if _session_factory is None:
         _session_factory = get_sessionmaker(get_engine())
     return _session_factory
-
-
-def _resolve_parquet_path(parquet_path: str, data_dir: str | Path | None) -> Path:
-    """Turn a `Snapshot.parquet_path` back into a readable file on disk.
-
-    `app.storage.parquet.write_snapshot` bakes its `data_dir` argument (which itself defaults
-    to `settings.DATA_DIR`) directly into the path it returns and hands to
-    `SnapshotRepository.add`, so in the running app `parquet_path` is already a valid path
-    relative to the process's working directory and needs no further joining. The
-    `Path(data_dir or settings.DATA_DIR) / parquet_path` fallback below covers the other
-    reading -- `Snapshot.parquet_path`'s own docstring calls it "relative to DATA_DIR" -- for
-    a row written some other way (a hand-built test fixture, a future writer) that relies on
-    that interpretation instead. Whichever candidate actually exists on disk wins; if neither
-    does, the direct path is returned so the resulting `FileNotFoundError` names the path the
-    index actually points at, not a fallback nobody asked for.
-    """
-    direct = Path(parquet_path)
-    if direct.exists():
-        return direct
-    joined = (Path(data_dir) if data_dir is not None else Path(settings.DATA_DIR)) / parquet_path
-    if joined.exists():
-        return joined
-    return direct
 
 
 def compute_and_store(
@@ -129,7 +105,7 @@ def compute_and_store(
         if row is None:
             raise ValueError(f"no snapshot with id={snapshot_id}")
 
-        path = _resolve_parquet_path(row.parquet_path, data_dir)
+        path = resolve_snapshot_path(row, data_dir)
         snapshot = read_snapshot(path)
         frame = to_frame(snapshot)
 

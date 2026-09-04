@@ -27,14 +27,26 @@ still pointed at it.
 key and a human hint at what's in a directory listing. Every field needed to reconstruct the
 ``ChainSnapshot`` (including the *authoritative* ``captured_at``) comes from the embedded
 metadata, so a renamed or relocated file still reads back correctly.
+
+Path portability (T30)
+-----------------------
+
+:func:`write_snapshot` returns whatever it actually wrote to -- CWD-relative for the default
+``DATA_DIR=./data``, absolute under Docker's ``DATA_DIR=/data`` -- which is exactly right for
+opening the file it just wrote, but not portable as-is into an index row meant to outlive the
+process that wrote it. :func:`to_data_dir_relative_path` and :func:`resolve_snapshot_path` are
+the write- and read-side halves of making ``Snapshot.parquet_path`` (`app.models.db`) mean
+"relative to ``DATA_DIR``" for real: every writer of that column calls the former, every
+reader calls the latter, so there is exactly one place on each side that knows the
+convention.
 """
 
 from __future__ import annotations
 
 import datetime as dt
 import json
-from pathlib import Path
-from typing import Final
+from pathlib import Path, PurePosixPath
+from typing import TYPE_CHECKING, Final
 
 import pyarrow as pa
 import pyarrow.parquet as pq
@@ -48,7 +60,17 @@ from app.models.chain import (
     Underlying,
 )
 
-__all__ = ["read_snapshot", "write_snapshot"]
+if TYPE_CHECKING:
+    # Only for the `resolve_snapshot_path` type hint -- kept behind TYPE_CHECKING so this
+    # module (the raw Parquet layer) never gains a real runtime dependency on the ORM layer.
+    from app.models.db import Snapshot
+
+__all__ = [
+    "read_snapshot",
+    "resolve_snapshot_path",
+    "to_data_dir_relative_path",
+    "write_snapshot",
+]
 
 #: Key under which the snapshot-level JSON blob is stored in the Parquet file's key-value
 #: metadata. Namespaced so it can't collide with metadata pyarrow/pandas add on their own.
@@ -212,3 +234,74 @@ def read_snapshot(path: str | Path) -> ChainSnapshot:
         delayed_minutes=meta["delayed_minutes"],
         contracts=contracts,
     )
+
+
+def _posix(path: str | Path) -> str:
+    """Forward-slash form of `path`, independent of the host OS's `pathlib` flavor.
+
+    `PurePath.as_posix()` only rewrites the separator its *own* flavor treats as one -- on
+    POSIX, ``\\`` is just an ordinary filename character, so a Windows-produced path (this
+    project runs on Windows natively and in Linux containers -- see T30 in TASKS.md) would
+    sail through ``PurePosixPath(...).as_posix()`` on Linux with its backslashes intact,
+    exactly the "resolves on the laptop, 404s in the container" bug this module exists to
+    close. A plain string replace has no such platform dependence.
+    """
+    return str(path).replace("\\", "/")
+
+
+def to_data_dir_relative_path(path: str | Path, data_dir: str | Path | None = None) -> str:
+    """Express `path` relative to `data_dir`, POSIX separators -- the form stored in
+    `Snapshot.parquet_path` (see that column's docstring in `app.models.db`).
+
+    `write_snapshot` bakes whichever `data_dir` it ran with directly into the `Path` it
+    returns: CWD-relative for the default ``DATA_DIR=./data`` (verified live:
+    ``data/chains/SPX/2026/09/20260904T185217000000Z.parquet``), absolute under Docker's
+    ``DATA_DIR=/data``. Neither form is portable -- a row written on the host is meaningless
+    read back in the container and vice versa -- so `SnapshotRepository.add` calls this
+    before the value ever reaches the database, stripping the `data_dir` prefix so only the
+    part underneath it (``chains/SPX/2026/09/...``) is stored.
+
+    When `path` doesn't actually lie under `data_dir` -- a test handing this a path it made
+    up directly, or (pre-T30) a row written before this normalization existed -- `path` is
+    returned unchanged but still posix-ified, rather than mangled into nonsense.
+    `resolve_snapshot_path` below is what keeps a value like that still resolvable.
+    """
+    base = data_dir if data_dir is not None else settings.DATA_DIR
+    candidate = PurePosixPath(_posix(path))
+    root = PurePosixPath(_posix(base))
+    try:
+        return candidate.relative_to(root).as_posix()
+    except ValueError:
+        return candidate.as_posix()
+
+
+def resolve_snapshot_path(row: Snapshot, data_dir: str | Path | None = None) -> Path:
+    """Turn a `Snapshot` row's `parquet_path` back into a real filesystem path.
+
+    The single join point every reader must use -- T09's `compute_and_store`/backfill and
+    T11's read API alike -- so there is exactly one place that knows how the column's
+    on-disk convention maps to a `Path` (TASKS.md T30). `data_dir` defaults to
+    `settings.DATA_DIR`, matching `write_snapshot`'s own default, so a caller that didn't
+    override `write_snapshot`'s `data_dir` doesn't have to override this one either.
+
+    Tries the current, correct interpretation first: `data_dir` joined with the stored
+    (posix-normalized) value. A row stored before T30 normalized this column -- absolute, or
+    relative to a launch directory other than today's -- falls back to being resolved exactly
+    as `write_snapshot` originally returned it, which still points at a real file as long as
+    `DATA_DIR` (and, for the CWD-relative case, the launch directory) hasn't changed since
+    capture. Neither fallback can resurrect a row whose `DATA_DIR` genuinely moved *before*
+    this fix landed -- there is no way to recover after the fact what base it was written
+    against -- but nothing reads this column in production yet (see TASKS.md T30's own
+    framing: this is deliberately the cheapest possible moment to fix it), so no such row
+    exists to lose. If neither candidate exists, the `data_dir`-joined path is returned so the
+    resulting `FileNotFoundError` names the path this function actually expects, not a
+    fallback nobody asked for.
+    """
+    base = Path(data_dir) if data_dir is not None else Path(settings.DATA_DIR)
+    joined = base / _posix(row.parquet_path)
+    if joined.exists():
+        return joined
+    direct = Path(row.parquet_path)
+    if direct.exists():
+        return direct
+    return joined
