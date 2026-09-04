@@ -319,13 +319,46 @@ Flagged by T09: `gex_by_strike` is the volume driver at ~800 rows per filter per
 
 ---
 
+## Tasks added by the T10 validation and supervisor checks (2026-09-04)
+
+### T33 · Opus · T07, T08, T10
+**Fit the carry term from put-call parity instead of guessing it**
+
+`docs/validation.md` §6.2 established, from put-call parity on real market quotes, that our carry is mis-set: parity implies `r − q ≈ 3.6 %` against our configured `4.0 % − 1.3 % = 2.7 %`. This is worth roughly **8 % of SPX net GEX** and is the single largest source of the remaining gap against the one vendor that corroborates our magnitude (ours +48.29 B vs their +43.6 B — an 8 % correction lands almost exactly on their figure). It is a mis-set parameter, not a bug, which is why T10 correctly did not "fix" it by tuning.
+
+- Derive the implied forward per expiry from put-call parity on liquid near-the-money pairs, and use it in place of a single global `RISK_FREE_RATE − DIVIDEND_YIELD`. The engine already prices SPX on the forward, so this is a change of input, not of model.
+- Fall back to the configured constants when an expiry has no usable pair (wide spreads, no volume, deep-dated).
+- Keep it a pure function in `backend/app/gex/`; no I/O.
+- Report the before/after net GEX for a live SPX chain and re-run the T10 comparison rows.
+
+Acceptance: parity residual on the fitted expiries drops materially; net GEX moves toward the vendor figure; a regression test pins the fitted forward for a stored fixture.
+
+### T34 · Sonnet · T02, T05, T14
+**Cboe's `timestamp` is payload-generation time, not data-effective time**
+
+Verified by the supervisor on 2026-09-04: at 17:55 ET — nearly two hours after the 16:00 close — the top-level `timestamp` read `17:54:46 ET` and kept advancing on every request, while `data.current_price` stayed frozen at the 7718.6001 close. The field is "when the CDN built this payload", not "when this data was effective".
+
+Consequences, in order of severity:
+
+1. **The freshness badge lies after the close.** `T14`'s `KeyLevels` and the top bar render "As of {captured_at} · Delayed 15m", so an evening view of Friday's settled chain claims to be 15 minutes old when it is hours old. This is user-facing incorrectness in exactly the place the app promises honesty about staleness.
+2. **`captured_at` does not mean what `docs/schema.md` and `cboe.py` say it means** ("effective time of the data"). The NY *date* is still right, so history queries are unaffected, but the time component is not the data's.
+3. **The `(underlying, captured_at)` duplicate check can almost never fire**, since the timestamp advances on every call. T05's guard is therefore near-dead code; T29's `is_eod`-per-day guard is what actually prevents double captures.
+
+- Decide what `captured_at` should hold — the vendor timestamp clamped to the last market minute (16:15 ET for a delayed feed after the close), or the vendor timestamp plus a separate `effective_at`. Update `docs/schema.md` to match reality either way.
+- Make `delayed_minutes` (or a derived staleness value) reflect actual age when the market is closed, so the badge reads "at Friday's close" rather than "delayed 15m".
+- Reconcile with T29: an evening catch-up capture is legitimately the day's close and must stay `is_eod=True`.
+
+Acceptance: a snapshot captured post-close reports an honest age in the API and the UI badge; a test pins the behaviour with a frozen clock on both sides of 16:00 ET.
+
+---
+
 ## Model assignment summary
 
 | Model | Tasks |
 |---|---|
-| Opus | T01, T07, T08, T10, T21, T23, T25 |
+| Opus | T01, T07, T08, T10, T21, T23, T25, T33 |
 | Opus (review) | T06, T17, T24 |
-| Sonnet | T00, T02–T05, T09, T11–T16, T18–T20, T22, T26–T32 |
+| Sonnet | T00, T02–T05, T09, T11–T16, T18–T20, T22, T26–T32, T34 |
 
 Parallelizable groups once their dependency is done: {T02, T03, T04} after T01; {T12} alongside all of Phase 1; {T13, T14} after T12; {T27, T28} anytime.
 
