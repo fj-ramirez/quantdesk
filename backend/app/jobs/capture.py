@@ -21,6 +21,7 @@ from pathlib import Path
 from sqlalchemy import select
 from sqlalchemy.orm import Session, sessionmaker
 
+from app.gex.store import compute_and_store
 from app.models.chain import ChainSnapshot
 from app.models.db import Snapshot, get_engine, get_sessionmaker
 from app.providers import get_provider
@@ -128,9 +129,13 @@ async def capture_snapshot(
             if close is not None:
                 await close()
 
+    # Resolved once and reused for the T09 seam below too, so a real capture doesn't spin up
+    # a second, separate engine/connection-pool to the same DATABASE_URL just to compute
+    # levels a few lines later.
+    effective_session_factory = session_factory or get_session_factory()
     try:
         parquet_path, row, skipped_duplicate = await asyncio.to_thread(
-            _persist_sync, snapshot, is_eod, session_factory or get_session_factory(), data_dir
+            _persist_sync, snapshot, is_eod, effective_session_factory, data_dir
         )
     except Exception as exc:  # noqa: BLE001 - a storage failure must not crash the scheduler
         result = CaptureResult(
@@ -157,15 +162,29 @@ async def capture_snapshot(
     _log_result(result)
 
     # --- T09 seam --------------------------------------------------------------------------
-    # T09 ("Persist computed levels") hooks GEX level computation in right here: once a
-    # snapshot is durably indexed (`row.id` is known and the Parquet file is on disk), call
-    # something like `await asyncio.to_thread(compute_and_store, row.id)` for filters ALL,
-    # ZERO_DTE, EX_ZERO_DTE. Two things to preserve when wiring that in:
-    #   1. It must run *after* this point, never before -- it needs `snapshot_id`.
-    #   2. It must not turn an already-successful capture into a failure: wrap it the same
-    #      way `_persist_sync` is wrapped above (try/except, log, keep `result.ok=True`) so a
-    #      bug in level computation can never cost a day's raw capture, which is the one
-    #      thing in this app that cannot be recomputed after the fact.
+    # The snapshot is durably indexed at this point (`row.id` known, Parquet already on disk),
+    # so GEX levels can be computed and stored for filters ALL, ZERO_DTE, EX_ZERO_DTE
+    # (`app.gex.store.DEFAULT_FILTERS`). This runs strictly after the capture is already a
+    # success and is wrapped in its own try/except that only logs: a bug here must never flip
+    # `result.ok` back to False and must never raise out of this function, because the raw
+    # chain on disk -- not the derived levels -- is the one artifact in this app that cannot
+    # be recomputed after the fact (the free Cboe source keeps no history). A failure here is
+    # self-healing: `uv run python -m app.gex.backfill` picks up any snapshot left without
+    # levels on a later run.
+    try:
+        await asyncio.to_thread(
+            compute_and_store,
+            row.id,
+            session_factory=effective_session_factory,
+            data_dir=data_dir,
+        )
+    except Exception:  # see the comment above: must never fail the capture
+        logger.exception(
+            "capture: %s snapshot_id=%d persisted successfully but GEX level computation "
+            "failed; it will be picked up by `uv run python -m app.gex.backfill`",
+            underlying,
+            row.id,
+        )
     # -----------------------------------------------------------------------------------------
 
     return result

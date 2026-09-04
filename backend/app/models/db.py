@@ -18,14 +18,32 @@ from __future__ import annotations
 
 import datetime as dt
 
-from sqlalchemy import Boolean, DateTime, Float, Index, Integer, String, create_engine
+from sqlalchemy import (
+    Boolean,
+    DateTime,
+    Float,
+    ForeignKey,
+    Index,
+    Integer,
+    String,
+    UniqueConstraint,
+    create_engine,
+)
 from sqlalchemy.engine import Engine
 from sqlalchemy.orm import DeclarativeBase, Mapped, Session, mapped_column, sessionmaker
 from sqlalchemy.types import TypeDecorator
 
 from app.config import settings
 
-__all__ = ["Base", "Snapshot", "UTCDateTime", "get_engine", "get_sessionmaker"]
+__all__ = [
+    "Base",
+    "GexByStrike",
+    "GexLevel",
+    "Snapshot",
+    "UTCDateTime",
+    "get_engine",
+    "get_sessionmaker",
+]
 
 
 class UTCDateTime(TypeDecorator):
@@ -104,6 +122,108 @@ class Snapshot(Base):
         return (
             f"<Snapshot id={self.id} underlying={self.underlying!r} "
             f"captured_at={self.captured_at.isoformat()!r} is_eod={self.is_eod}>"
+        )
+
+
+class GexLevel(Base):
+    """One row per (snapshot, expiry filter): the headline numbers from
+    `app.gex.engine.key_levels`, persisted by `app.gex.store.compute_and_store` (T09) so the
+    read API and history views never reopen Parquet and re-run the engine just to answer
+    "what was the flip point that day".
+
+    **Every numeric level column is nullable, on purpose, not defensively.** `key_levels`
+    legitimately returns `None` for a wall, the flip point, or every level at once whenever
+    the filter admits no contracts -- the everyday example is `ZERO_DTE` on an EOD capture
+    taken at 16:20 ET, after every same-day contract has expired, not some rare edge case --
+    or whenever the ±10% gamma profile never changes sign. Storing `0.0` in either case would
+    misreport "no level exists" as "level at strike zero", exactly the kind of silent
+    meaning-corruption this schema avoids everywhere else (see `UTCDateTime` above, and the
+    None-vs-zero open-interest rule in `app.gex.engine`). A missing wall reads back as
+    `None`, never `0`.
+
+    `call_wall_gex` / `put_wall_gex` / `max_call_gex_strike` / `max_put_gex_strike` are
+    persisted even though TASKS.md's column list for this table does not name them: T08's
+    `KeyLevels` computes them as part of the same pass, and the alternative -- recomputing a
+    single snapshot's levels means re-reading its Parquet file and re-running the whole
+    engine, not a cheap lookup -- makes it worth the four extra float columns to have them on
+    hand already. `max_call_gex_strike` / `max_put_gex_strike` in particular are the per-side
+    reading `key_levels`' own docstring warns must never be confused with `call_wall` /
+    `put_wall` (which are net-GEX-based); persisting both under their distinct names keeps
+    that distinction intact in storage, not just in memory.
+    """
+
+    __tablename__ = "gex_levels"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    snapshot_id: Mapped[int] = mapped_column(Integer, ForeignKey("snapshots.id"), nullable=False)
+    filter: Mapped[str] = mapped_column(String(32), nullable=False)
+    net_gex: Mapped[float | None] = mapped_column(Float, nullable=True)
+    call_wall: Mapped[float | None] = mapped_column(Float, nullable=True)
+    call_wall_gex: Mapped[float | None] = mapped_column(Float, nullable=True)
+    put_wall: Mapped[float | None] = mapped_column(Float, nullable=True)
+    put_wall_gex: Mapped[float | None] = mapped_column(Float, nullable=True)
+    max_abs_strike: Mapped[float | None] = mapped_column(Float, nullable=True)
+    max_call_gex_strike: Mapped[float | None] = mapped_column(Float, nullable=True)
+    max_put_gex_strike: Mapped[float | None] = mapped_column(Float, nullable=True)
+    flip_point: Mapped[float | None] = mapped_column(Float, nullable=True)
+    spot: Mapped[float | None] = mapped_column(Float, nullable=True)
+    computed_at: Mapped[dt.datetime] = mapped_column(UTCDateTime, nullable=False)
+
+    __table_args__ = (
+        # One row per snapshot per filter -- the uniqueness story `compute_and_store` relies
+        # on for its delete-then-insert replace to be idempotent rather than accumulating.
+        UniqueConstraint("snapshot_id", "filter", name="uq_gex_levels_snapshot_filter"),
+        Index("ix_gex_levels_snapshot_id", "snapshot_id"),
+    )
+
+    def __repr__(self) -> str:  # pragma: no cover - debugging aid only
+        return (
+            f"<GexLevel snapshot_id={self.snapshot_id} filter={self.filter!r} "
+            f"net_gex={self.net_gex!r} flip_point={self.flip_point!r}>"
+        )
+
+
+class GexByStrike(Base):
+    """Per-strike dollar GEX for one (snapshot, expiry filter) -- `app.gex.engine.by_strike`'s
+    output, persisted so a GEX-by-strike chart reads rows instead of recomputing them.
+
+    This table is the volume driver: a full SPX chain spans on the order of a hundred-plus
+    distinct strikes per filter, times three filters, times three symbols, times every
+    capture -- and T18 adds a capture every 15 minutes during the session on top of the daily
+    EOD one. `compute_and_store` deletes the existing `(snapshot_id, filter)` slice before
+    reinserting, so a re-run (a retried capture, a backfill pass) replaces rather than
+    accumulates; the unique constraint below is the backstop against two writers racing past
+    that delete, not the primary mechanism.
+
+    `call_gex` / `put_gex` / `net_gex` are never `None` here, unlike `GexLevel`: a strike
+    only gets a row when it actually had admitted contracts contributing to it, so a filter
+    that admits nothing (`ZERO_DTE` after the close) simply writes zero rows for that filter
+    rather than rows full of nulls.
+    """
+
+    __tablename__ = "gex_by_strike"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    snapshot_id: Mapped[int] = mapped_column(Integer, ForeignKey("snapshots.id"), nullable=False)
+    filter: Mapped[str] = mapped_column(String(32), nullable=False)
+    strike: Mapped[float] = mapped_column(Float, nullable=False)
+    call_gex: Mapped[float] = mapped_column(Float, nullable=False)
+    put_gex: Mapped[float] = mapped_column(Float, nullable=False)
+    net_gex: Mapped[float] = mapped_column(Float, nullable=False)
+
+    __table_args__ = (
+        UniqueConstraint(
+            "snapshot_id", "filter", "strike", name="uq_gex_by_strike_snapshot_filter_strike"
+        ),
+        # Leading (snapshot_id, filter) serves the dominant read shape (T11: "every strike for
+        # this snapshot and this filter") as well as the unique constraint above.
+        Index("ix_gex_by_strike_snapshot_filter", "snapshot_id", "filter"),
+    )
+
+    def __repr__(self) -> str:  # pragma: no cover - debugging aid only
+        return (
+            f"<GexByStrike snapshot_id={self.snapshot_id} filter={self.filter!r} "
+            f"strike={self.strike!r} net_gex={self.net_gex!r}>"
         )
 
 
