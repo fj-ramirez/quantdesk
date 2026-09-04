@@ -4,7 +4,10 @@ from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 
+from app.api.chains import router as chains_router
+from app.api.gex import router as gex_router
 from app.api.health import router as health_router
 from app.api.snapshots import router as snapshots_router
 from app.config import settings
@@ -53,8 +56,21 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
 
 
 app = FastAPI(title="GEX Trading API", lifespan=lifespan)
+
+# T11: the Vite dev server (frontend/, T12+) runs on 5173 and calls this API cross-origin.
+# This is a single-user, analysis-only app with no cookies/auth to leak, so a narrow allowlist
+# of the one real dev origin is simpler than wildcarding and just as safe.
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["http://localhost:5173"],
+    allow_methods=["GET", "POST"],
+    allow_headers=["*"],
+)
+
 app.include_router(snapshots_router, prefix="/api")
 app.include_router(health_router, prefix="/api")
+app.include_router(gex_router, prefix="/api")
+app.include_router(chains_router, prefix="/api")
 
 
 @app.get("/health")
