@@ -1,11 +1,14 @@
+import asyncio
 import logging
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 
+from app.api.health import router as health_router
 from app.api.snapshots import router as snapshots_router
 from app.config import settings
+from app.jobs.catchup import startup_catchup_job
 from app.jobs.scheduler import build_scheduler
 
 # The structured JSON capture logging in `app/jobs/capture.py` (T05: "every capture logged --
@@ -32,14 +35,26 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     scheduler.start()
     app.state.scheduler = scheduler
     logger.info("scheduler started; jobs=%s", [job.id for job in scheduler.get_jobs()])
+
+    # T29: catch up a missed 16:20 EOD capture (laptop was off, container was down, whatever)
+    # without making boot wait on it. `create_task` schedules `startup_catchup_job` to run on
+    # this same event loop as soon as it gets a turn -- typically right after this generator
+    # yields and the app starts accepting requests -- rather than being awaited here, which
+    # would stall every request behind up to three sequential Cboe fetches. The job function
+    # itself never raises (see its own docstring), so there is nothing here to catch.
+    app.state.startup_catchup_task = asyncio.create_task(startup_catchup_job())
     try:
         yield
     finally:
         scheduler.shutdown(wait=False)
+        catchup_task = app.state.startup_catchup_task
+        if not catchup_task.done():
+            catchup_task.cancel()
 
 
 app = FastAPI(title="GEX Trading API", lifespan=lifespan)
 app.include_router(snapshots_router, prefix="/api")
+app.include_router(health_router, prefix="/api")
 
 
 @app.get("/health")

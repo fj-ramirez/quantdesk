@@ -21,12 +21,20 @@ from apscheduler.triggers.cron import CronTrigger
 from app.config import settings
 from app.jobs.calendar import is_trading_day
 from app.jobs.capture import capture_all_symbols
+from app.jobs.catchup import catch_up_missed_eod
 
-__all__ = ["EOD_JOB_ID", "build_scheduler", "capture_eod_job"]
+__all__ = [
+    "EOD_JOB_ID",
+    "SAFETY_NET_JOB_ID",
+    "build_scheduler",
+    "capture_eod_job",
+    "capture_eod_safety_net_job",
+]
 
 logger = logging.getLogger("app.jobs.scheduler")
 
 EOD_JOB_ID = "capture_eod"
+SAFETY_NET_JOB_ID = "capture_eod_safety_net"
 
 # `settings.TZ` (default "America/New_York") drives both the trigger's wall-clock time and
 # the weekday/holiday check inside the job -- if this were ever pointed at another zone, both
@@ -60,6 +68,28 @@ async def capture_eod_job() -> None:
         logger.exception("capture_eod_job: unexpected top-level failure")
 
 
+async def capture_eod_safety_net_job() -> None:
+    """20:00 NY guard-railed retry of the 16:20 capture (T29).
+
+    `capture_eod_job` above fires unconditionally at 16:20 -- if the process is alive to run
+    it, fine. This job exists for the case that job never got the chance to run at all: a
+    process that started at 16:05 (too early for the FastAPI-lifespan startup catch-up in
+    `app/jobs/catchup.py` to find anything missing yet) and then crashed, rebooted, or was
+    `docker compose down`-ed at 16:21 never gets another shot at 16:20 today. `_TZ`-local
+    20:00 is late enough that almost any same-evening restart happens before it, early enough
+    that it is still well within Cboe's "keeps serving the settled chain through the evening"
+    window (see `catch_up_missed_eod`'s docstring).
+
+    Delegates entirely to `catch_up_missed_eod`, which is what makes this safe to run even on
+    a day the 16:20 job fired normally: the per-symbol "does today's is_eod row already exist"
+    check makes an on-time day's 20:00 run a no-op, not a second capture.
+    """
+    try:
+        await catch_up_missed_eod(settings.symbols)
+    except Exception:  # same rationale as capture_eod_job: never take the scheduler down
+        logger.exception("capture_eod_safety_net_job: unexpected top-level failure")
+
+
 def build_scheduler() -> AsyncIOScheduler:
     """Construct (but do not start) the scheduler with `capture_eod` registered.
 
@@ -87,6 +117,20 @@ def build_scheduler() -> AsyncIOScheduler:
         trigger=CronTrigger(day_of_week="mon-fri", hour=16, minute=20, timezone=_TZ),
         id=EOD_JOB_ID,
         name="EOD option chain capture (SPX/SPY/QQQ)",
+        coalesce=True,
+        misfire_grace_time=None,
+        max_instances=1,
+        replace_existing=True,
+    )
+    # T29 safety net: same misfire policy as the 16:20 job, for the same reason -- a run that
+    # is hours late is still better than one that never happened on this app's history-less
+    # data source. See `capture_eod_safety_net_job`'s own docstring for why 20:00 and why it
+    # is safe to be a no-op most days.
+    scheduler.add_job(
+        capture_eod_safety_net_job,
+        trigger=CronTrigger(day_of_week="mon-fri", hour=20, minute=0, timezone=_TZ),
+        id=SAFETY_NET_JOB_ID,
+        name="EOD capture safety net (catches a missed 16:20 run)",
         coalesce=True,
         misfire_grace_time=None,
         max_instances=1,

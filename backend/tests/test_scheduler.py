@@ -13,7 +13,13 @@ import logging
 from zoneinfo import ZoneInfo
 
 from app.jobs import scheduler as scheduler_module
-from app.jobs.scheduler import EOD_JOB_ID, build_scheduler, capture_eod_job
+from app.jobs.scheduler import (
+    EOD_JOB_ID,
+    SAFETY_NET_JOB_ID,
+    build_scheduler,
+    capture_eod_job,
+    capture_eod_safety_net_job,
+)
 
 _NY = ZoneInfo("America/New_York")
 
@@ -113,5 +119,54 @@ async def test_capture_eod_job_survives_an_unexpected_exception(monkeypatch, cap
 
     with caplog.at_level(logging.ERROR, logger="app.jobs.scheduler"):
         await capture_eod_job()  # must not raise
+
+    assert any("unexpected top-level failure" in r.message for r in caplog.records)
+
+
+# --- T29: 20:00 NY safety-net job -------------------------------------------------------------
+
+
+def test_build_scheduler_registers_safety_net_job():
+    scheduler = build_scheduler()
+    job = scheduler.get_job(SAFETY_NET_JOB_ID)
+    assert job is not None
+    assert job.max_instances == 1
+    assert job.misfire_grace_time is None
+    assert job.coalesce is True
+
+
+def test_build_scheduler_safety_net_job_trigger_is_mon_fri_2000_ny():
+    scheduler = build_scheduler()
+    job = scheduler.get_job(SAFETY_NET_JOB_ID)
+    trigger = job.trigger
+    field_strs = {f.name: str(f) for f in trigger.fields}
+    assert field_strs["hour"] == "20"
+    assert field_strs["minute"] == "0"
+    assert field_strs["day_of_week"] == "mon-fri"
+    assert str(trigger.timezone) == "America/New_York"
+
+
+async def test_capture_eod_safety_net_job_delegates_to_catch_up_missed_eod(monkeypatch):
+    seen = {}
+
+    async def fake_catch_up(symbols, **kwargs):
+        seen["symbols"] = symbols
+        return []
+
+    monkeypatch.setattr(scheduler_module, "catch_up_missed_eod", fake_catch_up)
+
+    await capture_eod_safety_net_job()
+
+    assert seen["symbols"] == ["SPX", "SPY", "QQQ"]
+
+
+async def test_capture_eod_safety_net_job_survives_an_unexpected_exception(monkeypatch, caplog):
+    async def boom(*args, **kwargs):
+        raise RuntimeError("cboe is unreachable")
+
+    monkeypatch.setattr(scheduler_module, "catch_up_missed_eod", boom)
+
+    with caplog.at_level(logging.ERROR, logger="app.jobs.scheduler"):
+        await capture_eod_safety_net_job()  # must not raise
 
     assert any("unexpected top-level failure" in r.message for r in caplog.records)
