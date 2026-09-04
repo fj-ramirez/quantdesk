@@ -280,12 +280,53 @@ Backup script for `DATA_DIR` and a `pg_dump` cron; a `/api/health` that reports 
 
 ---
 
+## Tasks added by the T06 Phase 1 review (2026-09-04)
+
+These came out of reviewing T02–T05 together. T29 is the important one: it closes the gap between "the pipeline works" and "the pipeline can be left alone for months", which is the whole premise of starting capture early.
+
+### T29 · Sonnet · T04, T05
+**Startup catch-up for a missed EOD capture**
+
+APScheduler uses an in-memory job store, so `misfire_grace_time=None` only rescues a run whose *process was alive* (laptop asleep). If the backend is not running at 16:20 ET — laptop shut down, reboot, `docker compose down`, a deploy — the run is never scheduled and never fires, and the free Cboe source cannot backfill it. For a personal laptop app this is the dominant miss mode, and it is completely silent: no log line, no failed job, no row.
+
+- On FastAPI lifespan startup: if today (NY) is a trading day, now is past 16:20 NY, and no `is_eod=True` snapshot exists for today for a symbol, run `capture_eod` for it immediately. Cboe keeps serving the settled chain through the evening, so a catch-up until roughly 23:59 ET still captures the correct close.
+- Add a second "safety net" cron (e.g. 20:00 NY) with the same no-row-yet guard, so a process that starts at 16:05 and stays up through a 16:20 crash still gets the day.
+- Add a `GET /api/health/capture` returning, per symbol, the last capture time and whether today's EOD row exists — one URL that answers "is my dataset still whole?".
+
+Acceptance: with the clock faked past 16:20 on a trading day and an empty DB, startup produces an `is_eod=True` row per symbol; starting twice does not double-capture.
+
+### T30 · Sonnet · T04, T05, T09
+**Settle what `snapshots.parquet_path` actually means**
+
+`app/models/db.py` documents the column as "relative to `DATA_DIR` (posix separators) so the index stays valid if `DATA_DIR` moves between hosts". It is not: `SnapshotRepository.add` stores whatever `write_snapshot` returned, which is `DATA_DIR`-joined — CWD-relative with the default `DATA_DIR=./data` (verified live: `data/chains/SPX/2026/09/…parquet`) and absolute under Docker's `DATA_DIR=/data`. Rows written on the host and in the container are therefore mutually unreadable, and any reader must guess the base. Nothing reads the column yet, which makes this the cheapest possible moment to fix it.
+
+- Store the path relative to `DATA_DIR` and add a single `resolve_snapshot_path(row)` helper that all readers (T09 backfill, T11 read API) use.
+- Test: a row written with one `DATA_DIR` resolves correctly after `DATA_DIR` changes.
+- Reconsider echoing a filesystem path in the `GET /api/snapshots` response body at all.
+
+### T31 · Sonnet · T02, T05
+**Alert on partial-chain degradation**
+
+Providers skip-and-log unparseable contracts, which is the right policy, but the only signal is a WARNING. If Cboe renames a root or changes the OCC format, 30 % of SPX could vanish from every snapshot with GEX quietly wrong and captures still reporting `ok=True`. (T06 fixed the 100 %-skipped case, which now raises.)
+
+- Carry `skipped` and `listed` out of the provider on the snapshot and into `CaptureResult`, the structured log line and the `snapshots` row.
+- Log at ERROR when skipped exceeds a small threshold (e.g. 1 %), and flag any capture whose contract count deviates more than ~30 % from that symbol's trailing median.
+
+### T32 · Sonnet · T09, T18
+**Retention policy for `gex_by_strike`**
+
+Flagged by T09: `gex_by_strike` is the volume driver at ~800 rows per filter per capture (2 non-empty filters × 3 symbols today). T18's 15-minute intraday polling multiplies that by ~26 sessions-worth per day per symbol. Nothing partitions or prunes it. Decide a retention rule — e.g. keep EOD strike detail forever, drop intraday strike detail after N days while keeping the `gex_levels` summary row — and implement it before T18 ships, not after the table is large.
+
+---
+
 ## Model assignment summary
 
 | Model | Tasks |
 |---|---|
 | Opus | T01, T07, T08, T10, T21, T23, T25 |
 | Opus (review) | T06, T17, T24 |
-| Sonnet | T00, T02–T05, T09, T11–T16, T18–T20, T22, T26, T27, T28 |
+| Sonnet | T00, T02–T05, T09, T11–T16, T18–T20, T22, T26–T32 |
 
 Parallelizable groups once their dependency is done: {T02, T03, T04} after T01; {T12} alongside all of Phase 1; {T13, T14} after T12; {T27, T28} anytime.
+
+Sequencing note (2026-09-04): T29 and T30 run before T11. A dashboard over a dataset with silent holes is worth less than a smaller dataset that can be trusted, and T30 is cheapest while nothing reads `parquet_path` yet. Do not run two Opus agents concurrently — it exhausts the session rate limit.
