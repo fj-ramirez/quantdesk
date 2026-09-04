@@ -18,7 +18,7 @@ services:
   backend:
     build: ./backend
     ports:
-      - "8000:8000"
+      - "8001:8001"
     environment:
       DATABASE_URL: postgresql+psycopg://gex:gex@postgres:5432/gex
       DATA_DIR: /data
@@ -38,7 +38,7 @@ services:
     ports:
       - "5173:5173"
     environment:
-      VITE_API_BASE_URL: http://localhost:8000
+      VITE_API_BASE_URL: http://localhost:8001
     volumes:
       - ./frontend:/app
       - /app/node_modules

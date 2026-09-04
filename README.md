@@ -28,7 +28,7 @@ cp .env.example .env
 docker compose up
 ```
 
-- Backend health check: http://localhost:8000/health
+- Backend health check: http://localhost:8001/health
 - Frontend dev server: http://localhost:5173
 
 Bring it down with `docker compose down` (add `-v` to also drop the Postgres volume).
@@ -40,10 +40,10 @@ Bring it down with `docker compose down` (add `-v` to also drop the Postgres vol
 ```
 cd backend
 uv sync
-uv run uvicorn app.main:app --reload
+uv run uvicorn app.main:app --reload --port 8001
 ```
 
-Serves on http://localhost:8000, health check at `/health`. Config is read from
+Serves on http://localhost:8001, health check at `/health`. Config is read from
 `backend/.env` (copy `.env.example` there, or set env vars directly) via
 `app/config.py`. Keys: `DATABASE_URL`, `DATA_DIR`, `PROVIDER`, `SYMBOLS`, `TZ`.
 
