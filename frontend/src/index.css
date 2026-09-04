@@ -30,8 +30,15 @@
   }
 }
 
+/*
+ * Dark palette applies (a) by default when the OS prefers dark AND the ThemeToggle hasn't
+ * forced light (`:not([data-theme="light"])`), and (b) whenever the toggle has forced dark
+ * (`[data-theme="dark"]`), regardless of OS preference. `ThemeContext` sets `data-theme` on
+ * `<html>`; without the explicit `[data-theme="dark"]` block below, the toggle would do
+ * nothing on a light-OS browser.
+ */
 @media (prefers-color-scheme: dark) {
-  :root {
+  :root:not([data-theme='light']) {
     --text: #9ca3af;
     --text-h: #f3f4f6;
     --bg: #16171d;
@@ -45,9 +52,27 @@
       rgba(0, 0, 0, 0.4) 0 10px 15px -3px, rgba(0, 0, 0, 0.25) 0 4px 6px -2px;
   }
 
-  #social .button-icon {
+  :root:not([data-theme='light']) #social .button-icon {
     filter: invert(1) brightness(2);
   }
+}
+
+:root[data-theme='dark'] {
+  --text: #9ca3af;
+  --text-h: #f3f4f6;
+  --bg: #16171d;
+  --border: #2e303a;
+  --code-bg: #1f2028;
+  --accent: #c084fc;
+  --accent-bg: rgba(192, 132, 252, 0.15);
+  --accent-border: rgba(192, 132, 252, 0.5);
+  --social-bg: rgba(47, 48, 58, 0.5);
+  --shadow:
+    rgba(0, 0, 0, 0.4) 0 10px 15px -3px, rgba(0, 0, 0, 0.25) 0 4px 6px -2px;
+}
+
+:root[data-theme='dark'] #social .button-icon {
+  filter: invert(1) brightness(2);
 }
 
 #root {
