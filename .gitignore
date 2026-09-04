@@ -1,0 +1,33 @@
+# Env
+.env
+
+# Data
+data/
+
+# Python
+__pycache__/
+*.py[oc]
+*.egg-info/
+.venv/
+backend/.venv/
+
+# Node
+node_modules/
+dist/
+dist-ssr/
+*.local
+
+# Editors / OS
+.vscode/*
+!.vscode/extensions.json
+.idea/
+.DS_Store
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+
+# Logs
+*.log
+npm-debug.log*
