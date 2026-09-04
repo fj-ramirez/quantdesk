@@ -4,6 +4,7 @@ import { Dashboard } from './pages/Dashboard';
 import { History } from './pages/History';
 import { Settings } from './pages/Settings';
 import { GammaProfileDemo } from './pages/demo/GammaProfileDemo';
+import { GexByStrikeDemo } from './pages/demo/GexByStrikeDemo';
 
 export function App() {
   return (
@@ -12,9 +13,9 @@ export function App() {
         <Route index element={<Dashboard />} />
         <Route path="history" element={<History />} />
         <Route path="settings" element={<Settings />} />
-        {/* T14 stories-style demo (not part of Dashboard assembly, which is T16's job) —
-            see src/pages/demo/GammaProfileDemo.tsx for why. */}
+        {/* Standalone chart demos. Dashboard assembly is T16's job. */}
         <Route path="demo/gamma-profile" element={<GammaProfileDemo />} />
+        <Route path="demo/gex-by-strike" element={<GexByStrikeDemo />} />
       </Route>
     </Routes>
   );
