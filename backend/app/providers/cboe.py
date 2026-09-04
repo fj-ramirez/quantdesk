@@ -105,8 +105,15 @@ def _parse_ny_datetime(raw: str) -> dt.datetime:
 
 
 def _to_int(value: Any) -> int | None:
-    """Cboe reports integer-valued fields (``open_interest``, ``volume``) as JSON floats."""
-    return None if value is None else int(value)
+    """Cboe reports integer-valued fields (``open_interest``, ``volume``) as JSON floats.
+
+    Rounds rather than truncates. Every value observed on the live feed is integral
+    (``43793.0``), so the two agree today; if a fractional value ever did arrive, ``int()``
+    would silently floor it — turning an open interest of ``0.9`` into ``0`` and erasing that
+    contract from the GEX total, which is precisely the ``None``-vs-``0`` corruption
+    ``app/models/chain.py`` warns about. Rounding is the smaller lie of the two.
+    """
+    return None if value is None else round(float(value))
 
 
 def _contract_from_vendor(raw: dict[str, Any]) -> OptionContract:
@@ -201,8 +208,11 @@ class CboeProvider(OptionChainProvider):
         """GET ``url`` with retries and linear backoff, returning the parsed JSON body.
 
         Raises:
-            UpstreamUnavailable: every attempt failed (timeout, transport error, or a
-                non-2xx status).
+            UpstreamUnavailable: every attempt failed (timeout, transport error, a non-2xx
+                status, or a 200 whose body is not JSON — a CDN error page or bot-challenge
+                HTML served with status 200 is a realistic Cboe failure mode, and letting the
+                resulting ``json.JSONDecodeError`` escape would break the one guarantee this
+                provider owes the scheduler: every failure is a ``ProviderError``).
         """
         client = await self._get_client()
         last_exc: Exception | None = None
@@ -211,7 +221,7 @@ class CboeProvider(OptionChainProvider):
                 response = await client.get(url)
                 response.raise_for_status()
                 return response.json()
-            except (httpx.HTTPStatusError, httpx.TransportError) as exc:
+            except (httpx.HTTPStatusError, httpx.TransportError, ValueError) as exc:
                 last_exc = exc
                 logger.warning(
                     "cboe: attempt %d/%d failed for %s: %s", attempt, self._max_retries, url, exc
@@ -248,18 +258,38 @@ class CboeProvider(OptionChainProvider):
         for raw in raw_options:
             try:
                 contracts.append(_contract_from_vendor(raw))
-            except ValueError as exc:
-                # Unknown root or an OCC symbol that does not parse. See the module
-                # docstring's "unknown-root policy": one bad contract must not blank out
-                # every other correct contract in the snapshot.
+            except (ValueError, KeyError, TypeError, AttributeError) as exc:
+                # Unknown root, an OCC symbol that does not parse, a field the schema rejects,
+                # or an entry that is not even shaped like a contract (missing "option", a
+                # bare string instead of an object). See the module docstring's
+                # "unknown-root policy": one bad contract must not blank out every other
+                # correct contract in the snapshot. The catch is deliberately wider than
+                # ValueError -- a KeyError escaping here would propagate out of `fetch_chain`
+                # as a non-ProviderError and abort the whole multi-symbol capture run.
                 skipped += 1
-                logger.warning("cboe: skipping contract %r: %s", raw.get("option"), exc)
+                logger.warning(
+                    "cboe: skipping contract %r: %s: %s",
+                    raw.get("option") if isinstance(raw, dict) else raw,
+                    type(exc).__name__,
+                    exc,
+                )
         if skipped:
             logger.warning(
-                "cboe: skipped %d/%d contracts for %s (unmapped root or bad OCC symbol)",
+                "cboe: skipped %d/%d contracts for %s (unparseable symbol, unmapped root, or "
+                "a field the schema rejected)",
                 skipped,
                 len(raw_options),
                 underlying.value,
+            )
+
+        if not contracts:
+            # An empty chain is never a real answer for SPX/SPY/QQQ. Returning one would
+            # store a "successful" snapshot with zero contracts, whose GEX is silently 0 --
+            # far worse than a logged failure, because the capture looks fine in the logs and
+            # the hole is only visible months later on a chart.
+            raise UpstreamUnavailable(
+                f"Cboe returned no usable contracts for {underlying.value} "
+                f"({len(raw_options)} listed, {skipped} skipped)"
             )
 
         try:

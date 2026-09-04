@@ -240,3 +240,102 @@ async def test_retries_exhausted_raises_upstream_unavailable():
             await provider.fetch_chain("SPY")
     finally:
         await client.aclose()
+
+
+# --- T06 review regressions ---------------------------------------------------------------
+# Each failure below used to escape `fetch_chain` as something other than a ProviderError,
+# which aborts `capture_all_symbols` mid-loop and loses every symbol after the failing one.
+
+
+async def test_html_body_with_status_200_raises_upstream_unavailable():
+    """A CDN error page or bot challenge served with status 200 previously raised
+    json.JSONDecodeError straight out of the provider."""
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, content=b"<html>Access Denied</html>")
+
+    client = httpx.AsyncClient(transport=httpx.MockTransport(handler))
+    provider = CboeProvider(client=client, max_retries=2, backoff_seconds=0.0)
+    try:
+        with pytest.raises(UpstreamUnavailable):
+            await provider.fetch_chain("SPX")
+    finally:
+        await client.aclose()
+
+
+async def test_contract_entry_missing_option_key_is_skipped_not_fatal(caplog):
+    """A malformed entry previously raised KeyError('option') for the whole snapshot."""
+    payload = {
+        "timestamp": "2026-09-04 18:18:34",
+        "data": {
+            "current_price": 500.0,
+            "options": [
+                {"bid": 1.0, "iv": 0.2},  # no "option" key at all
+                {"option": "SPY260904C00500000", "bid": 1.0, "iv": 0.2, "open_interest": 10},
+            ],
+        },
+    }
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, json=payload)
+
+    client = httpx.AsyncClient(transport=httpx.MockTransport(handler))
+    provider = CboeProvider(client=client)
+    try:
+        with caplog.at_level(logging.WARNING):
+            snapshot = await provider.fetch_chain("SPY")
+    finally:
+        await client.aclose()
+
+    assert len(snapshot) == 1
+    assert any("KeyError" in record.message for record in caplog.records)
+
+
+async def test_chain_with_no_usable_contracts_raises_instead_of_storing_an_empty_snapshot():
+    """A zero-contract snapshot has a GEX of exactly 0 and looks like a success in the logs --
+    worse than a loud failure, because the hole stays invisible for months."""
+    payload = {
+        "timestamp": "2026-09-04 18:18:34",
+        "data": {"current_price": 500.0, "options": [{"option": "ZZZ260904C00500000"}]},
+    }
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, json=payload)
+
+    client = httpx.AsyncClient(transport=httpx.MockTransport(handler))
+    provider = CboeProvider(client=client)
+    try:
+        with pytest.raises(UpstreamUnavailable, match="no usable contracts"):
+            await provider.fetch_chain("SPY")
+    finally:
+        await client.aclose()
+
+
+async def test_open_interest_float_is_rounded_not_truncated():
+    payload = {
+        "timestamp": "2026-09-04 18:18:34",
+        "data": {
+            "current_price": 500.0,
+            "options": [
+                {
+                    "option": "SPY260904C00500000",
+                    "iv": 0.2,
+                    "open_interest": 42.7,
+                    "volume": 3.4,
+                }
+            ],
+        },
+    }
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, json=payload)
+
+    client = httpx.AsyncClient(transport=httpx.MockTransport(handler))
+    provider = CboeProvider(client=client)
+    try:
+        snapshot = await provider.fetch_chain("SPY")
+    finally:
+        await client.aclose()
+
+    assert snapshot.contracts[0].open_interest == 43
+    assert snapshot.contracts[0].volume == 3

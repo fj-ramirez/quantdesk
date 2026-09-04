@@ -250,6 +250,107 @@ async def test_capture_all_symbols_one_failure_does_not_stop_the_others(tmp_path
         assert {r.underlying for r in rows} == {"SPX", "QQQ"}
 
 
+async def test_capture_snapshot_survives_a_non_provider_error(tmp_path, session_factory):
+    """T06 review: a provider bug (or an unanticipated vendor payload) that leaks something
+    other than a ProviderError must still degrade to a CaptureResult. Anything else aborts
+    `capture_all_symbols` mid-loop and silently loses the symbols after it."""
+    provider = StubProvider(error=KeyError("option"))
+
+    result = await capture_snapshot(
+        "SPX", is_eod=True, provider=provider, session_factory=session_factory, data_dir=tmp_path
+    )
+
+    assert result.ok is False
+    assert "KeyError" in result.error
+
+
+async def test_capture_all_symbols_continues_past_a_non_provider_error(tmp_path, session_factory):
+    """The multi-symbol resilience requirement, for the non-ProviderError case."""
+    snapshots = {
+        "SPX": make_snapshot(Underlying.SPX),
+        "QQQ": make_snapshot(Underlying.QQQ),
+    }
+
+    class MultiStubProvider:
+        name = "stub"
+        delayed_minutes = 15
+
+        async def fetch_chain(self, underlying: str) -> ChainSnapshot:
+            if underlying == "SPY":
+                raise KeyError("option")  # not a ProviderError
+            return snapshots[underlying]
+
+        async def close(self) -> None:
+            pass
+
+    import app.jobs.capture as capture_module
+
+    original_get_provider = capture_module.get_provider
+    capture_module.get_provider = MultiStubProvider
+    try:
+        results = await capture_all_symbols(
+            ["SPX", "SPY", "QQQ"], is_eod=True, session_factory=session_factory, data_dir=tmp_path
+        )
+    finally:
+        capture_module.get_provider = original_get_provider
+
+    by_symbol = {r.underlying: r for r in results}
+    assert by_symbol["SPY"].ok is False
+    assert by_symbol["SPX"].ok is True
+    assert by_symbol["QQQ"].ok is True  # would never have been attempted before the fix
+
+
+async def test_duplicate_capture_promotes_is_eod(tmp_path, session_factory):
+    """A manual capture followed by the 16:20 EOD job landing on the same vendor timestamp
+    must not leave the day with no is_eod row at all."""
+    snapshot = make_snapshot()
+
+    manual = await capture_snapshot(
+        "SPX",
+        is_eod=False,
+        provider=StubProvider(snapshot=snapshot),
+        session_factory=session_factory,
+        data_dir=tmp_path,
+    )
+    eod = await capture_snapshot(
+        "SPX",
+        is_eod=True,
+        provider=StubProvider(snapshot=snapshot),
+        session_factory=session_factory,
+        data_dir=tmp_path,
+    )
+
+    assert eod.skipped_duplicate is True
+    assert eod.snapshot_id == manual.snapshot_id
+    with session_factory() as session:
+        rows = session.execute(select(Snapshot)).scalars().all()
+        assert len(rows) == 1
+        assert rows[0].is_eod is True
+
+
+async def test_duplicate_capture_never_demotes_is_eod(tmp_path, session_factory):
+    """Promotion is one-way: a later manual capture must not clear the EOD flag."""
+    snapshot = make_snapshot()
+    await capture_snapshot(
+        "SPX",
+        is_eod=True,
+        provider=StubProvider(snapshot=snapshot),
+        session_factory=session_factory,
+        data_dir=tmp_path,
+    )
+    await capture_snapshot(
+        "SPX",
+        is_eod=False,
+        provider=StubProvider(snapshot=snapshot),
+        session_factory=session_factory,
+        data_dir=tmp_path,
+    )
+    with session_factory() as session:
+        rows = session.execute(select(Snapshot)).scalars().all()
+        assert len(rows) == 1
+        assert rows[0].is_eod is True
+
+
 def test_log_result_emits_valid_json_with_required_fields(caplog):
     result = CaptureResult(
         underlying="SPX",

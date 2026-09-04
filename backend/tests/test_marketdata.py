@@ -187,8 +187,13 @@ async def test_authorization_header_uses_bearer_token():
     assert seen["request"].headers["Authorization"] == "Bearer secret-abc"
 
 
-async def test_request_uses_expiration_all_and_cached_mode():
-    """expiration=all avoids the vendor's next-monthly-only default; mode=cached is 1 credit."""
+async def test_request_uses_expiration_all_and_no_mode_by_default():
+    """expiration=all avoids the vendor's next-monthly-only default.
+
+    `mode` is deliberately absent: a Free Forever token cannot set it and answers
+    `mode=cached` with a 402, which would make this fallback provider fail on the only plan
+    it is configured for (T06 review).
+    """
     seen: dict[str, httpx.Request] = {}
 
     def handler(request: httpx.Request) -> httpx.Response:
@@ -204,8 +209,26 @@ async def test_request_uses_expiration_all_and_cached_mode():
 
     params = seen["request"].url.params
     assert params["expiration"] == "all"
-    assert params["mode"] == "cached"
+    assert "mode" not in params
     assert seen["request"].url.path == "/v1/options/chain/SPY/"
+
+
+async def test_mode_is_sent_when_explicitly_configured():
+    """A paid-plan caller can still ask for the 1-credit cached chain."""
+    seen: dict[str, httpx.Request] = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen["request"] = request
+        return httpx.Response(200, content=_load_fixture("spy_synthetic.json"))
+
+    client = httpx.AsyncClient(transport=httpx.MockTransport(handler))
+    provider = MarketDataProvider(token=_TOKEN, client=client, mode="cached")
+    try:
+        await provider.fetch_chain("SPY")
+    finally:
+        await client.aclose()
+
+    assert seen["request"].url.params["mode"] == "cached"
 
 
 async def test_unknown_root_contract_is_skipped_not_fatal(caplog):
@@ -306,6 +329,67 @@ async def test_retries_exhausted_raises_upstream_unavailable():
     )
     try:
         with pytest.raises(UpstreamUnavailable):
+            await provider.fetch_chain("SPY")
+    finally:
+        await client.aclose()
+
+
+# --- T06 review regressions ---------------------------------------------------------------
+# The same three failure modes fixed in the Cboe provider, asserted here so the two providers
+# stay behaviourally identical for an operator: every failure is a ProviderError.
+
+
+async def test_html_body_with_status_200_raises_upstream_unavailable():
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, content=b"<html>502 Bad Gateway</html>")
+
+    client = httpx.AsyncClient(transport=httpx.MockTransport(handler))
+    provider = MarketDataProvider(
+        token=_TOKEN, client=client, max_retries=2, backoff_seconds=0.0
+    )
+    try:
+        with pytest.raises(UpstreamUnavailable):
+            await provider.fetch_chain("SPY")
+    finally:
+        await client.aclose()
+
+
+async def test_empty_updated_column_raises_upstream_unavailable():
+    """`max(updated)` used to raise a bare ValueError out of the provider."""
+    payload = {
+        "s": "ok",
+        "optionSymbol": ["SPY260904C00500000"],
+        "underlyingPrice": [500.0],
+        "updated": [],
+    }
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, json=payload)
+
+    client = httpx.AsyncClient(transport=httpx.MockTransport(handler))
+    provider = MarketDataProvider(token=_TOKEN, client=client)
+    try:
+        with pytest.raises(UpstreamUnavailable, match="unusable"):
+            await provider.fetch_chain("SPY")
+    finally:
+        await client.aclose()
+
+
+async def test_chain_with_no_usable_contracts_raises_instead_of_an_empty_snapshot():
+    payload = {
+        "s": "ok",
+        "optionSymbol": ["ZZZ260904C00500000"],
+        "underlyingPrice": [500.0],
+        "updated": [1788545100],
+    }
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, json=payload)
+
+    client = httpx.AsyncClient(transport=httpx.MockTransport(handler))
+    provider = MarketDataProvider(token=_TOKEN, client=client)
+    try:
+        with pytest.raises(UpstreamUnavailable, match="no usable contracts"):
             await provider.fetch_chain("SPY")
     finally:
         await client.aclose()

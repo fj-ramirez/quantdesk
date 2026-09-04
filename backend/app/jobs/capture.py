@@ -122,6 +122,24 @@ async def capture_snapshot(
             )
             _log_result(result)
             return result
+        except Exception as exc:
+            # Providers are *supposed* to wrap every failure in a ProviderError, but a bug or
+            # an unanticipated vendor payload can still leak something else (a KeyError from a
+            # malformed contract, a JSONDecodeError from an HTML error page served with status
+            # 200). Letting that escape would abort `capture_all_symbols` mid-loop, so the two
+            # symbols after the failing one would never be attempted -- and on this project's
+            # free, history-less source a symbol not attempted at 16:20 is gone forever. This
+            # docstring's "never raises" contract is what the scheduler relies on, so it is
+            # enforced here rather than merely asserted.
+            logger.exception("capture: provider %r raised a non-ProviderError", underlying)
+            result = CaptureResult(
+                underlying=underlying,
+                ok=False,
+                duration_seconds=time.monotonic() - start,
+                error=f"provider raised {type(exc).__name__}: {exc}",
+            )
+            _log_result(result)
+            return result
     finally:
         if owns_provider:
             close = getattr(active_provider, "close", None)
@@ -219,6 +237,19 @@ def _persist_sync(
                 existing.id,
                 existing.parquet_path,
             )
+            if is_eod and not existing.is_eod:
+                # The duplicate is the 16:20 EOD job landing on the same vendor timestamp a
+                # manual capture already stored (Cboe's delayed timestamp only advances every
+                # ~15 min, so this is reachable, not theoretical). Skipping without promoting
+                # the flag would leave the day with *no* is_eod row at all -- an invisible,
+                # permanent hole in every eod_only query, for a day whose data is actually on
+                # disk. Promotion is monotonic: an EOD row is never demoted by a later manual
+                # capture.
+                existing.is_eod = True
+                session.commit()
+                logger.info(
+                    "capture: promoted snapshot id=%d to is_eod=True", existing.id
+                )
             return existing.parquet_path, existing, True
 
         path = write_snapshot(snapshot, data_dir=data_dir)
