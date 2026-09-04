@@ -77,10 +77,15 @@ return `402 Payment Required`" on Free Forever, whose default is `mode=historica
 fully-closed session) rather than a 15-minute delayed quote. This is consistent with — and
 probably why — PLAN.md's own source table already lists this provider's latency as **"24 h"**,
 not Cboe's 15 minutes; :attr:`MarketDataProvider.delayed_minutes` follows PLAN.md's number
-(1440) rather than Cboe's, for that reason. This module still sends ``mode=cached`` exactly as
-instructed — that part of the request is not in question — but whether a real Free Forever
-token accepts it or 402s is the single biggest unverified risk in this file. See the T03
-completion report for the full writeup.
+(1440) rather than Cboe's, for that reason.
+
+**T06 review change:** this module used to hardcode ``mode=cached`` on every request. On a
+Free Forever token that is a documented, deterministic ``402`` — so the break-glass fallback
+would have failed on the only plan it is configured for, and it would have failed at the worst
+possible moment (Cboe already broken). ``mode`` is now an optional constructor argument,
+omitted from the query string by default, so each plan's own default applies: ``historical``
+on free (matching ``delayed_minutes=1440``), ``live`` on paid. A paid user who wants the
+1-credit cached chain constructs ``MarketDataProvider(mode="cached")``.
 
 Authentication (https://www.marketdata.app/docs/api/authentication/, fetched 2026-09-04)
 ------------------------------------------------------------------------------------------
@@ -214,10 +219,17 @@ class MarketDataProvider(OptionChainProvider):
         timeout: float = _DEFAULT_TIMEOUT_SECONDS,
         max_retries: int = _DEFAULT_MAX_RETRIES,
         backoff_seconds: float = _DEFAULT_BACKOFF_SECONDS,
+        mode: str | None = None,
     ) -> None:
         """
         Args:
             token: MarketData.app API token. Defaults to ``settings.MARKETDATA_TOKEN``.
+            mode: Optional ``mode`` query parameter. Left unset by default so each plan's own
+                default applies — ``historical`` on Free Forever (which is what
+                :attr:`delayed_minutes` = 1440 already describes), ``live`` on a paid plan.
+                A paid user who wants the 1-credit cached chain passes ``mode="cached"``;
+                sending it on a free token is a guaranteed 402, which is why it is no longer
+                hardcoded.
             client: An existing ``httpx.AsyncClient`` to use instead of creating one lazily.
                 Tests inject a client built on ``httpx.MockTransport``, so the suite never
                 touches the network; the caller who injects a client also owns closing it.
@@ -237,6 +249,7 @@ class MarketDataProvider(OptionChainProvider):
                 "Authorization header and fail as a confusing 401."
             )
         self._token = resolved_token
+        self._mode = mode
         self._client = client
         self._owns_client = client is None
         self._timeout = timeout
@@ -277,11 +290,11 @@ class MarketDataProvider(OptionChainProvider):
         necessarily the client.
 
         Raises:
-            UpstreamUnavailable: every attempt failed (timeout, transport error, or a
-                non-2xx status). A 401/402 (bad or plan-restricted token) is not specially
-                distinguished here — it still exhausts retries and surfaces as
-                UpstreamUnavailable, since retrying will not help but the caller (the
-                scheduler) is only required to survive ProviderError, not diagnose it.
+            UpstreamUnavailable: every attempt failed (timeout, transport error, a non-2xx
+                status, or a 200 whose body is not JSON). A 401/402 (bad or plan-restricted
+                token) is not specially distinguished here — it still exhausts retries and
+                surfaces as UpstreamUnavailable, since retrying will not help but the caller
+                (the scheduler) is only required to survive ProviderError, not diagnose it.
         """
         client = await self._get_client()
         headers = {"Authorization": f"Bearer {self._token}"}
@@ -291,7 +304,7 @@ class MarketDataProvider(OptionChainProvider):
                 response = await client.get(url, headers=headers)
                 response.raise_for_status()
                 return response.json()
-            except (httpx.HTTPStatusError, httpx.TransportError) as exc:
+            except (httpx.HTTPStatusError, httpx.TransportError, ValueError) as exc:
                 last_exc = exc
                 logger.warning(
                     "marketdata: attempt %d/%d failed for %s: %s",
@@ -316,12 +329,13 @@ class MarketDataProvider(OptionChainProvider):
 
         # expiration=all: without it the vendor defaults to a single expiration (the next
         # monthly), which would silently filter the chain — forbidden by base.py.
-        # mode=cached: 1 credit per call regardless of contract count, per the task brief; see
-        # the module docstring for why this may not hold on a real Free Forever token.
-        url = httpx.URL(
-            _BASE_URL.format(symbol=canonical.value),
-            params={"expiration": "all", "mode": "cached"},
-        )
+        # `mode` is omitted by default (see __init__): a Free Forever token cannot set it and
+        # answers `mode=cached` with 402, so hardcoding it made this fallback provider fail on
+        # the only plan it is actually configured for.
+        params: dict[str, str] = {"expiration": "all"}
+        if self._mode is not None:
+            params["mode"] = self._mode
+        url = httpx.URL(_BASE_URL.format(symbol=canonical.value), params=params)
         payload = await self._fetch_json(str(url))
         return self._parse_payload(canonical, payload)
 
@@ -361,20 +375,45 @@ class MarketDataProvider(OptionChainProvider):
         for i in range(len(symbols)):
             try:
                 contracts.append(_contract_from_row(payload, i))
-            except ValueError as exc:
-                # Unknown root or an OCC symbol that does not parse. Same skip-and-log policy
-                # as app.providers.cboe: one bad contract must not blank the whole snapshot.
+            except (ValueError, KeyError, TypeError, AttributeError) as exc:
+                # Unknown root, an OCC symbol that does not parse, or a field the schema
+                # rejects. Same skip-and-log policy as app.providers.cboe, and deliberately
+                # the same (wide) exception set: anything narrower escapes `fetch_chain` as a
+                # non-ProviderError and aborts the whole multi-symbol capture run.
                 skipped += 1
-                logger.warning("marketdata: skipping contract %r: %s", symbols[i], exc)
+                logger.warning(
+                    "marketdata: skipping contract %r: %s: %s",
+                    symbols[i],
+                    type(exc).__name__,
+                    exc,
+                )
         if skipped:
             logger.warning(
-                "marketdata: skipped %d/%d contracts for %s (unmapped root or bad OCC symbol)",
+                "marketdata: skipped %d/%d contracts for %s (unparseable symbol, unmapped "
+                "root, or a field the schema rejected)",
                 skipped,
                 len(symbols),
                 underlying.value,
             )
 
-        captured_at = _epoch_to_utc(max(updated))
+        if not contracts:
+            # Same reasoning as app.providers.cboe: a zero-contract snapshot stored as a
+            # success is a silent, permanent hole, so fail loudly instead.
+            raise UpstreamUnavailable(
+                f"MarketData.app returned no usable contracts for {underlying.value} "
+                f"({len(symbols)} listed, {skipped} skipped)"
+            )
+
+        try:
+            captured_at = _epoch_to_utc(max(updated))
+        except (TypeError, ValueError, OverflowError, OSError) as exc:
+            # `updated` is the only source for `captured_at`; an empty, non-numeric or
+            # out-of-range column has to be a ProviderError, not a bare ValueError escaping
+            # into the scheduler.
+            raise UpstreamUnavailable(
+                f"MarketData.app 'updated' column for {underlying.value} is unusable "
+                f"({type(exc).__name__}: {exc})"
+            ) from exc
 
         try:
             return ChainSnapshot(
