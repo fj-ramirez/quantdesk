@@ -352,13 +352,43 @@ Acceptance: a snapshot captured post-close reports an honest age in the API and 
 
 ---
 
+## Tasks added by supervisor verification of T11/T16 (2026-09-04)
+
+### T35 · Sonnet · T29
+**The backend no longer starts when Postgres is unreachable**
+
+Regression introduced by T29's startup catch-up. Verified both directions by the supervisor: with Postgres down, uvicorn logs `Waiting for application startup.` → the scheduler starts → and then it **hangs indefinitely**, never logging `Application startup complete` and never accepting a connection on its port. With Postgres up, the same command is ready instantly. Before T29 the app served `/health` with no database at all, which is how T00's acceptance worked.
+
+The likely cause is that `catch_up_missed_eod`'s `has_eod_snapshot_today` performs a **synchronous** DB call inside the `asyncio.create_task(...)` coroutine, so a blocking psycopg connect (with an OS-level TCP timeout) starves the event loop that uvicorn needs to finish its startup. Fire-and-forget scheduling is not enough on its own — the work also has to leave the loop.
+
+- Run the catch-up's blocking DB and HTTP work off the event loop (`asyncio.to_thread`, as `capture.py` already does for the repository), and/or give the connection an explicit short timeout.
+- The app must become ready and serve `/health` and `/docs` even with no database reachable, degrading the catch-up rather than the process.
+- Add a regression test that starts the app with an unreachable `DATABASE_URL` and asserts startup completes.
+
+Acceptance: `uv run uvicorn app.main:app --port <p>` with Postgres stopped reaches "Application startup complete" and answers `/health` within a few seconds.
+
+### T36 · Sonnet · T14, T16
+**Dashboard visual defects found in real-data screenshots**
+
+Confirmed by the supervisor from headless-Chromium screenshots of the assembled dashboard against live API data. The numbers are all correct; the presentation is not.
+
+1. **The gamma profile x-axis includes zero, which makes the chart unreadable.** The profile grid spans ±10 % of spot (≈6,947–8,490 for SPX at 7,718.6), but the axis renders **0 → 10,000**, compressing the entire curve into a near-vertical sliver about 15 % of the plot width. The zero crossing — the single most important feature of this chart, and the reason it exists — cannot be read at all. ECharts value axes default to `scale: false`, which forces the axis through zero; it needs `scale: true` or an explicit min/max fitted to the grid. **This is a functional defect, not cosmetic.**
+2. **The top bar runs together and overflows.** Labels and controls have no separation ("Expiry`[All]`Snapshot`[Latest]`As of 7:48 PM ET · Delayed 15m"), the nav renders as "DashboardHistorySettings" with no separators, and on a 390 px viewport the freshness text overflows off the right edge. The symbol switcher is also centred oddly, and the current symbol's disabled styling reads as "unavailable" rather than "selected".
+3. **Wall marker labels are clipped** in `GexByStrike` — they render as "ll w" and "t w" instead of "Call wall" / "Put wall".
+
+Note the intended behaviour that is *not* a bug: `GammaProfile` always shows its own All and Ex-0DTE series regardless of the selected expiry filter (per T14), so it can legitimately display a flip point while `KeyLevels` shows an em-dash under `filter=ZERO_DTE`. Consider labelling the panel so that reads as deliberate.
+
+Acceptance: screenshots at 1280 px and 390 px showing the profile curve filling its plot area with a legible zero crossing, a top bar that neither overflows nor runs together, and unclipped wall labels.
+
+---
+
 ## Model assignment summary
 
 | Model | Tasks |
 |---|---|
 | Opus | T01, T07, T08, T10, T21, T23, T25, T33 |
 | Opus (review) | T06, T17, T24 |
-| Sonnet | T00, T02–T05, T09, T11–T16, T18–T20, T22, T26–T32, T34 |
+| Sonnet | T00, T02–T05, T09, T11–T16, T18–T20, T22, T26–T32, T34–T36 |
 
 Parallelizable groups once their dependency is done: {T02, T03, T04} after T01; {T12} alongside all of Phase 1; {T13, T14} after T12; {T27, T28} anytime.
 
