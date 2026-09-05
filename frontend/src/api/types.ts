@@ -50,9 +50,11 @@ export type Settlement = 'AM' | 'PM';
 export interface SnapshotInfo {
   id: number;
   underlying: Underlying;
-  /** ISO 8601, tz-aware UTC — docs/schema.md: `ChainSnapshot.captured_at` is "the
-   * effective time of the data", not the HTTP response time. Convert to America/New_York
-   * for display; never assume it is already local. */
+  /** ISO 8601, tz-aware UTC — the vendor's own payload timestamp (docs/schema.md T34
+   * correction: this is NOT reliably "the effective time of the data" — Cboe's `timestamp`
+   * keeps advancing for hours after the close while the chain itself is frozen). Convert to
+   * America/New_York for display; never assume it is already local. Do not use this alone to
+   * render a staleness badge once the market may have closed — use `effective_at`. */
   captured_at: string;
   source: string;
   /** Vendor delay in minutes; 15 for the free Cboe feed, 0 for real-time (Phase 5). */
@@ -60,6 +62,12 @@ export interface SnapshotInfo {
   is_eod: boolean;
   spot: number;
   contract_count: number;
+  /** T34, verified against `/openapi.json`: the honest "as of" instant for a staleness
+   * badge, derived server-side (`app.jobs.calendar.effective_data_time`) from `captured_at`
+   * and `delayed_minutes`. Equal to `captured_at` during a regular NY session; otherwise
+   * clamped to the most recent 16:00 ET close plus `delayed_minutes`. Never derive this from
+   * `captured_at` yourself in the frontend — the backend owns market-hours logic. */
+  effective_at: string;
 }
 
 /** Verified against the live `/openapi.json` (T11).

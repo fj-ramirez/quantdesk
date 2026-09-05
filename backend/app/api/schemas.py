@@ -18,7 +18,7 @@ from __future__ import annotations
 
 import datetime as dt
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 
 __all__ = [
     "ChainResponse",
@@ -120,9 +120,9 @@ class GexDiagnosticsOut(BaseModel):
 
 
 class SnapshotMetaOut(BaseModel):
-    """`app.gex.engine.SnapshotMeta.to_dict()` plus the two fields that module's own
-    docstring says are "storage concerns owned by T09/T11" and explicitly leaves out: `id`
-    and `is_eod`. T11 is the merge point named there.
+    """`app.gex.engine.SnapshotMeta.to_dict()` plus three fields that module's own docstring
+    says are "storage concerns owned by T09/T11" and explicitly leaves out: `id`, `is_eod`,
+    and (T34) `effective_at`. T11/T34 are the merge points named there.
     """
 
     id: int
@@ -133,6 +133,15 @@ class SnapshotMetaOut(BaseModel):
     source: str
     delayed_minutes: int
     contract_count: int
+    effective_at: dt.datetime = Field(
+        description=(
+            "T34: the honest 'as of' instant for a staleness badge, derived from "
+            "`captured_at` via `app.jobs.calendar.effective_data_time` -- equal to "
+            "`captured_at` during a regular session, otherwise clamped to the most recent "
+            "16:00 ET close plus `delayed_minutes`. `captured_at` itself is never mutated; "
+            "it stays the vendor's raw payload timestamp (see `app.models.chain.ChainSnapshot`)."
+        )
+    )
 
 
 class GexResultOut(BaseModel):

@@ -448,9 +448,20 @@ class ChainSnapshot(BaseModel):
     """A full option chain for one underlying, observed at one instant.
 
     This is the unit of storage (one Parquet file per snapshot, T04) and the input to the GEX
-    engine (T08). ``captured_at`` is the time the *data* is effective, not the time the HTTP
-    call returned: for a delayed feed, use the vendor's own timestamp and record the lag in
-    ``delayed_minutes`` so consumers can display an honest "as of" and staleness badge.
+    engine (T08). ``captured_at`` is the vendor's own timestamp for the payload -- **not**
+    reliably the time the data itself became effective (T34 correction: an earlier version of
+    this docstring claimed it was). Cboe's ``timestamp`` field is payload-*generation* time: it
+    keeps advancing on every request, including hours after the 16:00 ET close, while the
+    quotes it describes are frozen at that close. This module still stores it verbatim, on
+    purpose -- providers should use the vendor's own clock rather than the HTTP response time
+    either way, and every existing consumer that keys off ``captured_at`` (the duplicate-
+    capture check in `app.jobs.capture`, T29's per-day `is_eod` guard, `levels/history`'s
+    date-range query) only needs it to be NY-date-correct and roughly monotonic, which it is.
+    A consumer that needs an honest "as of" instant for a staleness badge -- i.e. one that
+    accounts for the market having been closed -- should derive it via
+    :func:`app.jobs.calendar.effective_data_time` rather than trust this field directly once
+    the market may have closed; see :class:`app.api.schemas.SnapshotMetaOut` for where that
+    derived value is exposed.
     """
 
     model_config = ConfigDict(frozen=True, extra="forbid")
@@ -458,7 +469,11 @@ class ChainSnapshot(BaseModel):
     underlying: Underlying
     spot: float = Field(gt=0, description="Underlying price at capture time.")
     captured_at: dt.datetime = Field(
-        description="Effective time of the data, tz-aware and normalized to UTC."
+        description=(
+            "Vendor's own payload timestamp, tz-aware and normalized to UTC. NOT reliably "
+            "the data's effective time once the market may be closed (T34) -- see the class "
+            "docstring and app.jobs.calendar.effective_data_time."
+        )
     )
     source: str = Field(min_length=1, description="Provider name, e.g. 'cboe'.")
     delayed_minutes: int = Field(

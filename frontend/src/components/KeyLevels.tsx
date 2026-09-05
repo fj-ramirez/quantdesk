@@ -9,7 +9,7 @@
  * cued with a small dot + a written label, not by coloring the number itself.
  */
 import type { KeyLevels as KeyLevelsData, SnapshotInfo } from '../api/types';
-import { formatDelay, formatNyTime } from '../lib/time';
+import { formatFreshness } from '../lib/time';
 import { formatDistance, formatDistancePct, formatGex, formatStrike } from '../lib/format';
 import { useTheme } from '../theme/ThemeContext';
 import { vizPaletteFor } from '../theme/vizPalette';
@@ -100,13 +100,13 @@ export function KeyLevels({ levels, snapshot }: KeyLevelsProps) {
         </p>
       )}
 
-      {/* Same "As of <time> · Delayed Nm" wording as the TopBar freshness badge
-          (components/layout/TopBar.tsx `DataFreshnessBadge`) — one visual language for
-          staleness across the app, not a second one invented here. The free Cboe feed is
-          15 minutes delayed; `delayed_minutes` is the entitlement fact, never inferred from
-          the wall clock. */}
+      {/* Same wording as the TopBar freshness badge (components/layout/TopBar.tsx
+          `DataFreshnessBadge`, `lib/time.ts` `formatFreshness`) — one visual language for
+          staleness across the app, not a second one invented here. T34: after the close this
+          reads as "At Friday's close (4:00 PM ET)" rather than a rolling "Delayed 15m" that
+          gets less honest the longer the page sits open in the evening. */}
       <p style={{ margin: '12px 0 0', fontSize: 12, color: palette.textMuted }} aria-live="polite">
-        As of {formatNyTime(snapshot.captured_at)} &middot; {formatDelay(snapshot.delayed_minutes)}
+        {formatFreshness(snapshot)}
         {snapshot.is_eod ? ' · EOD' : ''}
       </p>
     </section>

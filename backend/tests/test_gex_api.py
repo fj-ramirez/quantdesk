@@ -107,6 +107,19 @@ def test_latest_returns_full_gex_result_shape(client, monkeypatch, tmp_path, ses
     assert "diagnostics" in body
 
 
+def test_latest_effective_at_equals_captured_at_mid_session(
+    client, monkeypatch, session_factory, indexed_row
+):
+    """T34: the SPX fixture's vendor timestamp (2026-09-04 18:18:34 UTC == 14:18:34 ET) falls
+    inside the regular session, so the derived `effective_at` must equal `captured_at`
+    verbatim -- the intraday case (T18) this fix must not disturb.
+    """
+    _patched_client(monkeypatch, client, session_factory)
+    body = client.get("/api/gex/SPX/latest").json()
+    assert body["snapshot"]["effective_at"] == body["snapshot"]["captured_at"]
+    assert body["snapshot"]["captured_at"] == "2026-09-04T18:18:34Z"
+
+
 def test_latest_defaults_to_all_filter(client, monkeypatch, session_factory, indexed_row):
     _patched_client(monkeypatch, client, session_factory)
     response = client.get("/api/gex/SPX/latest")
@@ -255,6 +268,21 @@ def test_zero_dte_after_close_nulls_not_zeros_over_the_wire(
     # EX_ZERO_DTE on the same snapshot has real, non-null levels.
     live = client.get("/api/gex/SPY/latest", params={"filter": "EX_ZERO_DTE"}).json()
     assert live["levels"]["call_wall"] is not None
+
+
+def test_effective_at_clamps_to_close_after_hours(client, monkeypatch, session_factory, after_close_row):
+    """T34's core acceptance: `CAPTURED_AFTER_CLOSE` is 2026-09-04 20:20 UTC (16:20 ET) --
+    already past the 16:00 ET close -- so `effective_at` must clamp to 16:15 ET (close +
+    the fixture's 15-minute `delayed_minutes`), not echo `captured_at` (which would read as
+    "5 minutes old" instead of the true, much larger, age once viewed later that evening).
+    `captured_at` itself must be untouched.
+    """
+    _patched_client(monkeypatch, client, session_factory)
+    body = client.get("/api/gex/SPY/latest").json()
+    snapshot = body["snapshot"]
+    assert snapshot["captured_at"] == "2026-09-04T20:20:00Z"
+    assert snapshot["effective_at"] == "2026-09-04T20:15:00Z"
+    assert snapshot["effective_at"] != snapshot["captured_at"]
 
 
 # --------------------------------------------------------------------------------------

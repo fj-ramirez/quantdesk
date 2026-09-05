@@ -22,6 +22,11 @@ const dateTimeFormatter = new Intl.DateTimeFormat('en-US', {
   hour12: true,
 });
 
+const weekdayFormatter = new Intl.DateTimeFormat('en-US', {
+  timeZone: NY_TIME_ZONE,
+  weekday: 'long',
+});
+
 /** e.g. "11:45 AM ET". Appends "ET" literally rather than relying on `timeZoneName`, whose
  * abbreviation flips between EST/EDT and would otherwise need its own explanation. */
 export function formatNyTime(isoUtc: string): string {
@@ -37,4 +42,32 @@ export function formatNyDateTime(isoUtc: string): string {
  * (0 = real-time, 15 = the free delayed JSON), not something to infer from the clock. */
 export function formatDelay(delayedMinutes: number): string {
   return delayedMinutes <= 0 ? 'Real-time' : `Delayed ${delayedMinutes}m`;
+}
+
+/**
+ * T34: the single "As of ..." wording shared by the TopBar freshness badge and KeyLevels'
+ * footer, so the post-close fix lives in exactly one place rather than being reimplemented
+ * per component.
+ *
+ * `captured_at` is the vendor's raw payload timestamp; `effective_at` (`SnapshotInfo`,
+ * `app.jobs.calendar.effective_data_time`) is the backend's own honest "as of" instant,
+ * already clamped to the last market close when the market was shut at capture time. This
+ * function does no market-hours reasoning itself — it only compares the two timestamps the
+ * backend already computed, which is what keeps that logic out of the frontend entirely
+ * (T34's brief: "the frontend must not have to reimplement market-hours logic").
+ *
+ * - `effective_at === captured_at` (regular session): "As of 11:45 AM ET · Delayed 15m" —
+ *   unchanged from the pre-T34 wording, since a rolling delay figure is honest while the
+ *   market is open.
+ * - Otherwise (the data was frozen at a prior close when captured): "At Friday's close
+ *   (4:00 PM ET)" — a fixed instant, not a rolling "delayed Nm" that keeps looking fresher
+ *   than it is the longer the page sits open in the evening.
+ */
+export function formatFreshness(snapshot: { captured_at: string; effective_at: string; delayed_minutes: number }): string {
+  const { captured_at, effective_at, delayed_minutes } = snapshot;
+  if (new Date(effective_at).getTime() === new Date(captured_at).getTime()) {
+    return `As of ${formatNyTime(captured_at)} · ${formatDelay(delayed_minutes)}`;
+  }
+  const weekday = weekdayFormatter.format(new Date(effective_at));
+  return `At ${weekday}'s close (${formatNyTime(effective_at)})`;
 }

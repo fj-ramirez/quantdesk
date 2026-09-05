@@ -33,6 +33,7 @@ from sqlalchemy.orm import Session
 
 from app.api.schemas import GexResultOut, LevelHistoryRowOut
 from app.gex.engine import ExpiryFilter, compute_all
+from app.jobs.calendar import effective_data_time
 from app.jobs.capture import get_session_factory
 from app.models.chain import Underlying
 from app.models.db import GexLevel, Snapshot
@@ -110,9 +111,20 @@ def _parse_history_filter(raw: str) -> ExpiryFilter:
 def _snapshot_meta(result_snapshot_dict: dict[str, Any], row: Snapshot) -> dict[str, Any]:
     """Merge `Snapshot.id`/`Snapshot.is_eod` into `SnapshotMeta.to_dict()` -- the exact merge
     `app.gex.engine.SnapshotMeta`'s own docstring names as T11's job, since that module does
-    no I/O and therefore never sees the index row at all.
+    no I/O and therefore never sees the index row at all. Also merges in `effective_at`
+    (T34): `row.captured_at` is the same tz-aware value the engine read off the Parquet
+    snapshot (both come from the one `ChainSnapshot` this row indexes), so deriving from the
+    ORM row rather than re-parsing `result_snapshot_dict["captured_at"]`'s ISO string avoids a
+    redundant round trip through text.
     """
-    return {**result_snapshot_dict, "id": row.id, "is_eod": row.is_eod}
+    return {
+        **result_snapshot_dict,
+        "id": row.id,
+        "is_eod": row.is_eod,
+        "effective_at": effective_data_time(
+            row.captured_at, result_snapshot_dict["delayed_minutes"]
+        ),
+    }
 
 
 def _compute_result_out(row: Snapshot, filters: ExpiryFilter | list[dt.date]) -> GexResultOut:

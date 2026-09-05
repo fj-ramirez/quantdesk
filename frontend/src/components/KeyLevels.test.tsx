@@ -39,6 +39,7 @@ const SPX_SNAPSHOT: SnapshotInfo = {
   id: 1001,
   underlying: 'SPX',
   captured_at: '2026-09-04T15:45:00Z',
+  effective_at: '2026-09-04T15:45:00Z',
   source: 'cboe',
   delayed_minutes: 15,
   is_eod: false,
@@ -79,6 +80,7 @@ const QQQ_SNAPSHOT: SnapshotInfo = {
   id: 1003,
   underlying: 'QQQ',
   captured_at: '2026-09-04T15:45:00Z',
+  effective_at: '2026-09-04T15:45:00Z',
   source: 'cboe',
   delayed_minutes: 15,
   is_eod: false,
@@ -138,5 +140,18 @@ describe('KeyLevels', () => {
   it('shows "Real-time" instead of a delay figure when delayed_minutes is 0', () => {
     renderKeyLevels(SPX_LEVELS, { ...SPX_SNAPSHOT, delayed_minutes: 0 });
     expect(screen.getByText(/Real-time/)).toBeInTheDocument();
+  });
+
+  it('T34: reads as the day\'s close, not a rolling delay, once effective_at differs from captured_at', () => {
+    // A snapshot captured well after the close (e.g. an evening catch-up, T29): the backend's
+    // `effective_at` is clamped to the prior close, not the vendor's still-advancing
+    // `captured_at`. The footer must reflect that clamp, not fall back to "Delayed 15m".
+    renderKeyLevels(SPX_LEVELS, {
+      ...SPX_SNAPSHOT,
+      captured_at: '2026-09-04T21:55:00Z', // 17:55 ET -- the supervisor's own repro instant
+      effective_at: '2026-09-04T20:15:00Z', // 16:15 ET: close (16:00) + 15m delay, clamped
+    });
+    expect(screen.getByText(/At Friday's close \(4:15 PM ET\)/)).toBeInTheDocument();
+    expect(screen.queryByText(/Delayed 15m/)).not.toBeInTheDocument();
   });
 });

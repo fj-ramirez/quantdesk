@@ -85,6 +85,15 @@ def test_latest_chain_returns_only_the_requested_expiry(
     assert all(c["expiry"] == "2026-09-18" for c in body["contracts"])
 
 
+def test_latest_chain_effective_at_mid_session(client, monkeypatch, session_factory, indexed_row):
+    """T34: same derivation as `test_gex_api.py`'s equivalent -- the fixture's vendor
+    timestamp (14:18:34 ET) is mid-session, so `effective_at` must equal `captured_at`.
+    """
+    _patched(monkeypatch, client, session_factory)
+    body = client.get("/api/chains/SPX/latest", params={"expiry": "2026-09-18"}).json()
+    assert body["snapshot"]["effective_at"] == body["snapshot"]["captured_at"]
+
+
 def test_known_contract_fields_match_the_vendor_fixture_verbatim(
     client, monkeypatch, session_factory, indexed_row
 ):

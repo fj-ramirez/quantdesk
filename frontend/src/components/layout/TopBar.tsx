@@ -6,7 +6,7 @@
 import { EXPIRY_FILTERS, EXPIRY_FILTER_LABELS, UNDERLYINGS, type Underlying } from '../../api/types';
 import { useGexResult, useSnapshots } from '../../api/queries';
 import { useDashboardParams } from '../../state/urlState';
-import { formatDelay, formatNyDateTime, formatNyTime } from '../../lib/time';
+import { formatFreshness, formatNyDateTime } from '../../lib/time';
 import { ThemeToggle } from './ThemeToggle';
 
 function SymbolSwitcher({ symbol, onChange }: { symbol: Underlying; onChange: (s: Underlying) => void }) {
@@ -80,16 +80,17 @@ function SnapshotSelector({
   );
 }
 
-/** "As of 11:45 AM ET · Delayed 15m" — surfaces the snapshot's own timestamp and delay
- * entitlement (docs/schema.md `delayed_minutes`) so a stale/delayed view is never mistaken
- * for live data. Reads from whichever snapshot the URL state currently points at. */
+/** "As of 11:45 AM ET · Delayed 15m" during the session, or "At Friday's close (4:00 PM ET)"
+ * once the market that produced this snapshot has closed (T34) — `formatFreshness` decides
+ * which, from `effective_at` vs `captured_at`, so no market-hours logic lives here. Reads
+ * from whichever snapshot the URL state currently points at. */
 function DataFreshnessBadge({ symbol, filter, snapshotId }: { symbol: Underlying; filter: (typeof EXPIRY_FILTERS)[number]; snapshotId: string | null }) {
   const { data, isLoading, isError } = useGexResult(symbol, filter, snapshotId);
   if (isLoading) return <span className="freshness-badge" aria-live="polite">Loading…</span>;
   if (isError || !data) return <span className="freshness-badge" aria-live="polite">Data unavailable</span>;
   return (
     <span className="freshness-badge" aria-live="polite">
-      As of {formatNyTime(data.snapshot.captured_at)} &middot; {formatDelay(data.snapshot.delayed_minutes)}
+      {formatFreshness(data.snapshot)}
     </span>
   );
 }

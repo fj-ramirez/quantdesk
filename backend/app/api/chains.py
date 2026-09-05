@@ -15,6 +15,7 @@ from fastapi import APIRouter, HTTPException, Query
 from sqlalchemy import select
 
 from app.api.schemas import ChainResponse, ContractOut
+from app.jobs.calendar import effective_data_time
 from app.jobs.capture import get_session_factory
 from app.models.chain import Underlying
 from app.models.db import Snapshot
@@ -89,6 +90,11 @@ def get_latest_chain(
                 "source": snapshot.source,
                 "delayed_minutes": snapshot.delayed_minutes,
                 "contract_count": len(snapshot.contracts),
+                # T34: same derivation as `app.api.gex._snapshot_meta`, so a raw-chain view
+                # never has an excuse to show a rolling "delayed 15m" hours after the close.
+                "effective_at": effective_data_time(
+                    snapshot.captured_at, snapshot.delayed_minutes
+                ),
             },
             contracts=contracts,
         )

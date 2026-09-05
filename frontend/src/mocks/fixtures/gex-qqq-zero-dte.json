@@ -6,6 +6,7 @@
     "id": 2014,
     "underlying": "QQQ",
     "captured_at": "2026-09-03T20:20:00Z",
+    "effective_at": "2026-09-03T20:15:00Z",
     "source": "cboe",
     "delayed_minutes": 15,
     "is_eod": true,

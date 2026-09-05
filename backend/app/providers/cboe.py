@@ -20,6 +20,17 @@ for the full writeup)
   wrong zone to either would silently corrupt every trade timestamp (or the snapshot's own
   ``captured_at``) by the EDT/EST offset. See :func:`_parse_utc_timestamp` and
   :func:`_contract_from_vendor`.
+* **``timestamp`` is payload-generation time, not data-effective time (T34).** Verified
+  2026-09-04: at 17:55 ET, nearly two hours after the 16:00 close, ``timestamp`` read
+  17:54:46 ET and kept advancing on every request, while ``data.current_price`` (and the rest
+  of the chain) stayed frozen at the close. This module still parses it into ``captured_at``
+  verbatim -- an earlier version of this docstring and of
+  :class:`~app.models.chain.ChainSnapshot`'s called that field "effective time of the data",
+  which was false, and has been corrected. Storing the raw vendor value is still correct: it
+  keeps the NY calendar date right (what the duplicate-capture check and T29's per-day
+  ``is_eod`` guard actually need) without this module guessing at market hours itself. A
+  caller that wants an honest "as of" instant for a staleness badge should derive one via
+  :func:`app.jobs.calendar.effective_data_time` rather than display ``captured_at`` directly.
 * **``iv: 0.0`` is a "could not invert" sentinel, not a measurement** (roughly 3-4% of
   contracts on the live SPX chain). Mapped to ``None`` — the schema's ``iv > 0`` constraint
   exists precisely to make forgetting this loud rather than silent.

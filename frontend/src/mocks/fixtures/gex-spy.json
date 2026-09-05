@@ -5,6 +5,7 @@
     "id": 1002,
     "underlying": "SPY",
     "captured_at": "2026-09-04T15:45:00Z",
+    "effective_at": "2026-09-04T15:45:00Z",
     "source": "cboe",
     "delayed_minutes": 15,
     "is_eod": false,

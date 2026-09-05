@@ -84,7 +84,7 @@ input to `compute_all` (T08).
 |---|---|---|
 | `underlying` | `Underlying` enum | `SPX`, `SPY` or `QQQ`. |
 | `spot` | `float`, > 0 | Underlying price at `captured_at`. |
-| `captured_at` | `datetime`, aware | **Effective time of the data, in UTC** — the vendor's own timestamp, not the time the HTTP call returned. |
+| `captured_at` | `datetime`, aware | **The vendor's own payload timestamp, in UTC** — not the time the HTTP call returned, but also *not reliably the time the data itself became effective* (see the T34 correction below). |
 | `source` | `str` | Provider `name`, e.g. `"cboe"`. Stable forever, since captured data is indexed by it. |
 | `delayed_minutes` | `int`, ≥ 0 | Vendor entitlement delay. `0` = real-time, `15` = Cboe delayed JSON. |
 | `contracts` | `tuple[OptionContract, ...]` | Every contract the vendor listed. Accepts any sequence at construction. |
@@ -92,6 +92,42 @@ input to `compute_all` (T08).
 Helpers: `len(snapshot)`, `snapshot.expiries` (sorted distinct dates), `snapshot.roots`.
 
 A snapshot whose contracts disagree with its `underlying` is rejected at construction.
+
+### `captured_at` is not "effective time" — the T34 correction
+
+An earlier version of this page (and of `ChainSnapshot`'s own docstring) documented
+`captured_at` as "the effective time of the data". That was wrong, and the supervisor caught
+it live: Cboe's top-level `timestamp` is **payload-generation time**, not data-effective time.
+Measured 2026-09-04 at 17:55 ET — nearly two hours after the 16:00 close —
+`timestamp` read `17:54:46 ET` and kept advancing on every request, while `data.current_price`
+(and the whole quote chain) stayed frozen at the close.
+
+`captured_at` still stores that raw vendor value verbatim, unchanged by this fix. That is
+deliberate, not an oversight: every existing reader of `captured_at` — the duplicate-capture
+check in `app.jobs.capture`, T29's per-day `is_eod` guard (`has_eod_snapshot_today`), and the
+`levels/history` date-range query — only needs it to be NY-date-correct and roughly
+monotonic, which the vendor timestamp is. Redefining the field to "the honest data time"
+would have required migrating all three, for a field whose actual behavior (see T34's own
+writeup in `TASKS.md`) makes the duplicate-capture check *already* near-dead: the timestamp
+advances on essentially every call, so an exact `(underlying, captured_at)` match almost
+never fires; T29's `is_eod`-per-day guard is what actually prevents double EOD captures.
+
+Instead, the honest "as of" instant lives in a **new, purely derived field**:
+`SnapshotMetaOut.effective_at` (`backend/app/api/schemas.py`), computed at read time by
+`app.jobs.calendar.effective_data_time(captured_at, delayed_minutes)`:
+
+- During a regular NY session (09:30–16:00 ET on a trading day), `effective_at ==
+  captured_at` — a delayed vendor timestamp genuinely is the honest reading, which is the
+  case T18's future intraday polling must keep getting.
+- Outside a regular session (after the close, before the open, or on a weekend/holiday),
+  `effective_at` clamps to the most recent 16:00 ET close plus `delayed_minutes` (16:15 ET for
+  the free Cboe feed) — a fixed instant that does not keep advancing just because someone
+  loads the dashboard later in the evening.
+
+Nothing is stored on disk or in Postgres for this — it is recomputed on every read from
+`captured_at` and `delayed_minutes`, so it costs nothing and can never drift from the row it
+describes. The frontend's freshness badge (`TopBar`'s `DataFreshnessBadge`, `KeyLevels`)
+reads `effective_at` directly rather than reimplementing any market-hours logic itself.
 
 ---
 
