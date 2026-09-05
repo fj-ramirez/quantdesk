@@ -1,6 +1,7 @@
 # CLAUDE.md
 
-Personal, single-user **gamma exposure (GEX)** analysis app for SPX, SPY and QQQ options.
+Personal, single-user **gamma exposure (GEX)** analysis app for SPX, SPY, QQQ, GLD and DIA
+options.
 Analysis and charts only — **no order routing, ever**. Python/FastAPI backend, React/Vite
 frontend, Postgres for computed results, Parquet on disk for raw chains.
 

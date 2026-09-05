@@ -2,7 +2,14 @@
 
 Scope agreed on 2026-09-04:
 
-- Instruments: US index options — SPX (incl. SPXW weeklies), SPY, QQQ.
+- Instruments: US index options — SPX (incl. SPXW weeklies), SPY, QQQ. **Added 2026-09-05
+  (T38):** GLD and DIA. GLD is a commodity ETF (a gold bullion trust), not an index option,
+  but the user asked for gold exposure and the Cboe delayed-quotes feed serves its options
+  chain identically to SPY/QQQ (bare-ticker URL, P.M.-settled, single vendor root) — no
+  engine or schema change was needed, so it was in scope for a one-task addition. DIA is the
+  Dow ETF, added for the same reason. DIA's net GEX is small relative to its gross (0.9 %)
+  and sensitive to the carry parameter (see §1's Recommendation and `docs/validation.md`)
+  until T33 fits the carry from parity; its per-strike walls are unaffected.
 - Freshness: end-of-day first, then 15-min delayed intraday, then real-time.
 - Purpose: analysis and charts only. No order routing.
 - Stack: Python backend + React frontend. Data budget under $50/month.

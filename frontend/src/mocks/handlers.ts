@@ -15,9 +15,13 @@ import type { ChainResponse, ExpiryFilter, GexResult, LevelHistoryRow, SnapshotS
 import gexSpxFixture from './fixtures/gex-spx.json';
 import gexSpyFixture from './fixtures/gex-spy.json';
 import gexQqqFixture from './fixtures/gex-qqq.json';
+import gexGldFixture from './fixtures/gex-gld.json';
+import gexDiaFixture from './fixtures/gex-dia.json';
 import gexSpxZeroDteFixture from './fixtures/gex-spx-zero-dte.json';
 import gexSpyZeroDteFixture from './fixtures/gex-spy-zero-dte.json';
 import gexQqqZeroDteFixture from './fixtures/gex-qqq-zero-dte.json';
+import gexGldZeroDteFixture from './fixtures/gex-gld-zero-dte.json';
+import gexDiaZeroDteFixture from './fixtures/gex-dia-zero-dte.json';
 import snapshotsFixture from './fixtures/snapshots.json';
 import levelsHistoryFixture from './fixtures/levels-history.json';
 import chainLatestFixture from './fixtures/chain-latest.json';
@@ -26,6 +30,8 @@ const GEX_BY_UNDERLYING: Record<Underlying, GexResult> = {
   SPX: gexSpxFixture as GexResult,
   SPY: gexSpyFixture as GexResult,
   QQQ: gexQqqFixture as GexResult,
+  GLD: gexGldFixture as GexResult,
+  DIA: gexDiaFixture as GexResult,
 };
 
 // The real EOD capture runs at 16:20 ET, after every same-day contract has expired, so
@@ -37,6 +43,8 @@ const GEX_ZERO_DTE_BY_UNDERLYING: Record<Underlying, GexResult> = {
   SPX: gexSpxZeroDteFixture as GexResult,
   SPY: gexSpyZeroDteFixture as GexResult,
   QQQ: gexQqqZeroDteFixture as GexResult,
+  GLD: gexGldZeroDteFixture as GexResult,
+  DIA: gexDiaZeroDteFixture as GexResult,
 };
 
 const FILTER_SCALE: Record<ExpiryFilter, number> = {
@@ -48,7 +56,7 @@ const FILTER_SCALE: Record<ExpiryFilter, number> = {
 };
 
 function isUnderlying(value: string): value is Underlying {
-  return value === 'SPX' || value === 'SPY' || value === 'QQQ';
+  return value === 'SPX' || value === 'SPY' || value === 'QQQ' || value === 'GLD' || value === 'DIA';
 }
 
 function isExpiryFilter(value: string | null): value is ExpiryFilter {

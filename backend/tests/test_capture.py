@@ -34,9 +34,13 @@ def make_contract(symbol: str, **kw) -> OptionContract:
 
 def make_snapshot(underlying=Underlying.SPX, captured_at=None, n_contracts=2) -> ChainSnapshot:
     captured_at = captured_at or dt.datetime(2026, 9, 4, 20, 20, 0, tzinfo=dt.UTC)
-    symbol_root = {"SPX": "SPX260918C0", "SPY": "SPY260918C0", "QQQ": "QQQ260918C0"}[
-        underlying.value
-    ]
+    symbol_root = {
+        "SPX": "SPX260918C0",
+        "SPY": "SPY260918C0",
+        "QQQ": "QQQ260918C0",
+        "GLD": "GLD260918C0",
+        "DIA": "DIA260918C0",
+    }[underlying.value]
     contracts = [
         make_contract(
             f"{symbol_root}{4000 + i * 10}000",

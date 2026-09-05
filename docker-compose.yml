@@ -23,7 +23,7 @@ services:
       DATABASE_URL: postgresql+psycopg://gex:gex@postgres:5432/gex
       DATA_DIR: /data
       PROVIDER: cboe
-      SYMBOLS: SPX,SPY,QQQ
+      SYMBOLS: SPX,SPY,QQQ,GLD,DIA
       TZ: America/New_York
     volumes:
       - ./backend:/app

@@ -65,6 +65,11 @@ root; both come back in the same call, distinguished only by the root embedded i
 needed here (contrast :data:`app.providers.cboe._VENDOR_SYMBOL`); the canonical
 :class:`Underlying` value is used verbatim as the URL path segment.
 
+**T38 note (GLD, DIA):** the same is true of the two ETF instruments added in T38. Neither
+needs a mangling entry either -- ``.../chain/GLD/`` and ``.../chain/DIA/`` are exactly the
+canonical `Underlying` value, same as `SPY`/`QQQ` above. This module required no code change
+for T38, only this docstring note; the canonical-value-verbatim design already covered it.
+
 Cached mode, credits and the free-tier discrepancy the task brief did not anticipate
 ------------------------------------------------------------------------------------
 The task instructs "use cached mode (1 credit per call)". The chain endpoint's own pricing
@@ -206,7 +211,8 @@ def _contract_from_row(payload: dict[str, Any], i: int) -> OptionContract:
 
 
 class MarketDataProvider(OptionChainProvider):
-    """Fetches SPX, SPY and QQQ option chains from the MarketData.app cached chain endpoint.
+    """Fetches SPX, SPY, QQQ, GLD and DIA option chains from the MarketData.app cached chain
+    endpoint.
 
     Unverified against the live API — see the module docstring's provenance note.
     """
@@ -444,6 +450,6 @@ if __name__ == "__main__":
     import sys
 
     if len(sys.argv) != 2:
-        print("usage: python -m app.providers.marketdata SPX|SPY|QQQ", file=sys.stderr)
+        print("usage: python -m app.providers.marketdata SPX|SPY|QQQ|GLD|DIA", file=sys.stderr)
         raise SystemExit(2)
     asyncio.run(_run_cli(sys.argv[1]))

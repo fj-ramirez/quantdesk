@@ -22,7 +22,7 @@
 // `erasableSyntaxOnly`, which rejects real enums (they emit runtime code).
 // ---------------------------------------------------------------------------------------
 
-export const UNDERLYINGS = ['SPX', 'SPY', 'QQQ'] as const;
+export const UNDERLYINGS = ['SPX', 'SPY', 'QQQ', 'GLD', 'DIA'] as const;
 export type Underlying = (typeof UNDERLYINGS)[number];
 
 export const EXPIRY_FILTERS = ['ALL', 'ZERO_DTE', 'THIS_WEEK', 'MONTHLY_ONLY', 'EX_ZERO_DTE'] as const;

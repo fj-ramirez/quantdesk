@@ -87,10 +87,15 @@ _USER_AGENT = (
 )
 
 # Index underlyings take an underscore-prefixed request symbol; ETFs use the bare ticker.
+# GLD and DIA (T38) are ETFs like SPY/QQQ -- verified live 2026-09-05 at the bare-ticker URL
+# (.../options/GLD.json, .../options/DIA.json). The underscore prefix is for index roots
+# only; do not add one for these.
 _VENDOR_SYMBOL: dict[Underlying, str] = {
     Underlying.SPX: "_SPX",
     Underlying.SPY: "SPY",
     Underlying.QQQ: "QQQ",
+    Underlying.GLD: "GLD",
+    Underlying.DIA: "DIA",
 }
 
 _NY = ZoneInfo("America/New_York")
@@ -160,7 +165,8 @@ def _contract_from_vendor(raw: dict[str, Any]) -> OptionContract:
 
 
 class CboeProvider(OptionChainProvider):
-    """Fetches SPX, SPY and QQQ option chains from Cboe's free delayed-quotes JSON endpoint."""
+    """Fetches SPX, SPY, QQQ, GLD and DIA option chains from Cboe's free delayed-quotes JSON
+    endpoint."""
 
     def __init__(
         self,
@@ -332,6 +338,6 @@ if __name__ == "__main__":
     import sys
 
     if len(sys.argv) != 2:
-        print("usage: python -m app.providers.cboe SPX|SPY|QQQ", file=sys.stderr)
+        print("usage: python -m app.providers.cboe SPX|SPY|QQQ|GLD|DIA", file=sys.stderr)
         raise SystemExit(2)
     asyncio.run(_run_cli(sys.argv[1]))

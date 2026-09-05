@@ -559,3 +559,61 @@ Then, programmatically, against a `ChainSnapshot` from `CboeProvider().fetch_cha
 | 0DTE-alive reruns | `engine.to_frame(snap, now=<intraday instant>)`, then `compute_all(..., frame=...)` |
 
 All vendor figures were read from the public pages listed in §2 on 2026-09-04.
+
+---
+
+## 9. GLD and DIA (T38) — the DIA carry caveat
+
+T38 added GLD and DIA as tracked instruments (PLAN.md §1) through the existing pipeline
+unchanged: both parse and compute correctly through `CboeProvider._parse_payload` and
+`compute_all` with no engine, Greeks, schema or migration change. Both were verified live on
+2026-09-05, both are P.M.-settled with a single vendor root equal to the ticker, and both
+have *better* data quality than SPX on this capture (zero extreme-IV exclusions, zero missing
+open interest):
+
+| | contracts | expiries | net GEX | abs GEX | call wall | put wall | flip |
+|---|---:|---:|---:|---:|---:|---:|---:|
+| GLD | 7,546 | 29 | **+2.265 B** | 5.303 B | 415 | 335 | 381.45 |
+| DIA | 5,028 | 21 | **−0.009 B** | 1.037 B | 540 | 533 | 532.58 (spot 532.34) |
+
+**This section records a limitation, not a bug.** `DIVIDEND_YIELD` is a single global
+`0.013` (the trailing S&P 500 yield), applied uniformly to every symbol via the forward
+`spot * exp((r - q) * T)` (`app/gex/greeks.py`). That parameter is wrong for both new
+instruments — GLD pays no dividend at all (it carries a ~0.40 % expense-ratio drag instead),
+and DIA has its own yield, not the S&P's — and T33 (Opus, not yet landed) is what fits the
+carry per expiry from put-call parity, for all five symbols at once. Measured impact of
+`q = 0` instead of the current default, on this same capture:
+
+| Symbol | Net GEX at `q = 0.013` (current) | Net GEX at `q = 0` | Flip at `q = 0.013` | Flip at `q = 0` |
+|---|---:|---:|---:|---:|
+| GLD | +2.265 B | +2.322 B (+2.5 %) | 381.45 | 380.65 |
+| **DIA** | **−0.009 B** | **+0.008 B** | 532.58 | (shifts similarly) |
+
+GLD's net GEX moves by a modest 2.5 % under this stress test — a bias, but the sign and the
+signal survive it. **DIA does not: the carry assumption flips its net GEX's sign.** DIA's net
+is only 0.9 % of its 1.037 B gross absolute gamma, so it is dominated by whichever small
+residual the carry parameter happens to produce, not by a real directional imbalance between
+DIA's calls and puts. Concretely, this means:
+
+- **DIA's headline "dealers are net long/short gamma" reading is not trustworthy** at the
+  current global `q = 0.013` until T33 fits the carry properly. Report it as noise-dominated,
+  not as a directional signal, until then.
+- **DIA's flip point (532.58, essentially at the 532.34 spot print) is likewise not a
+  meaningful level** for the same reason — a flip this close to spot, on a net this small
+  relative to gross, is exactly the "curve is nearly flat here" case §5.5 already describes
+  for SPX/SPY, just more acute because DIA's net is two orders of magnitude smaller relative
+  to its gross than either of those.
+- **GLD's walls (415 call / 335 put) and DIA's walls (540 call / 533 put) are unaffected.**
+  Per-strike net GEX *does* depend on the forward — every contract's gamma is computed
+  from it — so the robustness here is not that walls bypass the carry term. It is that a
+  wall is an `argmax`/`argmin` over a discrete strike grid, and a carry perturbation this
+  small rescales neighbouring strikes by nearly the same factor, so the *ranking* rarely
+  changes even though the levels do. Empirically, on this capture both symbols' walls are
+  identical at `q = 0.013` and `q = 0` (GLD 415/335, DIA 540/533). Treat that as the
+  measured result it is, not a structural guarantee: a wall contest already near a tie
+  could flip under a large enough carry correction.
+
+**Do not attempt to special-case DIA's dividend yield here.** T33 fixes the carry per expiry
+from parity for all five symbols at once, which is the right level to fix it at; a one-off
+`q` override for DIA alone would just trade one wrong global constant for one wrong
+symbol-specific constant, and would need to be undone the moment T33 lands.

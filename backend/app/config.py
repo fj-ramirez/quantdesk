@@ -18,7 +18,7 @@ class Settings(BaseSettings):
     # Continuously compounded annualized risk-free rate for Greeks. A parameter, never
     # fetched from a rates feed (PLAN.md / TASKS.md T07).
     RISK_FREE_RATE: float = 0.04
-    SYMBOLS: str = "SPX,SPY,QQQ"
+    SYMBOLS: str = "SPX,SPY,QQQ,GLD,DIA"
     TZ: str = "America/New_York"
 
     @property

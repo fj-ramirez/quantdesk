@@ -34,8 +34,8 @@ derived from the OCC symbol; everything below it is `None` when the vendor did n
 | Field | Type | Unit / meaning |
 |---|---|---|
 | `occ_symbol` | `str` | OCC symbol, uppercase, root **not** space-padded, e.g. `SPXW260904P07700000`. |
-| `root` | `str`, 1–6 chars | Vendor root exactly as listed: `SPX`, `SPXW`, `SPY`, `QQQ`. |
-| `underlying` | `Underlying` enum | Canonical aggregation key: `SPX`, `SPY`, `QQQ`. `SPXW` → `SPX`. |
+| `root` | `str`, 1–6 chars | Vendor root exactly as listed: `SPX`, `SPXW`, `SPY`, `QQQ`, `GLD`, `DIA`. |
+| `underlying` | `Underlying` enum | Canonical aggregation key: `SPX`, `SPY`, `QQQ`, `GLD`, `DIA`. `SPXW` → `SPX`. |
 | `expiry` | `date` | Expiry **date**. The expiry *time* comes from `settlement`. |
 | `settlement` | `Settlement` enum | `AM` (09:30 America/New_York) or `PM` (16:00 America/New_York). Root-derived. |
 | `strike` | `float`, > 0 | Dollars for SPY/QQQ, index points for SPX. Exactly decoded from the OCC integer. |
@@ -82,7 +82,7 @@ input to `compute_all` (T08).
 
 | Field | Type | Unit / meaning |
 |---|---|---|
-| `underlying` | `Underlying` enum | `SPX`, `SPY` or `QQQ`. |
+| `underlying` | `Underlying` enum | `SPX`, `SPY`, `QQQ`, `GLD` or `DIA`. |
 | `spot` | `float`, > 0 | Underlying price at `captured_at`. |
 | `captured_at` | `datetime`, aware | **The vendor's own payload timestamp, in UTC** — not the time the HTTP call returned, but also *not reliably the time the data itself became effective* (see the T34 correction below). |
 | `source` | `str` | Provider `name`, e.g. `"cboe"`. Stable forever, since captured data is indexed by it. |
@@ -139,7 +139,7 @@ reads `effective_at` directly rather than reimplementing any market-hours logic 
 |---|---|---|
 | `SPX` | `AM` | The SET opening print, 09:30 America/New_York on the expiry date |
 | `SPXW` | `PM` | The 16:00 America/New_York close |
-| `SPY`, `QQQ`, other equity/ETF roots | `PM` | The 16:00 America/New_York close |
+| `SPY`, `QQQ`, `GLD`, `DIA`, other equity/ETF roots | `PM` | The 16:00 America/New_York close |
 
 Two facts from the live Cboe chain (2026-09-04) rule out the tempting "third Friday ⇒ AM"
 shortcut:

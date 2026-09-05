@@ -27,6 +27,10 @@ CASES = [
     ("SPXW260904P07700000", "SPXW", dt.date(2026, 9, 4), Right.PUT, 7700.0, Settlement.PM, "SPX"),
     ("SPY260904C00500000", "SPY", dt.date(2026, 9, 4), Right.CALL, 500.0, Settlement.PM, "SPY"),
     ("QQQ261218P00400000", "QQQ", dt.date(2026, 12, 18), Right.PUT, 400.0, Settlement.PM, "QQQ"),
+    # T38: GLD and DIA, both P.M.-settled ETFs with a single vendor root == ticker, same as
+    # SPY/QQQ above -- no new parsing behavior, just confirming the existing rule covers them.
+    ("GLD260904C00400000", "GLD", dt.date(2026, 9, 4), Right.CALL, 400.0, Settlement.PM, "GLD"),
+    ("DIA261218P00530000", "DIA", dt.date(2026, 12, 18), Right.PUT, 530.0, Settlement.PM, "DIA"),
 ]
 
 

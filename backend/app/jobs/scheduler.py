@@ -116,7 +116,7 @@ def build_scheduler() -> AsyncIOScheduler:
         capture_eod_job,
         trigger=CronTrigger(day_of_week="mon-fri", hour=16, minute=20, timezone=_TZ),
         id=EOD_JOB_ID,
-        name="EOD option chain capture (SPX/SPY/QQQ)",
+        name="EOD option chain capture (SPX/SPY/QQQ/GLD/DIA)",
         coalesce=True,
         misfire_grace_time=None,
         max_instances=1,

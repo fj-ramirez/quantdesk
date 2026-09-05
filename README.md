@@ -1,6 +1,6 @@
 # GEX Trading App
 
-Personal, single-user gamma exposure (GEX) analysis app for SPX, SPY, and QQQ options.
+Personal, single-user gamma exposure (GEX) analysis app for SPX, SPY, QQQ, GLD, and DIA options.
 Analysis and charts only — no order routing. See `PLAN.md` for architecture and `TASKS.md`
 for the build plan.
 

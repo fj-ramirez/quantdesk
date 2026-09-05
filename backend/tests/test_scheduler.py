@@ -28,7 +28,7 @@ def test_build_scheduler_registers_capture_eod_job():
     scheduler = build_scheduler()
     job = scheduler.get_job(EOD_JOB_ID)
     assert job is not None
-    assert job.name == "EOD option chain capture (SPX/SPY/QQQ)"
+    assert job.name == "EOD option chain capture (SPX/SPY/QQQ/GLD/DIA)"
     assert job.max_instances == 1
     # coalesce/misfire_grace_time aren't exposed as public attributes on every APScheduler
     # version in the same way, but the job's kwargs dict on the trigger is stable enough to
@@ -103,7 +103,7 @@ async def test_capture_eod_job_calls_capture_all_symbols_on_a_trading_day(monkey
 
     await capture_eod_job()
 
-    assert seen_symbols == ["SPX", "SPY", "QQQ"]
+    assert seen_symbols == ["SPX", "SPY", "QQQ", "GLD", "DIA"]
     assert seen_is_eod is True
 
 
@@ -157,7 +157,7 @@ async def test_capture_eod_safety_net_job_delegates_to_catch_up_missed_eod(monke
 
     await capture_eod_safety_net_job()
 
-    assert seen["symbols"] == ["SPX", "SPY", "QQQ"]
+    assert seen["symbols"] == ["SPX", "SPY", "QQQ", "GLD", "DIA"]
 
 
 async def test_capture_eod_safety_net_job_survives_an_unexpected_exception(monkeypatch, caplog):

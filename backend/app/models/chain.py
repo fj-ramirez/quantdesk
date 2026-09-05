@@ -115,7 +115,7 @@ __all__ = [
     "underlying_for_root",
 ]
 
-#: Contracts per unit of underlying for every symbol in scope (SPX, SPY, QQQ).
+#: Contracts per unit of underlying for every symbol in scope (SPX, SPY, QQQ, GLD, DIA).
 DEFAULT_MULTIPLIER = 100
 
 #: Fixed width of the ``YYMMDD`` + ``C|P`` + 8-digit-strike tail of an OCC symbol.
@@ -154,6 +154,13 @@ class Underlying(StrEnum):
     SPX = "SPX"
     SPY = "SPY"
     QQQ = "QQQ"
+    #: Added T38. Commodity ETF (gold bullion trust), single vendor root == ticker, P.M.
+    #: settled. Verified live 2026-09-05: 7,546 contracts, 29 expiries, no engine change.
+    GLD = "GLD"
+    #: Added T38. Dow Jones Industrial Average ETF, single vendor root == ticker, P.M.
+    #: settled. Verified live 2026-09-05: 5,028 contracts, 21 expiries. See docs/validation.md
+    #: for the carry-parameter caveat on this symbol's net GEX and flip point.
+    DIA = "DIA"
 
 
 #: Roots whose contracts are A.M.-settled. Everything else is P.M.-settled. See the module
@@ -168,6 +175,8 @@ _ROOT_TO_UNDERLYING: dict[str, Underlying] = {
     "SPXW": Underlying.SPX,
     "SPY": Underlying.SPY,
     "QQQ": Underlying.QQQ,
+    "GLD": Underlying.GLD,
+    "DIA": Underlying.DIA,
 }
 
 

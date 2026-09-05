@@ -56,6 +56,11 @@ async def _fetch(symbol: str, fixture: str, **kwargs: Any):
         ("SPX", "spx.json", 246, 3),
         ("SPY", "spy.json", 111, 3),
         ("QQQ", "qqq.json", 111, 3),
+        # T38: GLD and DIA, both served at the bare-ticker URL (no underscore prefix -- that's
+        # for index roots only), single vendor root each, verified against the real trimmed
+        # payload below.
+        ("GLD", "gld.json", 154, 3),
+        ("DIA", "dia.json", 146, 3),
     ],
 )
 async def test_fixture_contract_count(symbol, fixture, expected_count, expected_min_expiries):
@@ -105,6 +110,56 @@ async def test_known_contract_maps_fields_correctly():
     assert contract.gamma == pytest.approx(0.0025)
     assert contract.vega == pytest.approx(5.9493)
     assert contract.theta == pytest.approx(-2.3524)
+    assert contract.multiplier == 100
+
+
+async def test_gld_fixture_is_pm_settled_single_root():
+    """T38: GLD is a single-root, P.M.-settled ETF -- same rule as SPY/QQQ, no AM/PM split."""
+    snapshot = await _fetch("GLD", "gld.json")
+    assert set(snapshot.roots) == {"GLD"}
+    assert {c.settlement.value for c in snapshot.contracts} == {"PM"}
+    assert all(c.underlying == Underlying.GLD for c in snapshot.contracts)
+
+
+async def test_dia_fixture_is_pm_settled_single_root():
+    """T38: DIA is a single-root, P.M.-settled ETF -- same rule as SPY/QQQ, no AM/PM split."""
+    snapshot = await _fetch("DIA", "dia.json")
+    assert set(snapshot.roots) == {"DIA"}
+    assert {c.settlement.value for c in snapshot.contracts} == {"PM"}
+    assert all(c.underlying == Underlying.DIA for c in snapshot.contracts)
+
+
+async def test_gld_known_contract_maps_fields_correctly():
+    """GLD260908C00416000 in the trimmed GLD fixture, from the 2026-09-05 capture."""
+    snapshot = await _fetch("GLD", "gld.json")
+    contract = next(c for c in snapshot.contracts if c.occ_symbol == "GLD260908C00416000")
+
+    assert contract.root == "GLD"
+    assert contract.underlying == Underlying.GLD
+    assert contract.settlement.value == "PM"
+    assert contract.expiry == dt.date(2026, 9, 8)
+    assert contract.strike == 416.0
+    assert contract.right.value == "C"
+    assert contract.open_interest == 2097
+    assert contract.iv == pytest.approx(0.1713)
+    assert contract.gamma == pytest.approx(0.0242)
+    assert contract.multiplier == 100
+
+
+async def test_dia_known_contract_maps_fields_correctly():
+    """DIA260911C00540000 in the trimmed DIA fixture, from the 2026-09-05 capture."""
+    snapshot = await _fetch("DIA", "dia.json")
+    contract = next(c for c in snapshot.contracts if c.occ_symbol == "DIA260911C00540000")
+
+    assert contract.root == "DIA"
+    assert contract.underlying == Underlying.DIA
+    assert contract.settlement.value == "PM"
+    assert contract.expiry == dt.date(2026, 9, 11)
+    assert contract.strike == 540.0
+    assert contract.right.value == "C"
+    assert contract.open_interest == 3585
+    assert contract.iv == pytest.approx(0.0909)
+    assert contract.gamma == pytest.approx(0.0407)
     assert contract.multiplier == 100
 
 

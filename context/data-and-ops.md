@@ -5,7 +5,9 @@
 Default `PROVIDER=cboe`: the free, unofficial Cboe delayed-quotes endpoint,
 `https://cdn.cboe.com/api/global/delayed_quotes/options/{symbol}.json`. No key, 15-minute
 delay, returns strike/expiry/right/OI/IV/Greeks and spot — everything the engine needs. Index
-underlyings take an underscore prefix (`_SPX.json`), ETFs do not (`SPY.json`).
+underlyings take an underscore prefix (`_SPX.json`), ETFs do not (`SPY.json`, `QQQ.json`,
+`GLD.json`, `DIA.json` — GLD and DIA added T38, verified live 2026-09-05: same bare-ticker
+URL shape, P.M. settlement, and no engine change).
 
 It is undocumented and has no SLA. Mitigations already in place: poll at most once per symbol
 per 15 minutes, keep the provider abstraction so a swap is one class, and **store every
@@ -21,7 +23,7 @@ setting-named error if constructed without it.
 
 | When (America/New_York) | What |
 |---|---|
-| Mon–Fri 16:20 | EOD capture of SPX/SPY/QQQ — after the 15-min delay clears the 16:00 close |
+| Mon–Fri 16:20 | EOD capture of SPX/SPY/QQQ/GLD/DIA — after the 15-min delay clears the 16:00 close |
 | Mon–Fri 20:00 | safety net; no-op if 16:20 already succeeded |
 | every process start | `startup_catchup_job` — recovers a missed EOD without blocking boot |
 | on demand | `POST /api/snapshots/capture?underlying=SPX&eod=true` |
@@ -58,7 +60,7 @@ the host). Keys, all read by `app/config.py`:
 | `DATABASE_URL` | `postgresql+psycopg://gex:gex@localhost:5432/gex` | compose overrides host to `postgres` |
 | `DATA_DIR` | `./data` | compose overrides to `/data` |
 | `PROVIDER` | `cboe` | or `marketdata` |
-| `SYMBOLS` | `SPX,SPY,QQQ` | `settings.symbols` splits and strips |
+| `SYMBOLS` | `SPX,SPY,QQQ,GLD,DIA` | `settings.symbols` splits and strips |
 | `TZ` | `America/New_York` | scheduler timezone |
 | `RISK_FREE_RATE` | `0.04` | annualized, continuously compounded. A parameter, never fetched |
 | `DIVIDEND_YIELD` | `0.013` | continuous; builds the forward for the Greeks |

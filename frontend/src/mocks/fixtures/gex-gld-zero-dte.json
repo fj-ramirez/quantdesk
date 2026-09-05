@@ -1,0 +1,216 @@
+{
+  "underlying": "GLD",
+  "filter": "ZERO_DTE",
+  "spot": 406.77,
+  "snapshot": {
+    "id": 2020,
+    "underlying": "GLD",
+    "captured_at": "2026-09-04T20:20:00Z",
+    "effective_at": "2026-09-04T20:20:00Z",
+    "source": "cboe",
+    "delayed_minutes": 15,
+    "is_eod": true,
+    "spot": 406.77,
+    "contract_count": 7546
+  },
+  "levels": {
+    "net_gex": 0.0,
+    "call_gex": 0.0,
+    "put_gex": 0.0,
+    "abs_gex": 0.0,
+    "call_wall": null,
+    "call_wall_gex": null,
+    "put_wall": null,
+    "put_wall_gex": null,
+    "max_abs_strike": null,
+    "max_abs_gex": null,
+    "max_net_strike": null,
+    "min_net_strike": null,
+    "max_call_gex_strike": null,
+    "max_call_gex": null,
+    "max_put_gex_strike": null,
+    "max_put_gex": null,
+    "flip_point": null,
+    "spot": 406.77,
+    "computed_at": "2026-09-04T20:20:00Z",
+    "top_positive": [],
+    "top_negative": []
+  },
+  "by_strike": [],
+  "by_expiry": [],
+  "profile": [
+    {
+      "spot": 366.09,
+      "total_gex": 0.0
+    },
+    {
+      "spot": 368.13,
+      "total_gex": 0.0
+    },
+    {
+      "spot": 370.16,
+      "total_gex": 0.0
+    },
+    {
+      "spot": 372.19,
+      "total_gex": 0.0
+    },
+    {
+      "spot": 374.23,
+      "total_gex": 0.0
+    },
+    {
+      "spot": 376.26,
+      "total_gex": 0.0
+    },
+    {
+      "spot": 378.3,
+      "total_gex": 0.0
+    },
+    {
+      "spot": 380.33,
+      "total_gex": 0.0
+    },
+    {
+      "spot": 382.36,
+      "total_gex": 0.0
+    },
+    {
+      "spot": 384.4,
+      "total_gex": 0.0
+    },
+    {
+      "spot": 386.43,
+      "total_gex": 0.0
+    },
+    {
+      "spot": 388.47,
+      "total_gex": 0.0
+    },
+    {
+      "spot": 390.5,
+      "total_gex": 0.0
+    },
+    {
+      "spot": 392.53,
+      "total_gex": 0.0
+    },
+    {
+      "spot": 394.57,
+      "total_gex": 0.0
+    },
+    {
+      "spot": 396.6,
+      "total_gex": 0.0
+    },
+    {
+      "spot": 398.63,
+      "total_gex": 0.0
+    },
+    {
+      "spot": 400.67,
+      "total_gex": 0.0
+    },
+    {
+      "spot": 402.7,
+      "total_gex": 0.0
+    },
+    {
+      "spot": 404.74,
+      "total_gex": 0.0
+    },
+    {
+      "spot": 406.77,
+      "total_gex": 0.0
+    },
+    {
+      "spot": 408.8,
+      "total_gex": 0.0
+    },
+    {
+      "spot": 410.84,
+      "total_gex": 0.0
+    },
+    {
+      "spot": 412.87,
+      "total_gex": 0.0
+    },
+    {
+      "spot": 414.91,
+      "total_gex": 0.0
+    },
+    {
+      "spot": 416.94,
+      "total_gex": 0.0
+    },
+    {
+      "spot": 418.97,
+      "total_gex": 0.0
+    },
+    {
+      "spot": 421.01,
+      "total_gex": 0.0
+    },
+    {
+      "spot": 423.04,
+      "total_gex": 0.0
+    },
+    {
+      "spot": 425.07,
+      "total_gex": 0.0
+    },
+    {
+      "spot": 427.11,
+      "total_gex": 0.0
+    },
+    {
+      "spot": 429.14,
+      "total_gex": 0.0
+    },
+    {
+      "spot": 431.18,
+      "total_gex": 0.0
+    },
+    {
+      "spot": 433.21,
+      "total_gex": 0.0
+    },
+    {
+      "spot": 435.24,
+      "total_gex": 0.0
+    },
+    {
+      "spot": 437.28,
+      "total_gex": 0.0
+    },
+    {
+      "spot": 439.31,
+      "total_gex": 0.0
+    },
+    {
+      "spot": 441.35,
+      "total_gex": 0.0
+    },
+    {
+      "spot": 443.38,
+      "total_gex": 0.0
+    },
+    {
+      "spot": 445.41,
+      "total_gex": 0.0
+    }
+  ],
+  "diagnostics": {
+    "contracts": 348,
+    "included": 0,
+    "expired": 348,
+    "missing_open_interest": 0,
+    "zero_open_interest": 84,
+    "missing_iv": 0,
+    "missing_iv_gex_vendor": 0.0,
+    "extreme_iv": 0,
+    "extreme_iv_open_interest": 0,
+    "extreme_iv_gex_excluded": 0.0
+  },
+  "expiries": []
+}
