@@ -380,6 +380,28 @@ Note the intended behaviour that is *not* a bug: `GammaProfile` always shows its
 
 Acceptance: screenshots at 1280 px and 390 px showing the profile curve filling its plot area with a legible zero crossing, a top bar that neither overflows nor runs together, and unclipped wall labels.
 
+### T37 · Sonnet · T11, T16
+**"No data yet" is an empty state, not an error — and never show raw JSON**
+
+Hit by the user on first run. Switching to a symbol that has never been captured renders, verbatim in the page:
+
+```
+Failed to load SPY GEX: {"detail":"no snapshot captured yet for SPY"}
+```
+
+Three things wrong, in order:
+
+1. **It is not a failure.** A symbol with no snapshot yet is the expected state on first run, after `docker compose down -v`, or for any symbol the user has not captured. Presenting it as an error makes a working app look broken on the very first thing a new user does.
+2. **Raw JSON reaches the UI.** `client.ts` interpolates the response body into the message. No user should ever see `{"detail": ...}`. Parse the error envelope and surface the message, or a mapped friendly string.
+3. **There is no way out.** The page states a problem and offers no affordance. The fix is one POST the user cannot discover from here.
+
+- Distinguish "no data yet" (the backend returns a clean 404 with a specific `detail`) from a genuine transport or server failure, and render an empty state rather than an error for the former.
+- The empty state should say what will happen on its own (the EOD capture runs 16:20 ET on trading days, and T29 catches up on startup) and offer a "Capture now" button hitting `POST /api/snapshots/capture?underlying=…`, which takes about 2 s.
+- Genuine failures keep an error presentation, but with the parsed message, never the raw body.
+- Apply the same treatment on `/history`, which has the same problem for a symbol with no level rows.
+
+Acceptance: with an empty database, loading the dashboard for each symbol shows an empty state with a working capture affordance and no JSON; a real backend failure (stop the API) still shows a proper error.
+
 ---
 
 ## Model assignment summary
@@ -388,7 +410,7 @@ Acceptance: screenshots at 1280 px and 390 px showing the profile curve filling 
 |---|---|
 | Opus | T01, T07, T08, T10, T21, T23, T25, T33 |
 | Opus (review) | T06, T17, T24 |
-| Sonnet | T00, T02–T05, T09, T11–T16, T18–T20, T22, T26–T32, T34–T36 |
+| Sonnet | T00, T02–T05, T09, T11–T16, T18–T20, T22, T26–T32, T34–T37 |
 
 Parallelizable groups once their dependency is done: {T02, T03, T04} after T01; {T12} alongside all of Phase 1; {T13, T14} after T12; {T27, T28} anytime.
 
