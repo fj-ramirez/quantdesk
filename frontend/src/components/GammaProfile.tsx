@@ -84,7 +84,14 @@ export function buildGammaProfileOption(
             formatter: () => `Flip ${formatStrike(flipPoint)}`,
             color: palette.textPrimary,
             fontWeight: 'bold' as const,
-            position: 'insideEndBottom' as const,
+            // T36 fallout: with the axis now actually fitted to the grid (see xAxis.scale
+            // above) the flip line sits close enough to the spot line -- both legitimately
+            // can, since flip is typically a few tens of points from spot -- that two labels
+            // anchored to the same "insideEnd" (top) corner overlapped into an illegible
+            // stack of characters. Anchoring this one to the *start* (bottom) of the line
+            // instead keeps both readable regardless of how close together spot and flip
+            // land.
+            position: 'insideStartBottom' as const,
           },
           symbol: 'none' as const,
         };
@@ -139,16 +146,33 @@ export function buildGammaProfileOption(
     },
     xAxis: {
       type: 'value',
+      // T36: ECharts value axes default to `scale: false`, which forces the axis to include
+      // 0 regardless of where the data actually sits. The profile grid is only ±10% around
+      // spot (e.g. ~6,947-8,490 for a 7,718 SPX) -- forcing it through 0 stretched the axis
+      // to 0-10,000 and squashed the entire curve, flip point included, into a sliver at the
+      // right edge. `scale: true` fits the axis to the data's own extent instead.
+      scale: true,
       name: 'Hypothetical spot',
       nameLocation: 'middle',
       nameGap: 32,
       nameTextStyle: { color: palette.textMuted },
-      axisLabel: { color: palette.textMuted, formatter: (value: number) => formatStrike(value) },
+      // `hideOverlap` (T36): a ~1,500-point grid still gets echarts' full default tick count
+      // regardless of how narrow the container is -- on a 390px viewport the tick labels sit
+      // closer together than their own text width and run together with no gap
+      // ("7,2007,5007,8008,0008,400"). Hiding whichever overlaps keeps the remaining labels
+      // legible instead of shrinking or rotating text that still has to share an axis with
+      // the wide chart at 1280px.
+      axisLabel: { color: palette.textMuted, formatter: (value: number) => formatStrike(value), hideOverlap: true },
       axisLine: { lineStyle: { color: palette.baseline } },
       splitLine: { lineStyle: { color: palette.gridline } },
     },
     yAxis: {
       type: 'value',
+      // Same reasoning as the x-axis above: total gamma exposure at the *edges* of a ±10%
+      // grid is dominated by whichever side is further from the flip, so the true range can
+      // sit well clear of 0 on one side -- `scale: true` lets the axis fit that range instead
+      // of always padding out to include 0.
+      scale: true,
       name: 'Total dealer gamma exposure',
       nameLocation: 'middle',
       nameGap: 56,
@@ -230,6 +254,15 @@ export function GammaProfile({ allProfile, exZeroDteProfile, spot, flipPoint }: 
       <h2 style={{ margin: 0, fontSize: 16 }}>Gamma profile</h2>
       <p style={{ margin: '4px 0 0', color: palette.textSecondary, fontSize: 13 }}>
         Total dealer gamma exposure vs. hypothetical spot, all expiries vs. ex-0DTE.
+      </p>
+      {/* T14/T36: this chart always plots its own All / Ex-0DTE pair regardless of the
+          Expiry filter selected in the top bar -- deliberately, since the filter's other
+          options (e.g. ZERO_DTE after the close) can legitimately admit no contracts at all,
+          which would make the one chart whose entire purpose is showing the flip point go
+          blank. Called out here so that not reacting to the filter reads as a designed
+          scope, not a bug -- see KeyLevels for the levels that DO honor the filter. */}
+      <p style={{ margin: '2px 0 0', color: palette.textMuted, fontSize: 12 }}>
+        Always shows all expiries — independent of the Expiry filter above.
       </p>
       <p style={{ margin: '4px 0 12px', fontSize: 13 }}>
         {flipPoint == null ? (

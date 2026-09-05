@@ -136,6 +136,127 @@ code {
 }
 
 /*
+ * App shell: top bar + nav (T36). `#root`'s `text-align: center` (a leftover from the
+ * marketing template this app started from) reaches every descendant that doesn't reset
+ * it, `.dashboard` already resets it for the charts below -- these do the same for the
+ * header/nav, which sit outside `.dashboard` and were inheriting the same centering (the
+ * "symbol switcher is centred oddly" defect).
+ */
+.app-shell {
+  text-align: left;
+}
+
+.topbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px 20px;
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--border);
+}
+
+.symbol-switcher {
+  display: flex;
+  gap: 6px;
+}
+
+.symbol-switcher__button {
+  font: inherit;
+  font-size: 14px;
+  padding: 6px 14px;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  background: transparent;
+  color: var(--text);
+  cursor: pointer;
+}
+
+.symbol-switcher__button:hover:not(:disabled) {
+  border-color: var(--accent-border);
+}
+
+/* Overrides the browser's default dimmed `:disabled` look -- this button is disabled only
+ * to make selecting the already-selected symbol a no-op, not because the symbol is
+ * unavailable, so it must read as "selected", not "greyed out". */
+.symbol-switcher__button--selected {
+  opacity: 1;
+  border-color: var(--accent);
+  background: var(--accent-bg);
+  color: var(--text-h);
+  font-weight: 500;
+  cursor: default;
+}
+
+.topbar-fields {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px 20px;
+}
+
+.topbar-field {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  font-size: 12px;
+  color: var(--text);
+}
+
+.topbar-field select {
+  font: inherit;
+  font-size: 14px;
+  color: var(--text-h);
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 5px 8px;
+}
+
+.topbar-meta {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-left: auto;
+}
+
+/* `min-width: 0` is what lets this actually wrap inside a flex row instead of forcing the
+ * row wider than the viewport -- flex items default to a min-width equal to their content's
+ * natural (unwrapped) width, which is exactly what was pushing this off the right edge of a
+ * 390px screen (T36). */
+.freshness-badge {
+  font-size: 13px;
+  color: var(--text);
+  white-space: normal;
+  overflow-wrap: anywhere;
+  min-width: 0;
+}
+
+.navbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  padding: 0 16px 12px;
+  border-bottom: 1px solid var(--border);
+}
+
+.navlink {
+  font-size: 14px;
+  padding: 6px 12px;
+  border-radius: 6px;
+  color: var(--text);
+  text-decoration: none;
+}
+
+.navlink:hover {
+  background: var(--social-bg);
+}
+
+.navlink--active {
+  background: var(--accent-bg);
+  color: var(--text-h);
+  font-weight: 500;
+}
+
+/*
  * Dashboard (T16). `#root` above sets `text-align: center` for the marketing-template
  * shell this app started from; a table of levels and two data charts read better left-
  * aligned, so the dashboard resets it locally rather than fighting centered text on every

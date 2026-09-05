@@ -186,6 +186,13 @@ export function buildGexByStrikeOption({
     });
   }
 
+  // T36: the label used to be rendered *inside* the pin (echarts markPoint default), which
+  // clips to the symbol's own bounding shape -- "Call wall" / "Put wall" are both wider than
+  // a 34px pin at any legible font size, so only the horizontally-centered slice of each
+  // string ("ll w" / "t w") ever painted. Moving the label above the pin (`position: 'top'`)
+  // lets it lay out at full width against the chart background instead of being clipped to
+  // the marker glyph; it's colored to match the pin/bar it belongs to rather than the old
+  // white-on-fill, since it's no longer painted over that fill.
   const wallMarkPoint = (name: string, wallStrike: number | null, wallValue: number | undefined, color: string) =>
     wallValue === undefined
       ? undefined
@@ -193,7 +200,22 @@ export function buildGexByStrikeOption({
           symbol: 'pin' as const,
           symbolSize: 34,
           itemStyle: { color },
-          label: { formatter: name, color: '#ffffff', fontSize: 10 },
+          label: {
+            formatter: name,
+            color,
+            fontSize: 11,
+            fontWeight: 'bold' as const,
+            position: 'top' as const,
+            distance: 4,
+            // A wall whose own GEX bar isn't the chart's tallest (typically the put wall,
+            // whose bar sits inside the same near-zero cluster as everything else) lands its
+            // "top" label in the middle of other bars rather than in clear space above them
+            // -- a surface-colored chip keeps the text legible regardless of what's directly
+            // behind it, rather than depending on the data happening to leave room.
+            backgroundColor: colors.surface,
+            padding: [1, 4] as [number, number],
+            borderRadius: 3,
+          },
           data: [{ name, coord: [wallStrike, wallValue] as [number, number] }],
         };
 

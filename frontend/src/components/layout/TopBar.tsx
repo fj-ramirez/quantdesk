@@ -11,13 +11,19 @@ import { ThemeToggle } from './ThemeToggle';
 
 function SymbolSwitcher({ symbol, onChange }: { symbol: Underlying; onChange: (s: Underlying) => void }) {
   return (
-    <div role="group" aria-label="Symbol">
+    <div role="group" aria-label="Symbol" className="symbol-switcher">
       {UNDERLYINGS.map((sym) => (
         <button
           key={sym}
           type="button"
           aria-pressed={sym === symbol}
           disabled={sym === symbol}
+          // T36: the current symbol's `disabled` attribute (kept for "no-op click", not
+          // removed) used to be the *only* styling it got, so it inherited the browser's
+          // dimmed/grey disabled look -- reading as "this symbol is unavailable" rather than
+          // "this is the one you're looking at". `symbol-switcher__button--selected` below
+          // overrides that with the app's own accent styling instead.
+          className={sym === symbol ? 'symbol-switcher__button symbol-switcher__button--selected' : 'symbol-switcher__button'}
           onClick={() => onChange(sym)}
         >
           {sym}
@@ -35,8 +41,8 @@ function ExpiryFilterSelect({
   onChange: (f: (typeof EXPIRY_FILTERS)[number]) => void;
 }) {
   return (
-    <label>
-      Expiry
+    <label className="topbar-field">
+      <span className="topbar-field__label">Expiry</span>
       <select value={filter} onChange={(e) => onChange(e.target.value as (typeof EXPIRY_FILTERS)[number])}>
         {EXPIRY_FILTERS.map((f) => (
           <option key={f} value={f}>
@@ -59,8 +65,8 @@ function SnapshotSelector({
 }) {
   const { data: snapshots } = useSnapshots(symbol);
   return (
-    <label>
-      Snapshot
+    <label className="topbar-field">
+      <span className="topbar-field__label">Snapshot</span>
       <select value={snapshotId ?? 'latest'} onChange={(e) => onChange(e.target.value === 'latest' ? null : e.target.value)}>
         <option value="latest">Latest</option>
         {snapshots?.map((snap) => (
@@ -79,10 +85,10 @@ function SnapshotSelector({
  * for live data. Reads from whichever snapshot the URL state currently points at. */
 function DataFreshnessBadge({ symbol, filter, snapshotId }: { symbol: Underlying; filter: (typeof EXPIRY_FILTERS)[number]; snapshotId: string | null }) {
   const { data, isLoading, isError } = useGexResult(symbol, filter, snapshotId);
-  if (isLoading) return <span aria-live="polite">Loading…</span>;
-  if (isError || !data) return <span aria-live="polite">Data unavailable</span>;
+  if (isLoading) return <span className="freshness-badge" aria-live="polite">Loading…</span>;
+  if (isError || !data) return <span className="freshness-badge" aria-live="polite">Data unavailable</span>;
   return (
-    <span aria-live="polite">
+    <span className="freshness-badge" aria-live="polite">
       As of {formatNyTime(data.snapshot.captured_at)} &middot; {formatDelay(data.snapshot.delayed_minutes)}
     </span>
   );
@@ -92,12 +98,16 @@ export function TopBar() {
   const { symbol, filter, snapshotId, setSymbol, setFilter, setSnapshotId } = useDashboardParams();
 
   return (
-    <header>
+    <header className="topbar">
       <SymbolSwitcher symbol={symbol} onChange={setSymbol} />
-      <ExpiryFilterSelect filter={filter} onChange={setFilter} />
-      <SnapshotSelector symbol={symbol} snapshotId={snapshotId} onChange={setSnapshotId} />
-      <DataFreshnessBadge symbol={symbol} filter={filter} snapshotId={snapshotId} />
-      <ThemeToggle />
+      <div className="topbar-fields">
+        <ExpiryFilterSelect filter={filter} onChange={setFilter} />
+        <SnapshotSelector symbol={symbol} snapshotId={snapshotId} onChange={setSnapshotId} />
+      </div>
+      <div className="topbar-meta">
+        <DataFreshnessBadge symbol={symbol} filter={filter} snapshotId={snapshotId} />
+        <ThemeToggle />
+      </div>
     </header>
   );
 }

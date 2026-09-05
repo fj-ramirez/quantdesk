@@ -5,22 +5,31 @@ import { TopBar } from './TopBar';
  * does not do this by default (an absolute `to="/history"` drops query params), and
  * dropping them here would silently break the "URL fully drives the view" contract the
  * moment someone clicks between Dashboard/History/Settings. */
+// T36: with no styling at all these three links rendered as one unbroken run of text
+// ("DashboardHistorySettings") -- `navlink` below gives each its own padded, pill-shaped hit
+// area (see index.css), which reads as separated tabs without needing a literal separator
+// character between them.
 function NavBar() {
   const location = useLocation();
+  const linkClassName = ({ isActive }: { isActive: boolean }) => (isActive ? 'navlink navlink--active' : 'navlink');
   return (
-    <nav>
-      <NavLink to={{ pathname: '/', search: location.search }} end>
+    <nav className="navbar">
+      <NavLink to={{ pathname: '/', search: location.search }} end className={linkClassName}>
         Dashboard
       </NavLink>
-      <NavLink to={{ pathname: '/history', search: location.search }}>History</NavLink>
-      <NavLink to={{ pathname: '/settings', search: location.search }}>Settings</NavLink>
+      <NavLink to={{ pathname: '/history', search: location.search }} className={linkClassName}>
+        History
+      </NavLink>
+      <NavLink to={{ pathname: '/settings', search: location.search }} className={linkClassName}>
+        Settings
+      </NavLink>
     </nav>
   );
 }
 
 export function AppShell() {
   return (
-    <div>
+    <div className="app-shell">
       <TopBar />
       <NavBar />
       <main>
