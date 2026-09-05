@@ -404,14 +404,59 @@ Acceptance: with an empty database, loading the dashboard for each symbol shows 
 
 ---
 
+## Tasks added by supervisor instrument review (2026-09-05)
+
+### T38 · Sonnet · T02, T11, T16
+**Add GLD and DIA as tracked instruments**
+
+The user asked for gold and the Dow. Both were verified live by the supervisor on 2026-09-05 before this task was written, so **do not re-litigate feasibility — build it.** Measured facts, from running the real payloads through the existing `CboeProvider._parse_payload` and `compute_all` unchanged (the root was temporarily aliased, since `Underlying` is a closed enum):
+
+| | contracts | with OI > 0 | expiries | net GEX | abs GEX | data quality |
+|---|---|---|---|---|---|---|
+| SPY (reference) | 12,456 | 8,181 | — | −1.845 B | 38.663 B | — |
+| **GLD** | 7,546 | 4,219 | 29 | **+2.265 B** | 5.303 B | 0 extreme-IV, 0 missing OI |
+| **DIA** | 5,028 | 2,720 | 21 | **−0.009 B** | 1.037 B | 0 extreme-IV, 0 missing OI |
+
+Both are served by the Cboe endpoint at the **bare-ticker ETF URL** (`.../options/GLD.json`, `.../options/DIA.json` — no underscore prefix; that is for index roots only), each with a single vendor root equal to the ticker. Both are P.M.-settled, so `AM_SETTLED_ROOTS` stays `{"SPX"}` and settlement is already correct by default. Data quality is *better* than SPX: zero extreme-IV exclusions and zero missing open interest on both, and `net_gex_iv_unfiltered` equals `net_gex` exactly, so the IV policy is immaterial here.
+
+**No engine, Greeks, schema, storage or migration change is required.** `snapshots.underlying` is `String(16)` with no enum or check constraint, so nothing in Postgres constrains the symbol set — do not write a migration.
+
+Deliverables:
+
+- `backend/app/models/chain.py`: add `GLD` and `DIA` to `Underlying`, and both roots to `_ROOT_TO_UNDERLYING`. The enum docstring already names this as the intended extension point; follow it exactly and add nothing else.
+- `backend/app/providers/cboe.py`: `_VENDOR_SYMBOL` entries mapping both to their bare tickers.
+- `backend/app/providers/marketdata.py`: **docstring only.** It uses the canonical `Underlying` value verbatim as the URL path segment, so there is no mangling table to update. Do not add one.
+- Config: `SYMBOLS=SPX,SPY,QQQ,GLD,DIA` in `.env.example` and `docker-compose.yml`. Note in the PR/commit body that the user's own root `.env` is gitignored and must be updated by hand, or the new symbols will not be captured on their machine.
+- `frontend/src/api/types.ts`: add `'GLD'` and `'DIA'` to `UNDERLYINGS`.
+- `frontend/src/mocks/handlers.ts`: **this is the only thing that breaks the build.** Two `Record<Underlying, GexResult>` maps are exhaustive over the union, and `isUnderlying` hardcodes the three literals, so widening the union is a compile error until fixtures exist. Add `gex-gld.json`, `gex-gld-zero-dte.json`, `gex-dia.json`, `gex-dia-zero-dte.json` under `mocks/fixtures/`, generated from real captures and trimmed to match the existing ~13 KB / ~3.5 KB files.
+- `frontend/src/components/layout/TopBar.tsx`: the symbol switcher goes from three buttons to five. T36 already had to fix this bar's layout once — check it at a narrow width rather than assuming it reflows.
+- `backend/tests/fixtures/cboe/gld.json` and `dia.json`, trimmed to roughly the 75 KB of `spy.json`/`qqq.json`. **Do not commit the raw payloads** — they are 3.3 MB and 2.2 MB.
+- Update the symbol-set assertions in `test_health.py`, `test_scheduler.py`, `test_catchup.py`, `test_capture.py`, and add parser coverage for both roots in `test_cboe.py` / `test_occ_symbol.py`.
+- Docs: `PLAN.md` §1 currently scopes the app to "US index options — SPX, SPY, QQQ". Amend it to record that GLD (a commodity ETF) and DIA are now tracked, and why. Update the underlying/root tables in `docs/schema.md` (lines ~37, ~38, ~85, ~142) and the one-line scope sentence in `README.md`. Also update `CLAUDE.md` (opening line and the invariants list), `context/data-and-ops.md` (the `SYMBOLS` row and the Cboe section) and `context/architecture.md` where they name the three-symbol set.
+
+**The DIA carry caveat — read this before touching anything.** `DIVIDEND_YIELD` is a single global 0.013, the S&P trailing yield, applied to every symbol. It is wrong for both new instruments: GLD pays no dividend at all (it carries a ~0.40 % expense drag), and DIA's yield is its own. Measured impact of setting `q = 0` instead:
+
+- GLD: net GEX +2.265 B → +2.322 B (+2.5 %), flip 381.45 → 380.65. Bias, but the signal survives it.
+- **DIA: net GEX −0.009 B → +0.008 B. The carry assumption flips the sign.** DIA's net is 0.9 % of its 1.037 B gross, so the headline "dealers are long/short gamma" reading and the flip point (532.58, essentially at a 532.34 spot) are noise-dominated at the current parameter.
+
+Do **not** try to fix this here — fitting the carry per expiry from put-call parity is T33, it is Opus work, and it fixes all five symbols at once. What this task must do is record the limitation honestly: add a short subsection to `docs/validation.md` stating that DIA's net GEX and flip point are not trustworthy until T33 lands, with the numbers above. GLD's walls (415 / 335) and DIA's walls (540 / 533) are per-strike readings and are unaffected by the carry parameter, so they stay usable either way.
+
+Constraints: work only in the paths listed; do not change the public interfaces from earlier tasks; do not touch `app/gex/engine.py` or `greeks.py`. Never kill processes by image name — only PIDs you started; work around an occupied port instead.
+
+Acceptance: `POST /api/snapshots/capture?underlying=GLD` and `…=DIA` each persist a snapshot with a non-zero contract count and stored levels for all three default filters; the dashboard symbol switcher shows five symbols and renders GLD and DIA end to end against the mocks; `uv run pytest`, `npm test`, `npm run lint` and `ruff check .` all pass; `docs/validation.md` carries the DIA carry caveat.
+
+---
+
 ## Model assignment summary
 
 | Model | Tasks |
 |---|---|
 | Opus | T01, T07, T08, T10, T21, T23, T25, T33 |
 | Opus (review) | T06, T17, T24 |
-| Sonnet | T00, T02–T05, T09, T11–T16, T18–T20, T22, T26–T32, T34–T37 |
+| Sonnet | T00, T02–T05, T09, T11–T16, T18–T20, T22, T26–T32, T34–T38 |
 
 Parallelizable groups once their dependency is done: {T02, T03, T04} after T01; {T12} alongside all of Phase 1; {T13, T14} after T12; {T27, T28} anytime.
+
+Sequencing note (2026-09-05): T38 adds GLD and DIA and is independent of everything in flight, so it can run alongside Phase 4 work. It does, however, raise T33's priority: DIA's net GEX is 0.9 % of its gross and the global carry parameter flips its sign, so DIA ships with a documented caveat until the carry is fitted from parity.
 
 Sequencing note (2026-09-04): T29 and T30 run before T11. A dashboard over a dataset with silent holes is worth less than a smaller dataset that can be trusted, and T30 is cheapest while nothing reads `parquet_path` yet. Do not run two Opus agents concurrently — it exhausts the session rate limit.
