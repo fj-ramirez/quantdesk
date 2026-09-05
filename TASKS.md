@@ -447,13 +447,134 @@ Acceptance: `POST /api/snapshots/capture?underlying=GLD` and `…=DIA` each pers
 
 ---
 
+## Tasks added by the report-view request (2026-09-05)
+
+### T39 · Opus · T08, T11
+**Report analytics: the derived figures a written report needs**
+
+The user wants an "options intelligence" report view (T40 renders it). They supplied
+`context/example-report.md` and a screenshot as a **layout reference**. Read them for section
+structure and tone only.
+
+**Do not reproduce that file's numbers.** The supervisor reconciled it against the very GLD
+chain it claims to describe (same spot, $406.77) and it does not survive contact with the
+data:
+
+| Metric | The example claims | Actual, our engine | |
+|---|---:|---:|---|
+| Call OI | 106,705 | 4,304,029 | wrong |
+| Put OI | 271,163 | 1,945,056 | wrong |
+| P/C ratio (OI) | 2.54 → "BEARISH" | **0.45** | **inverted** |
+| P/C ratio (volume) | 1.08 | 0.50 | wrong |
+| Max pain | $410 | $400 full chain, $408 at ≤ 7 DTE | wrong |
+| IV environment | 17.9 % | 32.0 % OI-weighted, 22.9 % ATM ≤ 45 DTE | wrong |
+| Call / put wall | 405 / 395 | 415 / 335 | wrong |
+
+GLD carries 2.2 calls per put in open interest; the example asserts the reverse and derives a
+bearish reading from it. It is also internally inconsistent — it lists 407 and 406 as
+*support* while listing 405 as *resistance*, and repeats "Break below 407 / Risk: CRITICAL"
+against three different strikes. Every number in our report comes from our own engine.
+
+Build a **new pure module `backend/app/gex/report.py`**. Same contract as `engine.py`: no
+HTTP, no database, no filesystem, no logging, deterministic given its inputs. It consumes a
+`GexResult` and the `to_frame` DataFrame and returns a frozen `ReportResult` dataclass.
+`engine.py` and `greeks.py` are otherwise **not to be modified**, with one sanctioned
+exception named below.
+
+Compute:
+
+- **Max pain** — the strike minimising total intrinsic value of all open contracts at expiry,
+  over the same expiry scope as the filter in play. Verified reachable from the frame today
+  (`strike`, `right`, `open_interest`).
+- **Put/call ratios and volume/OI totals** — split by right, from `volume` and
+  `open_interest`. Both are already frame columns.
+- **IV regime** — an ATM ~30-day implied vol, interpolated from near-the-money contracts
+  bracketing 30 DTE. **Do not label it LOW/NORMAL/HIGH from a single snapshot.** There is no
+  basis for a band without history. Return the number always, and a regime label only when
+  at least 20 prior snapshots of the same symbol exist to compare against; otherwise return
+  the label as `None` and let T40 render "insufficient history". This is the same honesty
+  rule as T34's staleness badge and T37's empty state — do not invent a threshold.
+- **Dealer positioning** — from the sign of net GEX, gated on `|net_gex| / abs_gex`.
+  Measured on live chains: SPY 4.8 %, GLD 42.7 %, **DIA 0.9 %**. Below a documented ratio
+  floor the label must read *noise-dominated*, not a direction. `docs/validation.md` §9
+  already establishes that DIA's net GEX sign flips under a plausible carry correction, so a
+  report that calls DIA "short gamma" would be asserting something the validation document
+  says we cannot support. Cite §9 in the code comment.
+- **Support / resistance levels** — from `top_positive` / `top_negative` and the walls, with
+  distance from spot as a percentage. Resistance must never sort below support; if the
+  computed sets overlap, that is a real condition (gamma concentrated on both sides of spot)
+  and must be labelled, not silently reordered the way the example file does.
+- **Premium-selling candidates** — OTM contracts beyond the walls within a DTE window, with
+  mid price, IV and DTE. **This is the one sanctioned `engine.py` change:** add `bid` and
+  `ask` to `FRAME_COLUMNS` and populate them in `to_frame`. They exist on `OptionContract`
+  and in Parquet but are not currently in the frame. Additive only — add the two columns and
+  nothing else, and confirm every existing engine test still passes.
+- **Playbook and risk alerts** — deterministic triggers derived from the computed levels
+  (break above call wall, break below put wall, the range between, proximity to flip). Every
+  number must trace to a computed level. No invented targets or stops.
+
+Also render the report as **plain text** (`render_text(result) -> str`) following the section
+order of `context/example-report.md`, so the report exists outside the browser. Keep the
+renderer separate from the computation.
+
+Expose it as `GET /api/report/{underlying}?filter=` in a new `backend/app/api/report.py`,
+returning the structured result; add `?format=text` for the rendered text. Reuse the stored
+snapshot the way `api/gex.py` does — do not recompute from Parquet if the levels are already
+persisted, and do not add a table.
+
+`PLAN.md` §2's "Purpose: analysis and charts only. No order routing." line needs amending:
+the user explicitly asked for the playbook and premium-selling sections on 2026-09-05, after
+the supervisor flagged that they cut against that line. Record that the app now emits trade
+*suggestions* while still never routing an order. Do not quietly leave the scope line
+contradicted.
+
+Acceptance: `report.py` is import-clean of I/O; unit tests pin max pain, the P/C ratios and
+the ATM IV against a fixture chain with hand-checked values; a DIA fixture asserts the
+positioning label is the noise-dominated one; the IV regime label is `None` on a
+single-snapshot database; `GET /api/report/GLD` returns numbers matching a direct
+`compute_all` + `report` call; `render_text` output is snapshot-tested.
+
+---
+
+### T40 · Sonnet · T39
+**Report view**
+
+Render T39's output as a new `/report` route, matching the supplied screenshot's layout.
+
+- Header `{SYMBOL} Analysis Results`, then three summary cards: **Current Price**,
+  **Volatility** (the ATM IV and its regime label, or "insufficient history"), **Market
+  Sentiment** (P/C ratio and the positioning label).
+- **Top Resistance Levels** and **Top Support Levels** as chips, red and green respectively,
+  each showing the strike and its distance from spot.
+- A collapsible **View Full Report** panel containing T39's rendered text in a monospace
+  block, scrollable, with a copy-to-clipboard affordance.
+- Reuse the existing URL state (`state/urlState.ts`) for symbol and filter so
+  `/report?symbol=GLD` deep-links, exactly as the dashboard and history pages do. Add the
+  route to `AppShell`'s nav.
+- Reuse `lib/format.ts` and `theme/vizPalette.ts`. The red/green chips must come from the viz
+  palette, not inline hex, so both themes stay correct.
+- Empty and error states follow T37: a symbol with no snapshot renders the empty state with a
+  capture affordance, never raw JSON.
+- Add MSW handlers and fixtures for the new endpoint.
+
+The report contains trade suggestions. Label the premium-selling and playbook sections as
+screening output computed from the current chain, not as recommendations, and surface the
+data-freshness badge (T34) on the report page too — a playbook drawn from a stale chain is
+worse than no playbook.
+
+Acceptance: `/report?symbol=GLD` and `?symbol=DIA` render every section end to end against
+the mocks; DIA visibly shows the noise-dominated positioning label rather than a direction;
+`npm test`, `npm run lint` and `tsc -b` pass.
+
+---
+
 ## Model assignment summary
 
 | Model | Tasks |
 |---|---|
-| Opus | T01, T07, T08, T10, T21, T23, T25, T33 |
+| Opus | T01, T07, T08, T10, T21, T23, T25, T33, T39 |
 | Opus (review) | T06, T17, T24 |
-| Sonnet | T00, T02–T05, T09, T11–T16, T18–T20, T22, T26–T32, T34–T38 |
+| Sonnet | T00, T02–T05, T09, T11–T16, T18–T20, T22, T26–T32, T34–T38, T40 |
 
 Parallelizable groups once their dependency is done: {T02, T03, T04} after T01; {T12} alongside all of Phase 1; {T13, T14} after T12; {T27, T28} anytime.
 
