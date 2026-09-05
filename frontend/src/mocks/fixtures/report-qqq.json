@@ -1,0 +1,239 @@
+{
+  "underlying": "QQQ",
+  "filter": "ALL",
+  "spot": 716.77,
+  "generated_at": "2026-09-04T18:18:20Z",
+  "snapshot": {
+    "id": 3,
+    "is_eod": true,
+    "underlying": "QQQ",
+    "spot": 716.77,
+    "captured_at": "2026-09-04T18:18:20Z",
+    "source": "cboe",
+    "delayed_minutes": 15,
+    "contract_count": 111,
+    "effective_at": "2026-09-04T18:18:20Z"
+  },
+  "max_pain": {
+    "strike": 717.0,
+    "distance": 0.2300000000000182,
+    "distance_pct": 0.03208839655677807,
+    "total_pain": 26778500.0,
+    "strikes_evaluated": 44,
+    "contracts": 111,
+    "open_interest": 165483
+  },
+  "ratios": {
+    "call_open_interest": 85001,
+    "put_open_interest": 80482,
+    "total_open_interest": 165483,
+    "open_interest_ratio": 0.9468359195774168,
+    "call_volume": 1895575,
+    "put_volume": 1862179,
+    "total_volume": 3757754,
+    "volume_ratio": 0.9823821267952996,
+    "call_contracts": 57,
+    "put_contracts": 54,
+    "missing_open_interest": 0,
+    "missing_volume": 0
+  },
+  "iv_regime": {
+    "atm_iv": 0.1843308360280001,
+    "target_dte": 30,
+    "lower_dte": 0,
+    "upper_dte": 56,
+    "interpolated": true,
+    "contracts": 74,
+    "label": null,
+    "history_observations": 0,
+    "min_history_required": 20
+  },
+  "positioning": {
+    "net_gex": -600947819.6404238,
+    "abs_gex": 7299550863.065446,
+    "ratio": 0.0823266843280897,
+    "ratio_floor": 0.03,
+    "noise_dominated": false,
+    "direction": "SHORT",
+    "label": "SHORT GAMMA",
+    "description": "Dealers are net short gamma (8.2% of gross). Hedging chases the move, which tends to amplify it."
+  },
+  "levels": {
+    "resistance": [
+      {
+        "strike": 719.0,
+        "net_gex": 63836585.1724817,
+        "abs_gex": 372328215.26481956,
+        "open_interest": 9907,
+        "distance": 2.230000000000018,
+        "distance_pct": 0.31111793183308706,
+        "side": "RESISTANCE",
+        "above_spot": true
+      },
+      {
+        "strike": 720.0,
+        "net_gex": 247442263.91940978,
+        "abs_gex": 299526079.86785525,
+        "open_interest": 22980,
+        "distance": 3.230000000000018,
+        "distance_pct": 0.45063269947124157,
+        "side": "RESISTANCE",
+        "above_spot": true
+      },
+      {
+        "strike": 721.0,
+        "net_gex": 35815917.87674253,
+        "abs_gex": 37086327.09826684,
+        "open_interest": 4602,
+        "distance": 4.230000000000018,
+        "distance_pct": 0.5901474671093961,
+        "side": "RESISTANCE",
+        "above_spot": true
+      },
+      {
+        "strike": 722.0,
+        "net_gex": 54596572.27553311,
+        "abs_gex": 55879300.48102626,
+        "open_interest": 9707,
+        "distance": 5.230000000000018,
+        "distance_pct": 0.7296622347475505,
+        "side": "RESISTANCE",
+        "above_spot": true
+      }
+    ],
+    "support": [
+      {
+        "strike": 716.0,
+        "net_gex": -249856804.80269438,
+        "abs_gex": 859383841.4542123,
+        "open_interest": 7530,
+        "distance": -0.7699999999999818,
+        "distance_pct": -0.10742637108137641,
+        "side": "SUPPORT",
+        "above_spot": false
+      },
+      {
+        "strike": 713.0,
+        "net_gex": -37031030.86059138,
+        "abs_gex": 154782372.28760302,
+        "open_interest": 9441,
+        "distance": -3.769999999999982,
+        "distance_pct": -0.52597067399584,
+        "side": "SUPPORT",
+        "above_spot": false
+      },
+      {
+        "strike": 712.5,
+        "net_gex": -8537223.907486573,
+        "abs_gex": 56620519.02921144,
+        "open_interest": 4135,
+        "distance": -4.269999999999982,
+        "distance_pct": -0.5957280578149171,
+        "side": "SUPPORT",
+        "above_spot": false
+      }
+    ],
+    "straddling": [
+      {
+        "strike": 717.0,
+        "net_gex": -420906420.8793198,
+        "abs_gex": 1266028215.6785192,
+        "open_interest": 9114,
+        "distance": 0.2300000000000182,
+        "distance_pct": 0.03208839655677807,
+        "side": "STRADDLING",
+        "above_spot": true
+      },
+      {
+        "strike": 718.0,
+        "net_gex": -367379207.48110706,
+        "abs_gex": 1372260315.2900212,
+        "open_interest": 14121,
+        "distance": 1.2300000000000182,
+        "distance_pct": 0.17160316419493257,
+        "side": "STRADDLING",
+        "above_spot": true
+      },
+      {
+        "strike": 715.0,
+        "net_gex": 78160575.48013005,
+        "abs_gex": 1701711874.225394,
+        "open_interest": 26990,
+        "distance": -1.7699999999999818,
+        "distance_pct": -0.2469411387195309,
+        "side": "STRADDLING",
+        "above_spot": false
+      }
+    ],
+    "overlapping": true,
+    "overlap_note": "Gamma is concentrated on both sides of spot: 717, 718, 715 carries net gamma of the sign normally found on the other side of the market. These strikes are listed separately rather than sorted into support or resistance, because either placement would misdescribe them.",
+    "call_wall": 720.0,
+    "put_wall": 717.0,
+    "flip_point": 718.0196434179306
+  },
+  "premium": {
+    "calls": [],
+    "puts": [],
+    "dte_min": 7,
+    "dte_max": 45,
+    "call_boundary": 720.0,
+    "put_boundary": 717.0,
+    "note": "No quoted contracts between 7 and 45 DTE in this expiry scope."
+  },
+  "playbook": {
+    "entries": [
+      {
+        "key": "BULLISH_BREAKOUT",
+        "name": "Upside break",
+        "trigger": 720.0,
+        "trigger_label": "call wall",
+        "target": 721.0,
+        "target_label": "next resistance strike above the call wall",
+        "invalidation": 716.0,
+        "invalidation_label": "nearest support strike below spot",
+        "strategy": "Long calls or call spreads."
+      },
+      {
+        "key": "BEARISH_BREAKDOWN",
+        "name": "Downside break",
+        "trigger": 717.0,
+        "trigger_label": "put wall",
+        "target": 716.0,
+        "target_label": "next support strike below the put wall",
+        "invalidation": 719.0,
+        "invalidation_label": "nearest resistance strike above spot",
+        "strategy": "Long puts or put spreads."
+      }
+    ],
+    "range_low": null,
+    "range_high": null,
+    "range_magnet": null,
+    "spot_in_range": false
+  },
+  "alerts": [
+    {
+      "code": "FLIP_PROXIMITY",
+      "severity": "WARNING",
+      "message": "Spot is within 1% of the gamma flip at 718.02. Dealer hedging changes character across this level.",
+      "level": 718.0196434179306
+    },
+    {
+      "code": "SPOT_BELOW_PUT_WALL",
+      "severity": "WARNING",
+      "message": "Spot is already below the 717 put wall, so the largest negative-gamma strike is above the market rather than below it.",
+      "level": 717.0
+    },
+    {
+      "code": "LEVELS_OVERLAP",
+      "severity": "INFO",
+      "message": "Gamma is concentrated on both sides of spot: 717, 718, 715 carries net gamma of the sign normally found on the other side of the market. These strikes are listed separately rather than sorted into support or resistance, because either placement would misdescribe them.",
+      "level": null
+    }
+  ],
+  "summary": [
+    "Dealers are net short gamma (8.2% of gross). Hedging chases the move, which tends to amplify it.",
+    "The computed walls bracket 717 to 720, against a spot of 716.77.",
+    "Open interest is centred on 717 (max pain), +0.03 % from spot.",
+    "ATM 30-day implied vol is 18.4%. No regime label: that needs at least 20 prior snapshots to compare against and there are 0."
+  ]
+}

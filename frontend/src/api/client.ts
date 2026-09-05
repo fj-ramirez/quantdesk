@@ -8,6 +8,7 @@ import type {
   ExpiryFilter,
   GexResult,
   LevelHistoryRow,
+  Report,
   SnapshotSummary,
   Underlying,
 } from './types';
@@ -22,13 +23,44 @@ export const API_BASE_URL: string =
 export class ApiError extends Error {
   readonly status: number;
   readonly url: string;
+  /** The backend's parsed `detail` string, when the body was a FastAPI error envelope.
+   *
+   * Exists so no caller ever has to interpolate a raw response body into the UI. T37's whole
+   * bug was `Failed to load SPY GEX: {"detail":"no snapshot captured yet for SPY"}` rendered
+   * verbatim on the page: the envelope was never parsed, so the JSON reached the screen.
+   * `message` is kept as the human-readable text (the detail when there is one), and `detail`
+   * is exposed separately for code that needs to *match* on it -- distinguishing "no snapshot
+   * yet", which is an empty state, from a genuine server failure, which is an error. */
+  readonly detail: string | null;
 
-  constructor(status: number, url: string, message: string) {
+  constructor(status: number, url: string, message: string, detail: string | null = null) {
     super(message);
     this.name = 'ApiError';
     this.status = status;
     this.url = url;
+    this.detail = detail;
   }
+}
+
+/** Pull `detail` out of a FastAPI error envelope, tolerating anything that is not one.
+ *
+ * FastAPI's `HTTPException` serializes as `{"detail": "..."}`, but a validation error makes
+ * `detail` an array of objects and a proxy or a crashed worker may return HTML or nothing at
+ * all. Only a plain string is treated as a displayable detail; everything else falls back to
+ * the status text, so a non-string can never be stringified onto the screen as `[object
+ * Object]`. */
+function parseErrorDetail(body: string): string | null {
+  if (!body) return null;
+  try {
+    const parsed: unknown = JSON.parse(body);
+    if (parsed && typeof parsed === 'object' && 'detail' in parsed) {
+      const detail = (parsed as { detail: unknown }).detail;
+      if (typeof detail === 'string') return detail;
+    }
+  } catch {
+    // Not JSON -- an HTML error page or a truncated body. Nothing displayable in it.
+  }
+  return null;
 }
 
 type QueryParams = Record<string, string | number | boolean | undefined>;
@@ -48,7 +80,34 @@ async function apiFetch<T>(path: string, params?: QueryParams): Promise<T> {
   const res = await fetch(url);
   if (!res.ok) {
     const body = await res.text().catch(() => '');
-    throw new ApiError(res.status, url, body || res.statusText);
+    const detail = parseErrorDetail(body);
+    // Never `body` -- see `ApiError.detail`. An unparseable body degrades to the status
+    // text, which is always safe to show.
+    throw new ApiError(res.status, url, detail ?? res.statusText, detail);
+  }
+  return (await res.json()) as T;
+}
+
+/** Same error contract as `apiFetch`, but returns the body as text rather than parsing JSON.
+ * Used for `GET /api/report/{underlying}?format=text`. */
+async function apiFetchText(path: string, params?: QueryParams): Promise<string> {
+  const url = buildUrl(path, params);
+  const res = await fetch(url);
+  if (!res.ok) {
+    const body = await res.text().catch(() => '');
+    const detail = parseErrorDetail(body);
+    throw new ApiError(res.status, url, detail ?? res.statusText, detail);
+  }
+  return await res.text();
+}
+
+async function apiPost<T>(path: string, params?: QueryParams): Promise<T> {
+  const url = buildUrl(path, params);
+  const res = await fetch(url, { method: 'POST' });
+  if (!res.ok) {
+    const body = await res.text().catch(() => '');
+    const detail = parseErrorDetail(body);
+    throw new ApiError(res.status, url, detail ?? res.statusText, detail);
   }
   return (await res.json()) as T;
 }
@@ -80,5 +139,22 @@ export const apiClient = {
 
   snapshots(underlying: Underlying, limit = 30): Promise<SnapshotSummary[]> {
     return apiFetch<SnapshotSummary[]>('/api/snapshots', { underlying, limit });
+  },
+
+  report(underlying: Underlying, filter: ExpiryFilter): Promise<Report> {
+    return apiFetch<Report>(`/api/report/${underlying}`, { filter });
+  },
+
+  /** The same report rendered as plain text by the backend (`app.gex.report.render_text`).
+   * Fetched rather than reassembled in the browser so the copyable text and the on-screen
+   * numbers can never drift apart. */
+  reportText(underlying: Underlying, filter: ExpiryFilter): Promise<string> {
+    return apiFetchText(`/api/report/${underlying}`, { filter, format: 'text' });
+  },
+
+  /** T37's "Capture now" affordance. The only non-GET call in this client; it takes roughly
+   * two seconds against the live Cboe endpoint. */
+  captureSnapshot(underlying: Underlying): Promise<unknown> {
+    return apiPost(`/api/snapshots/capture`, { underlying });
   },
 };

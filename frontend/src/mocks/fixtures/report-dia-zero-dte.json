@@ -1,0 +1,121 @@
+{
+  "underlying": "DIA",
+  "filter": "ZERO_DTE",
+  "spot": 532.34,
+  "generated_at": "2026-09-04T21:20:31Z",
+  "snapshot": {
+    "id": 5,
+    "is_eod": true,
+    "underlying": "DIA",
+    "spot": 532.34,
+    "captured_at": "2026-09-04T21:20:31Z",
+    "source": "cboe",
+    "delayed_minutes": 15,
+    "contract_count": 5028,
+    "effective_at": "2026-09-04T20:15:00Z"
+  },
+  "max_pain": {
+    "strike": null,
+    "distance": null,
+    "distance_pct": null,
+    "total_pain": null,
+    "strikes_evaluated": 0,
+    "contracts": 0,
+    "open_interest": 0
+  },
+  "ratios": {
+    "call_open_interest": 0,
+    "put_open_interest": 0,
+    "total_open_interest": 0,
+    "open_interest_ratio": null,
+    "call_volume": 0,
+    "put_volume": 0,
+    "total_volume": 0,
+    "volume_ratio": null,
+    "call_contracts": 0,
+    "put_contracts": 0,
+    "missing_open_interest": 0,
+    "missing_volume": 0
+  },
+  "iv_regime": {
+    "atm_iv": null,
+    "target_dte": 30,
+    "lower_dte": null,
+    "upper_dte": null,
+    "interpolated": false,
+    "contracts": 0,
+    "label": null,
+    "history_observations": 0,
+    "min_history_required": 20
+  },
+  "positioning": {
+    "net_gex": 0.0,
+    "abs_gex": 0.0,
+    "ratio": null,
+    "ratio_floor": 0.03,
+    "noise_dominated": true,
+    "direction": null,
+    "label": "NO DATA",
+    "description": "No contracts in scope, so there is no dealer position to report."
+  },
+  "levels": {
+    "resistance": [],
+    "support": [],
+    "straddling": [],
+    "overlapping": false,
+    "overlap_note": null,
+    "call_wall": null,
+    "put_wall": null,
+    "flip_point": null
+  },
+  "premium": {
+    "calls": [],
+    "puts": [],
+    "dte_min": 7,
+    "dte_max": 45,
+    "call_boundary": null,
+    "put_boundary": null,
+    "note": "No walls were computed for this filter, so there is no boundary to screen beyond."
+  },
+  "playbook": {
+    "entries": [
+      {
+        "key": "BULLISH_BREAKOUT",
+        "name": "Upside break",
+        "trigger": null,
+        "trigger_label": "call wall",
+        "target": null,
+        "target_label": "next resistance strike above the call wall",
+        "invalidation": null,
+        "invalidation_label": "nearest support strike below spot",
+        "strategy": "Long calls or call spreads."
+      },
+      {
+        "key": "BEARISH_BREAKDOWN",
+        "name": "Downside break",
+        "trigger": null,
+        "trigger_label": "put wall",
+        "target": null,
+        "target_label": "next support strike below the put wall",
+        "invalidation": null,
+        "invalidation_label": "nearest resistance strike above spot",
+        "strategy": "Long puts or put spreads."
+      }
+    ],
+    "range_low": null,
+    "range_high": null,
+    "range_magnet": null,
+    "spot_in_range": false
+  },
+  "alerts": [
+    {
+      "code": "EMPTY_SCOPE",
+      "severity": "INFO",
+      "message": "The ZERO_DTE filter admitted no contracts, so every level in this report is empty. On an end-of-day capture this is the normal result for a 0DTE filter — same-day contracts have already expired.",
+      "level": null
+    }
+  ],
+  "summary": [
+    "Dealer positioning is not readable on this chain. No contracts in scope, so there is no dealer position to report."
+  ]
+}

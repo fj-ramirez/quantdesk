@@ -1,0 +1,369 @@
+{
+  "underlying": "SPY",
+  "filter": "ALL",
+  "spot": 770.19,
+  "generated_at": "2026-09-05T06:00:28Z",
+  "snapshot": {
+    "id": 2,
+    "is_eod": true,
+    "underlying": "SPY",
+    "spot": 770.19,
+    "captured_at": "2026-09-05T06:00:28Z",
+    "source": "cboe",
+    "delayed_minutes": 15,
+    "contract_count": 12456,
+    "effective_at": "2026-09-04T20:15:00Z"
+  },
+  "max_pain": {
+    "strike": 755.0,
+    "distance": -15.190000000000055,
+    "distance_pct": -1.972240615951915,
+    "total_pain": 11237347000.0,
+    "strikes_evaluated": 483,
+    "contracts": 11966,
+    "open_interest": 18650372
+  },
+  "ratios": {
+    "call_open_interest": 5207189,
+    "put_open_interest": 13443183,
+    "total_open_interest": 18650372,
+    "open_interest_ratio": 2.581658357321004,
+    "call_volume": 1080053,
+    "put_volume": 1628656,
+    "total_volume": 2708709,
+    "volume_ratio": 1.5079408140156085,
+    "call_contracts": 5983,
+    "put_contracts": 5983,
+    "missing_open_interest": 0,
+    "missing_volume": 0
+  },
+  "iv_regime": {
+    "atm_iv": 0.11628417314866066,
+    "target_dte": 30,
+    "lower_dte": 27,
+    "upper_dte": 34,
+    "interpolated": true,
+    "contracts": 2693,
+    "label": null,
+    "history_observations": 0,
+    "min_history_required": 20
+  },
+  "positioning": {
+    "net_gex": -1845243009.281391,
+    "abs_gex": 38662511558.39208,
+    "ratio": 0.047726930685672506,
+    "ratio_floor": 0.03,
+    "noise_dominated": false,
+    "direction": "SHORT",
+    "label": "SHORT GAMMA",
+    "description": "Dealers are net short gamma (4.8% of gross). Hedging chases the move, which tends to amplify it."
+  },
+  "levels": {
+    "resistance": [
+      {
+        "strike": 775.0,
+        "net_gex": 671289263.3401363,
+        "abs_gex": 1763733140.8879972,
+        "open_interest": 174573,
+        "distance": 4.809999999999945,
+        "distance_pct": 0.6245212220361138,
+        "side": "RESISTANCE",
+        "above_spot": true
+      },
+      {
+        "strike": 779.0,
+        "net_gex": 668148332.2609822,
+        "abs_gex": 765861617.8432257,
+        "open_interest": 59213,
+        "distance": 8.809999999999945,
+        "distance_pct": 1.1438735896337195,
+        "side": "RESISTANCE",
+        "above_spot": true
+      },
+      {
+        "strike": 780.0,
+        "net_gex": 1016009247.9173858,
+        "abs_gex": 1461243795.4914188,
+        "open_interest": 188427,
+        "distance": 9.809999999999945,
+        "distance_pct": 1.273711681533121,
+        "side": "RESISTANCE",
+        "above_spot": true
+      },
+      {
+        "strike": 790.0,
+        "net_gex": 800398681.057924,
+        "abs_gex": 895490881.5306919,
+        "open_interest": 160802,
+        "distance": 19.809999999999945,
+        "distance_pct": 2.5720926005271356,
+        "side": "RESISTANCE",
+        "above_spot": true
+      },
+      {
+        "strike": 800.0,
+        "net_gex": 793543967.6447108,
+        "abs_gex": 898698042.3037425,
+        "open_interest": 255369,
+        "distance": 29.809999999999945,
+        "distance_pct": 3.8704735195211497,
+        "side": "RESISTANCE",
+        "above_spot": true
+      }
+    ],
+    "support": [
+      {
+        "strike": 760.0,
+        "net_gex": -1440699513.9754155,
+        "abs_gex": 2523366674.929806,
+        "open_interest": 291448,
+        "distance": -10.190000000000055,
+        "distance_pct": -1.3230501564549078,
+        "side": "SUPPORT",
+        "above_spot": false
+      },
+      {
+        "strike": 755.0,
+        "net_gex": -868372850.8114867,
+        "abs_gex": 1438988096.854978,
+        "open_interest": 210613,
+        "distance": -15.190000000000055,
+        "distance_pct": -1.972240615951915,
+        "side": "SUPPORT",
+        "above_spot": false
+      },
+      {
+        "strike": 750.0,
+        "net_gex": -583105149.2289764,
+        "abs_gex": 1551121365.6225066,
+        "open_interest": 329580,
+        "distance": -20.190000000000055,
+        "distance_pct": -2.621431075448922,
+        "side": "SUPPORT",
+        "above_spot": false
+      },
+      {
+        "strike": 740.0,
+        "net_gex": -445306565.0225114,
+        "abs_gex": 709679522.0699357,
+        "open_interest": 212956,
+        "distance": -30.190000000000055,
+        "distance_pct": -3.9198119944429366,
+        "side": "SUPPORT",
+        "above_spot": false
+      },
+      {
+        "strike": 700.0,
+        "net_gex": -333428831.1450102,
+        "abs_gex": 481445647.1498101,
+        "open_interest": 351796,
+        "distance": -70.19000000000005,
+        "distance_pct": -9.113335670418994,
+        "side": "SUPPORT",
+        "above_spot": false
+      }
+    ],
+    "straddling": [],
+    "overlapping": false,
+    "overlap_note": null,
+    "call_wall": 780.0,
+    "put_wall": 760.0,
+    "flip_point": 771.9861892626739
+  },
+  "premium": {
+    "calls": [
+      {
+        "occ_symbol": "SPY261016C00780000",
+        "strike": 780.0,
+        "right": "C",
+        "expiry": "2026-10-16",
+        "dte": 41,
+        "bid": 8.15,
+        "ask": 8.17,
+        "mid": 8.16,
+        "iv": 0.114,
+        "open_interest": 5975,
+        "distance_pct": 1.273711681533121
+      },
+      {
+        "occ_symbol": "SPY261016C00781000",
+        "strike": 781.0,
+        "right": "C",
+        "expiry": "2026-10-16",
+        "dte": 41,
+        "bid": 7.69,
+        "ask": 7.73,
+        "mid": 7.710000000000001,
+        "iv": 0.1133,
+        "open_interest": 2176,
+        "distance_pct": 1.4035497734325224
+      },
+      {
+        "occ_symbol": "SPY261016C00782000",
+        "strike": 782.0,
+        "right": "C",
+        "expiry": "2026-10-16",
+        "dte": 41,
+        "bid": 7.27,
+        "ask": 7.3,
+        "mid": 7.285,
+        "iv": 0.1126,
+        "open_interest": 1422,
+        "distance_pct": 1.533387865331924
+      },
+      {
+        "occ_symbol": "SPY261016C00783000",
+        "strike": 783.0,
+        "right": "C",
+        "expiry": "2026-10-16",
+        "dte": 41,
+        "bid": 6.88,
+        "ask": 6.89,
+        "mid": 6.885,
+        "iv": 0.112,
+        "open_interest": 1002,
+        "distance_pct": 1.6632259572313253
+      },
+      {
+        "occ_symbol": "SPY261009C00780000",
+        "strike": 780.0,
+        "right": "C",
+        "expiry": "2026-10-09",
+        "dte": 34,
+        "bid": 6.56,
+        "ask": 6.58,
+        "mid": 6.57,
+        "iv": 0.1101,
+        "open_interest": 482,
+        "distance_pct": 1.273711681533121
+      }
+    ],
+    "puts": [
+      {
+        "occ_symbol": "SPY261016P00760000",
+        "strike": 760.0,
+        "right": "P",
+        "expiry": "2026-10-16",
+        "dte": 41,
+        "bid": 8.86,
+        "ask": 8.9,
+        "mid": 8.879999999999999,
+        "iv": 0.1317,
+        "open_interest": 14779,
+        "distance_pct": -1.3230501564549078
+      },
+      {
+        "occ_symbol": "SPY261016P00759000",
+        "strike": 759.0,
+        "right": "P",
+        "expiry": "2026-10-16",
+        "dte": 41,
+        "bid": 8.58,
+        "ask": 8.62,
+        "mid": 8.6,
+        "iv": 0.1327,
+        "open_interest": 1577,
+        "distance_pct": -1.452888248354309
+      },
+      {
+        "occ_symbol": "SPY261016P00758000",
+        "strike": 758.0,
+        "right": "P",
+        "expiry": "2026-10-16",
+        "dte": 41,
+        "bid": 8.3,
+        "ask": 8.33,
+        "mid": 8.315000000000001,
+        "iv": 0.1336,
+        "open_interest": 2141,
+        "distance_pct": -1.5827263402537106
+      },
+      {
+        "occ_symbol": "SPY261016P00757000",
+        "strike": 757.0,
+        "right": "P",
+        "expiry": "2026-10-16",
+        "dte": 41,
+        "bid": 8.04,
+        "ask": 8.08,
+        "mid": 8.059999999999999,
+        "iv": 0.1347,
+        "open_interest": 24869,
+        "distance_pct": -1.712564432153112
+      },
+      {
+        "occ_symbol": "SPY261016P00756000",
+        "strike": 756.0,
+        "right": "P",
+        "expiry": "2026-10-16",
+        "dte": 41,
+        "bid": 7.79,
+        "ask": 7.83,
+        "mid": 7.8100000000000005,
+        "iv": 0.1358,
+        "open_interest": 878,
+        "distance_pct": -1.8424025240525135
+      }
+    ],
+    "dte_min": 7,
+    "dte_max": 45,
+    "call_boundary": 780.0,
+    "put_boundary": 760.0,
+    "note": null
+  },
+  "playbook": {
+    "entries": [
+      {
+        "key": "BULLISH_BREAKOUT",
+        "name": "Upside break",
+        "trigger": 780.0,
+        "trigger_label": "call wall",
+        "target": 790.0,
+        "target_label": "next resistance strike above the call wall",
+        "invalidation": 760.0,
+        "invalidation_label": "nearest support strike below spot",
+        "strategy": "Long calls or call spreads."
+      },
+      {
+        "key": "BEARISH_BREAKDOWN",
+        "name": "Downside break",
+        "trigger": 760.0,
+        "trigger_label": "put wall",
+        "target": 755.0,
+        "target_label": "next support strike below the put wall",
+        "invalidation": 775.0,
+        "invalidation_label": "nearest resistance strike above spot",
+        "strategy": "Long puts or put spreads."
+      },
+      {
+        "key": "RANGE_BOUND",
+        "name": "Range",
+        "trigger": 755.0,
+        "trigger_label": "max pain, the strike open interest is centred on",
+        "target": 780.0,
+        "target_label": "call wall (upper bound)",
+        "invalidation": 760.0,
+        "invalidation_label": "put wall (lower bound)",
+        "strategy": "Range structures such as iron condors or butterflies."
+      }
+    ],
+    "range_low": 760.0,
+    "range_high": 780.0,
+    "range_magnet": 755.0,
+    "spot_in_range": true
+  },
+  "alerts": [
+    {
+      "code": "FLIP_PROXIMITY",
+      "severity": "WARNING",
+      "message": "Spot is within 1% of the gamma flip at 771.99. Dealer hedging changes character across this level.",
+      "level": 771.9861892626739
+    }
+  ],
+  "summary": [
+    "Dealers are net short gamma (4.8% of gross). Hedging chases the move, which tends to amplify it.",
+    "The computed walls bracket 760 to 780, against a spot of 770.19.",
+    "Open interest is centred on 755 (max pain), -1.97 % from spot.",
+    "ATM 30-day implied vol is 11.6%. No regime label: that needs at least 20 prior snapshots to compare against and there are 0."
+  ]
+}

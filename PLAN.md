@@ -11,7 +11,25 @@ Scope agreed on 2026-09-04:
   and sensitive to the carry parameter (see §1's Recommendation and `docs/validation.md`)
   until T33 fits the carry from parity; its per-strike walls are unaffected.
 - Freshness: end-of-day first, then 15-min delayed intraday, then real-time.
-- Purpose: analysis and charts only. No order routing.
+- Purpose: analysis and charts only. **No order routing, ever.**
+
+  **Amended 2026-09-05 (T39).** This line originally read "analysis and charts only" with no
+  qualification, and the report view the user asked for on 2026-09-05 — an "options
+  intelligence" report with a premium-selling screen and a trading playbook — cuts against it.
+  The supervisor flagged the contradiction rather than letting it stand silently, and the user
+  confirmed they want those sections. So the scope is now stated precisely:
+
+  - The app **emits trade suggestions**: screening output computed from the current chain
+    ("these quoted contracts sit beyond the computed walls in this DTE window") and
+    deterministic scenarios built from computed levels ("this wall is the level an upside
+    break would cross"). `app/gex/report.py` produces them and every renderer labels them as
+    screening output, never as recommendations.
+  - The app **still never routes, places, modifies or cancels an order**, and holds no broker
+    credentials. That half of the line is not negotiable and is not weakened by the above.
+  - Every number in a suggestion traces to a computed level. Where no computed level exists,
+    the field is null and the UI shows a dash — the report never fills a target or a stop with
+    a percentage of spot or a rule of thumb (see `app/gex/report.py`'s module docstring for
+    the example-report failures this rule was written against).
 - Stack: Python backend + React frontend. Data budget under $50/month.
 
 ---

@@ -204,6 +204,13 @@ DEFAULT_PROFILE_STEP = 0.001
 DEFAULT_TOP_N = 5
 
 #: Columns :func:`to_frame` guarantees. Anything downstream may rely on these names.
+#:
+#: ``bid``/``ask`` were added by T39 and are the only columns here that no GEX aggregate
+#: reads. They exist because :mod:`app.gex.report`'s premium-selling screen needs a mid
+#: price per contract, and the alternative -- a second pass over ``snapshot.contracts``
+#: alongside the frame -- would have given the report a different contract population than
+#: every other figure in it. They were already on ``OptionContract`` and in Parquet; only
+#: the frame was missing them. Purely additive: nothing in this module consumes them.
 FRAME_COLUMNS = (
     "occ_symbol",
     "root",
@@ -217,6 +224,8 @@ FRAME_COLUMNS = (
     "vendor_gamma",
     "multiplier",
     "volume",
+    "bid",
+    "ask",
     "t",
     "dte",
     "expired",
@@ -636,10 +645,10 @@ def to_frame(snapshot: ChainSnapshot, *, now: dt.datetime | None = None) -> pd.D
       :func:`by_strike` and friends need no clock of their own.
     * ``sign`` — the dealer sign, +1 for calls and −1 for puts.
 
-    ``open_interest``, ``iv``, ``vendor_gamma`` and ``volume`` are float columns carrying
-    ``NaN`` where the vendor reported ``None``. That is deliberate: pandas has no nullable
-    int that survives a NumPy round trip cleanly, and ``NaN`` keeps the "unknown" state
-    distinguishable from a real ``0`` (which stays ``0.0``).
+    ``open_interest``, ``iv``, ``vendor_gamma``, ``volume``, ``bid`` and ``ask`` are float
+    columns carrying ``NaN`` where the vendor reported ``None``. That is deliberate: pandas
+    has no nullable int that survives a NumPy round trip cleanly, and ``NaN`` keeps the
+    "unknown" state distinguishable from a real ``0`` (which stays ``0.0``).
 
     Args:
         snapshot: The chain to flatten. May be empty.
@@ -667,6 +676,8 @@ def to_frame(snapshot: ChainSnapshot, *, now: dt.datetime | None = None) -> pd.D
             np.nan if c.gamma is None else float(c.gamma),
             float(c.multiplier),
             np.nan if c.volume is None else float(c.volume),
+            np.nan if c.bid is None else float(c.bid),
+            np.nan if c.ask is None else float(c.ask),
         )
         for c in snapshot.contracts
     ]
@@ -685,6 +696,8 @@ def to_frame(snapshot: ChainSnapshot, *, now: dt.datetime | None = None) -> pd.D
             "vendor_gamma",
             "multiplier",
             "volume",
+            "bid",
+            "ask",
         ],
     )
 

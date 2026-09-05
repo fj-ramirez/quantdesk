@@ -14,6 +14,22 @@
  * Validated: `node scripts/validate_palette.js "<8 hex>" --mode light|dark` on the full
  * documented 8-slot order (this file only draws slots 1–2) — all six checks pass in both
  * modes; worst adjacent CVD ΔE 9.1 light / 8.4 dark, both clear of the >=8 target.
+ *
+ * **T40 addition -- `levelResistance` / `levelSupport`.** The report page's support and
+ * resistance chips were specified as red and green. Two things are worth recording about
+ * that pair, because it is the one set of colors here that was NOT run through the validator
+ * above (`scripts/validate_palette.js` came from the dataviz skill and is not vendored in
+ * this repo, so re-running it was not possible):
+ *
+ *   - Red/green is the canonical red-green colour-vision-deficiency failure, so colour is
+ *     never the only channel carrying "support" versus "resistance" on that page. Each chip
+ *     is inside a section with a written heading, and each carries a visible `+`/`-` signed
+ *     distance. A viewer who cannot separate the two hues still reads the levels correctly.
+ *   - They are used as **border and dot only, never as text colour**, following the same rule
+ *     the diverging pair above states. That matters concretely: the light-mode red is
+ *     3.85:1 against the light surface, below the 4.5:1 needed for text. As non-text UI
+ *     components all four clear 3:1 comfortably (light red 3.85, light green 5.23, dark red
+ *     5.39, dark green 6.19), and the chip's own text uses `textPrimary`.
  */
 export interface VizPalette {
   surface: string;
@@ -30,6 +46,12 @@ export interface VizPalette {
   divergingPositive: string;
   /** Diverging pole, negative/short-gamma side. Sign cue only, never text color. */
   divergingNegative: string;
+  /** T40 semantic role: a resistance level (a strike price would have to break *upward*
+   * through). Sign cue only -- border and dot, never text color, same rule as the diverging
+   * pair above. */
+  levelResistance: string;
+  /** T40 semantic role: a support level. See `levelResistance`. */
+  levelSupport: string;
 }
 
 export const VIZ_PALETTE_LIGHT: VizPalette = {
@@ -43,6 +65,8 @@ export const VIZ_PALETTE_LIGHT: VizPalette = {
   seriesExZeroDte: '#eb6834',
   divergingPositive: '#2a78d6',
   divergingNegative: '#e34948',
+  levelResistance: '#e34948',
+  levelSupport: '#1f7a3d',
 };
 
 export const VIZ_PALETTE_DARK: VizPalette = {
@@ -56,6 +80,8 @@ export const VIZ_PALETTE_DARK: VizPalette = {
   seriesExZeroDte: '#d95926',
   divergingPositive: '#3987e5',
   divergingNegative: '#e66767',
+  levelResistance: '#e66767',
+  levelSupport: '#4aad68',
 };
 
 export function vizPaletteFor(theme: 'light' | 'dark'): VizPalette {

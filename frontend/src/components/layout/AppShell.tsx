@@ -17,6 +17,9 @@ function NavBar() {
       <NavLink to={{ pathname: '/', search: location.search }} end className={linkClassName}>
         Dashboard
       </NavLink>
+      <NavLink to={{ pathname: '/report', search: location.search }} className={linkClassName}>
+        Report
+      </NavLink>
       <NavLink to={{ pathname: '/history', search: location.search }} className={linkClassName}>
         History
       </NavLink>

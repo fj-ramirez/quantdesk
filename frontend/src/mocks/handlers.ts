@@ -11,7 +11,7 @@
  * correct.
  */
 import { http, HttpResponse } from 'msw';
-import type { ChainResponse, ExpiryFilter, GexResult, LevelHistoryRow, SnapshotSummary, Underlying } from '../api/types';
+import type { ChainResponse, ExpiryFilter, GexResult, LevelHistoryRow, Report, SnapshotSummary, Underlying } from '../api/types';
 import gexSpxFixture from './fixtures/gex-spx.json';
 import gexSpyFixture from './fixtures/gex-spy.json';
 import gexQqqFixture from './fixtures/gex-qqq.json';
@@ -25,6 +25,16 @@ import gexDiaZeroDteFixture from './fixtures/gex-dia-zero-dte.json';
 import snapshotsFixture from './fixtures/snapshots.json';
 import levelsHistoryFixture from './fixtures/levels-history.json';
 import chainLatestFixture from './fixtures/chain-latest.json';
+import reportSpxFixture from './fixtures/report-spx.json';
+import reportSpyFixture from './fixtures/report-spy.json';
+import reportQqqFixture from './fixtures/report-qqq.json';
+import reportGldFixture from './fixtures/report-gld.json';
+import reportDiaFixture from './fixtures/report-dia.json';
+import reportSpxZeroDteFixture from './fixtures/report-spx-zero-dte.json';
+import reportSpyZeroDteFixture from './fixtures/report-spy-zero-dte.json';
+import reportQqqZeroDteFixture from './fixtures/report-qqq-zero-dte.json';
+import reportGldZeroDteFixture from './fixtures/report-gld-zero-dte.json';
+import reportDiaZeroDteFixture from './fixtures/report-dia-zero-dte.json';
 
 const GEX_BY_UNDERLYING: Record<Underlying, GexResult> = {
   SPX: gexSpxFixture as GexResult,
@@ -87,6 +97,89 @@ function scaled(base: GexResult, filter: ExpiryFilter): GexResult {
 
 const notFound = (detail: string) => HttpResponse.json({ detail }, { status: 404 });
 
+// ---------------------------------------------------------------------------------------
+// Report (T39/T40)
+//
+// Unlike the GEX handlers above, these fixtures are NOT approximations. Each one is the real
+// `GET /api/report/{underlying}` response body, produced by running a real Cboe chain through
+// the real provider, engine and report module and serializing it through the same `ReportOut`
+// Pydantic model the endpoint returns. So the numbers on the report page under MSW are the
+// numbers the live API would send for that chain, and the shape — every nullable field, the
+// "Z" datetime format — is the wire shape rather than a hand-written guess at it.
+//
+// GLD, SPY and DIA came from the full live 2026-09-05 captures, so they carry the real
+// figures: GLD reads +42.7 % net/gross (LONG GAMMA) with a 0.45 put/call ratio, and **DIA
+// reads NOISE-DOMINATED at 0.9 %**, which is the case T40 has to render visibly and which a
+// trimmed chain does not reproduce. SPX and QQQ came from the committed trimmed test
+// fixtures, since no full capture of those exists.
+//
+// The one thing still faked here is the *filter* dimension: only `ALL` and `ZERO_DTE` have
+// fixtures, and any other filter falls back to the `ALL` body with its `filter` field
+// rewritten. Treat a filter-dependent number under any other filter as illustrative.
+// ---------------------------------------------------------------------------------------
+
+const REPORT_BY_UNDERLYING: Record<Underlying, Report> = {
+  SPX: reportSpxFixture as unknown as Report,
+  SPY: reportSpyFixture as unknown as Report,
+  QQQ: reportQqqFixture as unknown as Report,
+  GLD: reportGldFixture as unknown as Report,
+  DIA: reportDiaFixture as unknown as Report,
+};
+
+const REPORT_ZERO_DTE_BY_UNDERLYING: Record<Underlying, Report> = {
+  SPX: reportSpxZeroDteFixture as unknown as Report,
+  SPY: reportSpyZeroDteFixture as unknown as Report,
+  QQQ: reportQqqZeroDteFixture as unknown as Report,
+  GLD: reportGldZeroDteFixture as unknown as Report,
+  DIA: reportDiaZeroDteFixture as unknown as Report,
+};
+
+function reportFor(underlying: Underlying, filter: ExpiryFilter): Report {
+  const base = filter === 'ZERO_DTE' ? REPORT_ZERO_DTE_BY_UNDERLYING[underlying] : REPORT_BY_UNDERLYING[underlying];
+  return { ...base, filter };
+}
+
+/** Mirrors `app.gex.report.render_text` closely enough for the panel to be exercised, but is
+ * NOT that renderer — reimplementing it in TypeScript is exactly the drift the real endpoint
+ * avoids by serving the backend's own output. Only the headings and the honesty strings are
+ * reproduced, because those are what the tests assert on. */
+function renderReportText(report: Report): string {
+  const rule = '='.repeat(78);
+  const lines = [
+    rule,
+    `${report.underlying} OPTIONS INTELLIGENCE`,
+    rule,
+    `Filter:          ${report.filter}`,
+    `Current price:   ${report.spot.toFixed(2)}`,
+    `Max pain:        ${report.max_pain.strike ?? '--'}`,
+    `IV regime:       ${report.iv_regime.label ?? `insufficient history (${report.iv_regime.history_observations} of ${report.iv_regime.min_history_required} prior observations needed)`}`,
+    '',
+    'DEALER POSITIONING',
+    `Status: ${report.positioning.label}`,
+    report.positioning.description,
+    '',
+    'GAMMA EXPOSURE LANDSCAPE',
+    ...report.levels.resistance.map((level, i) => `  ${i + 1}. ${level.strike} (resistance)`),
+    ...report.levels.support.map((level, i) => `  ${i + 1}. ${level.strike} (support)`),
+    '',
+    'MARKET SENTIMENT',
+    `P/C ratio (open interest): ${report.ratios.open_interest_ratio?.toFixed(2) ?? '--'}`,
+    '',
+    'PREMIUM SELLING SCREEN',
+    'Screening output computed from the current chain, not a recommendation.',
+    '',
+    'PLAYBOOK',
+    ...report.playbook.entries.map((entry) => `${entry.name}: trigger ${entry.trigger ?? '--'}`),
+    '',
+    'RISK ALERTS',
+    ...report.alerts.map((alert) => `[${alert.severity}] ${alert.code}`),
+    '',
+    'EXECUTIVE SUMMARY',
+    ...report.summary,
+  ];
+  return `${lines.join('\n')}\n`;
+}
+
 export const handlers = [
   http.get('*/api/gex/:underlying/latest', ({ params, request }) => {
     const underlying = String(params.underlying).toUpperCase();
@@ -138,6 +231,30 @@ export const handlers = [
     const expiry = new URL(request.url).searchParams.get('expiry');
     const fixture = chainLatestFixture as ChainResponse;
     return HttpResponse.json({ ...fixture, underlying, expiry: expiry ?? fixture.expiry });
+  }),
+
+  http.get('*/api/report/:underlying', ({ params, request }) => {
+    const underlying = String(params.underlying).toUpperCase();
+    if (!isUnderlying(underlying)) return notFound(`unsupported underlying '${underlying}'`);
+    const url = new URL(request.url);
+    const filterParam = url.searchParams.get('filter');
+    const filter = isExpiryFilter(filterParam) ? filterParam : 'ALL';
+    const report = reportFor(underlying, filter);
+    // `format=text` returns the rendered report as plain text, exactly as the real endpoint
+    // does -- the collapsible panel fetches this rather than reassembling it client-side.
+    if (url.searchParams.get('format') === 'text') {
+      return HttpResponse.text(renderReportText(report));
+    }
+    return HttpResponse.json(report);
+  }),
+
+  http.post('*/api/snapshots/capture', ({ request }) => {
+    // T37's "Capture now" affordance. The real endpoint returns 201 with the new snapshot row.
+    const underlying = new URL(request.url).searchParams.get('underlying') ?? 'SPX';
+    return HttpResponse.json(
+      { id: 999, underlying, captured_at: new Date().toISOString(), source: 'cboe', spot: 0, contract_count: 0, is_eod: false },
+      { status: 201 },
+    );
   }),
 
   http.get('*/api/snapshots', ({ request }) => {

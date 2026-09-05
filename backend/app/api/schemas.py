@@ -23,12 +23,24 @@ from pydantic import BaseModel, ConfigDict, Field
 __all__ = [
     "ChainResponse",
     "ContractOut",
+    "DealerPositioningOut",
     "ExpiryGexOut",
     "GexDiagnosticsOut",
     "GexResultOut",
+    "IvRegimeOut",
     "KeyLevelsOut",
     "LevelHistoryRowOut",
+    "LevelSetOut",
+    "MaxPainOut",
+    "PlaybookEntryOut",
+    "PlaybookOut",
+    "PremiumCandidateOut",
+    "PremiumSellingOut",
     "ProfilePointOut",
+    "PutCallRatiosOut",
+    "ReportLevelOut",
+    "ReportOut",
+    "RiskAlertOut",
     "SnapshotMetaOut",
     "StrikeGexOut",
 ]
@@ -236,3 +248,207 @@ class ChainResponse(BaseModel):
     expiry: dt.date
     snapshot: SnapshotMetaOut
     contracts: tuple[ContractOut, ...]
+
+
+# --------------------------------------------------------------------------------------
+# Report (T39) -- mirrors `app.gex.report`'s dataclasses via their own `to_dict()`
+# --------------------------------------------------------------------------------------
+
+
+class MaxPainOut(BaseModel):
+    """`app.gex.report.MaxPain.to_dict()`.
+
+    Every field is nullable together: a filter that admits no open contracts (the daily
+    `ZERO_DTE`-after-the-close case) has no strike to minimise pain at, and `0` would read as
+    "max pain is at strike zero" exactly the way a null wall would.
+    """
+
+    strike: float | None
+    distance: float | None
+    distance_pct: float | None
+    total_pain: float | None
+    strikes_evaluated: int
+    contracts: int
+    open_interest: int
+
+
+class PutCallRatiosOut(BaseModel):
+    """`app.gex.report.PutCallRatios.to_dict()`. Both ratios are puts / calls, and both are
+    `None` rather than `inf` when the call side is zero."""
+
+    call_open_interest: int
+    put_open_interest: int
+    total_open_interest: int
+    open_interest_ratio: float | None
+    call_volume: int
+    put_volume: int
+    total_volume: int
+    volume_ratio: float | None
+    call_contracts: int
+    put_contracts: int
+    missing_open_interest: int
+    missing_volume: int
+
+
+class IvRegimeOut(BaseModel):
+    """`app.gex.report.IvRegime.to_dict()`.
+
+    `label` is `None` whenever `history_observations < min_history_required`, which is the
+    state of every deployment today -- nothing persists ATM IV history yet. The frontend must
+    render "insufficient history" for that case, never substitute "NORMAL": inventing the band
+    is the specific failure the example report made (T39).
+    """
+
+    atm_iv: float | None
+    target_dte: int
+    lower_dte: int | None
+    upper_dte: int | None
+    interpolated: bool
+    contracts: int
+    label: str | None
+    history_observations: int
+    min_history_required: int
+
+
+class DealerPositioningOut(BaseModel):
+    """`app.gex.report.DealerPositioning.to_dict()`.
+
+    `direction` is `None` and `label` reads `NOISE-DOMINATED` whenever `ratio` is below
+    `ratio_floor` -- DIA's everyday case (0.9 % against a 3 % floor). A UI that renders
+    `direction` must handle the null as "no direction", not as a missing field to default.
+    """
+
+    net_gex: float | None
+    abs_gex: float | None
+    ratio: float | None
+    ratio_floor: float | None
+    noise_dominated: bool
+    direction: str | None
+    label: str
+    description: str
+
+
+class ReportLevelOut(BaseModel):
+    """`app.gex.report.ReportLevel.to_dict()`. `side` is RESISTANCE, SUPPORT or STRADDLING."""
+
+    strike: float | None
+    net_gex: float | None
+    abs_gex: float | None
+    open_interest: int
+    distance: float | None
+    distance_pct: float | None
+    side: str
+    above_spot: bool
+
+
+class LevelSetOut(BaseModel):
+    """`app.gex.report.LevelSet.to_dict()`.
+
+    `resistance` and `support` are guaranteed disjoint and correctly ordered -- every
+    resistance strike is above every support strike. Strikes that would violate that live in
+    `straddling` with `overlapping` set; see the dataclass docstring.
+    """
+
+    resistance: tuple[ReportLevelOut, ...]
+    support: tuple[ReportLevelOut, ...]
+    straddling: tuple[ReportLevelOut, ...]
+    overlapping: bool
+    overlap_note: str | None
+    call_wall: float | None
+    put_wall: float | None
+    flip_point: float | None
+
+
+class PremiumCandidateOut(BaseModel):
+    """`app.gex.report.PremiumCandidate.to_dict()`. `mid` is null unless both sides quote."""
+
+    occ_symbol: str
+    strike: float | None
+    right: str
+    expiry: dt.date
+    dte: int
+    bid: float | None
+    ask: float | None
+    mid: float | None
+    iv: float | None
+    open_interest: int
+    distance_pct: float | None
+
+
+class PremiumSellingOut(BaseModel):
+    """`app.gex.report.PremiumSelling.to_dict()` -- screening output, never a recommendation.
+
+    Either side is legitimately empty when its wall sits far from spot; `note` says why. The
+    renderer must show the note rather than an unexplained blank section.
+    """
+
+    calls: tuple[PremiumCandidateOut, ...]
+    puts: tuple[PremiumCandidateOut, ...]
+    dte_min: int
+    dte_max: int
+    call_boundary: float | None
+    put_boundary: float | None
+    note: str | None
+
+
+class PlaybookEntryOut(BaseModel):
+    """`app.gex.report.PlaybookEntry.to_dict()`.
+
+    `trigger` / `target` / `invalidation` are computed levels or `None`. A null means no
+    computed level sits there -- render a dash, never a derived number.
+    """
+
+    key: str
+    name: str
+    trigger: float | None
+    trigger_label: str
+    target: float | None
+    target_label: str
+    invalidation: float | None
+    invalidation_label: str
+    strategy: str
+
+
+class PlaybookOut(BaseModel):
+    """`app.gex.report.Playbook.to_dict()`. The range fields are populated only when spot
+    actually sits between the two walls (`spot_in_range`)."""
+
+    entries: tuple[PlaybookEntryOut, ...]
+    range_low: float | None
+    range_high: float | None
+    range_magnet: float | None
+    spot_in_range: bool
+
+
+class RiskAlertOut(BaseModel):
+    """`app.gex.report.RiskAlert.to_dict()`. `severity` is INFO or WARNING."""
+
+    code: str
+    severity: str
+    message: str
+    level: float | None
+
+
+class ReportOut(BaseModel):
+    """`GET /api/report/{underlying}?filter=` response body.
+
+    A verbatim `app.gex.report.ReportResult.to_dict()`, with `snapshot` upgraded to
+    `SnapshotMetaOut` exactly as `GexResultOut` does -- the same `id` / `is_eod` /
+    `effective_at` merge, so the report page can render T34's staleness badge from the
+    identical fields the dashboard uses.
+    """
+
+    underlying: str
+    filter: str
+    spot: float
+    generated_at: dt.datetime
+    snapshot: SnapshotMetaOut
+    max_pain: MaxPainOut
+    ratios: PutCallRatiosOut
+    iv_regime: IvRegimeOut
+    positioning: DealerPositioningOut
+    levels: LevelSetOut
+    premium: PremiumSellingOut
+    playbook: PlaybookOut
+    alerts: tuple[RiskAlertOut, ...]
+    summary: tuple[str, ...]

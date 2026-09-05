@@ -1,0 +1,377 @@
+{
+  "underlying": "DIA",
+  "filter": "ALL",
+  "spot": 532.34,
+  "generated_at": "2026-09-04T21:20:31Z",
+  "snapshot": {
+    "id": 5,
+    "is_eod": true,
+    "underlying": "DIA",
+    "spot": 532.34,
+    "captured_at": "2026-09-04T21:20:31Z",
+    "source": "cboe",
+    "delayed_minutes": 15,
+    "contract_count": 5028,
+    "effective_at": "2026-09-04T20:15:00Z"
+  },
+  "max_pain": {
+    "strike": 520.0,
+    "distance": -12.340000000000032,
+    "distance_pct": -2.3180674005334994,
+    "total_pain": 336616850.0,
+    "strikes_evaluated": 267,
+    "contracts": 4794,
+    "open_interest": 585759
+  },
+  "ratios": {
+    "call_open_interest": 221430,
+    "put_open_interest": 364329,
+    "total_open_interest": 585759,
+    "open_interest_ratio": 1.6453461590570384,
+    "call_volume": 11689,
+    "put_volume": 16189,
+    "total_volume": 27878,
+    "volume_ratio": 1.384977329112841,
+    "call_contracts": 2397,
+    "put_contracts": 2397,
+    "missing_open_interest": 0,
+    "missing_volume": 0
+  },
+  "iv_regime": {
+    "atm_iv": 0.11594679825694588,
+    "target_dte": 30,
+    "lower_dte": 28,
+    "upper_dte": 35,
+    "interpolated": true,
+    "contracts": 1399,
+    "label": null,
+    "history_observations": 0,
+    "min_history_required": 20
+  },
+  "positioning": {
+    "net_gex": -8824612.391196623,
+    "abs_gex": 1037320166.1894057,
+    "ratio": 0.008507125069797714,
+    "ratio_floor": 0.03,
+    "noise_dominated": true,
+    "direction": null,
+    "label": "NOISE-DOMINATED",
+    "description": "Net gamma is 0.9% of gross, below the 3% floor. A net this small is within the range a known-wrong carry assumption can move it (docs/validation.md section 9), so no direction is reported. Per-strike walls below are unaffected and remain usable."
+  },
+  "levels": {
+    "resistance": [
+      {
+        "strike": 540.0,
+        "net_gex": 69414887.92048149,
+        "abs_gex": 90713309.92557073,
+        "open_interest": 16890,
+        "distance": 7.659999999999968,
+        "distance_pct": 1.438930007138289,
+        "side": "RESISTANCE",
+        "above_spot": true
+      },
+      {
+        "strike": 542.0,
+        "net_gex": 25111754.672459114,
+        "abs_gex": 26076579.55685426,
+        "open_interest": 4003,
+        "distance": 9.659999999999968,
+        "distance_pct": 1.814629747905468,
+        "side": "RESISTANCE",
+        "above_spot": true
+      },
+      {
+        "strike": 545.0,
+        "net_gex": 44382028.68652635,
+        "abs_gex": 54976606.30991963,
+        "open_interest": 12325,
+        "distance": 12.659999999999968,
+        "distance_pct": 2.378179359056236,
+        "side": "RESISTANCE",
+        "above_spot": true
+      },
+      {
+        "strike": 550.0,
+        "net_gex": 42530098.32497293,
+        "abs_gex": 46378750.363040715,
+        "open_interest": 13177,
+        "distance": 17.659999999999968,
+        "distance_pct": 3.317428710974183,
+        "side": "RESISTANCE",
+        "above_spot": true
+      },
+      {
+        "strike": 560.0,
+        "net_gex": 11617711.548224717,
+        "abs_gex": 11761458.688564358,
+        "open_interest": 7467,
+        "distance": 27.659999999999968,
+        "distance_pct": 5.195927414810077,
+        "side": "RESISTANCE",
+        "above_spot": true
+      }
+    ],
+    "support": [
+      {
+        "strike": 532.0,
+        "net_gex": -27733035.307290934,
+        "abs_gex": 33789344.69217031,
+        "open_interest": 3320,
+        "distance": -0.34000000000003183,
+        "distance_pct": -0.06386895593042638,
+        "side": "SUPPORT",
+        "above_spot": false
+      },
+      {
+        "strike": 530.0,
+        "net_gex": -23948801.1958213,
+        "abs_gex": 78525166.79670352,
+        "open_interest": 11389,
+        "distance": -2.340000000000032,
+        "distance_pct": -0.43956869669760523,
+        "side": "SUPPORT",
+        "above_spot": false
+      },
+      {
+        "strike": 525.0,
+        "net_gex": -18508446.86688181,
+        "abs_gex": 38246594.64728981,
+        "open_interest": 10648,
+        "distance": -7.340000000000032,
+        "distance_pct": -1.3788180486155523,
+        "side": "SUPPORT",
+        "above_spot": false
+      },
+      {
+        "strike": 510.0,
+        "net_gex": -25464558.35866359,
+        "abs_gex": 40993590.001488686,
+        "open_interest": 19026,
+        "distance": -22.340000000000032,
+        "distance_pct": -4.196566104369394,
+        "side": "SUPPORT",
+        "above_spot": false
+      }
+    ],
+    "straddling": [
+      {
+        "strike": 533.0,
+        "net_gex": -29589956.722336758,
+        "abs_gex": 38330805.78521855,
+        "open_interest": 2728,
+        "distance": 0.6599999999999682,
+        "distance_pct": 0.12398091445316305,
+        "side": "STRADDLING",
+        "above_spot": true
+      }
+    ],
+    "overlapping": true,
+    "overlap_note": "Gamma is concentrated on both sides of spot: 533 carries net gamma of the sign normally found on the other side of the market. These strikes are listed separately rather than sorted into support or resistance, because either placement would misdescribe them.",
+    "call_wall": 540.0,
+    "put_wall": 533.0,
+    "flip_point": 532.5798960004463
+  },
+  "premium": {
+    "calls": [
+      {
+        "occ_symbol": "DIA261016C00540000",
+        "strike": 540.0,
+        "right": "C",
+        "expiry": "2026-10-16",
+        "dte": 42,
+        "bid": 6.0,
+        "ask": 6.35,
+        "mid": 6.175,
+        "iv": 0.1156,
+        "open_interest": 2786,
+        "distance_pct": 1.438930007138289
+      },
+      {
+        "occ_symbol": "DIA261016C00541000",
+        "strike": 541.0,
+        "right": "C",
+        "expiry": "2026-10-16",
+        "dte": 42,
+        "bid": 5.6,
+        "ask": 5.9,
+        "mid": 5.75,
+        "iv": 0.1151,
+        "open_interest": 34,
+        "distance_pct": 1.6267798775218785
+      },
+      {
+        "occ_symbol": "DIA261016C00542000",
+        "strike": 542.0,
+        "right": "C",
+        "expiry": "2026-10-16",
+        "dte": 42,
+        "bid": 5.2,
+        "ask": 5.5,
+        "mid": 5.35,
+        "iv": 0.1147,
+        "open_interest": 75,
+        "distance_pct": 1.814629747905468
+      },
+      {
+        "occ_symbol": "DIA261009C00540000",
+        "strike": 540.0,
+        "right": "C",
+        "expiry": "2026-10-09",
+        "dte": 35,
+        "bid": 5.05,
+        "ask": 5.35,
+        "mid": 5.199999999999999,
+        "iv": 0.1134,
+        "open_interest": 17,
+        "distance_pct": 1.438930007138289
+      },
+      {
+        "occ_symbol": "DIA261016C00543000",
+        "strike": 543.0,
+        "right": "C",
+        "expiry": "2026-10-16",
+        "dte": 42,
+        "bid": 4.8,
+        "ask": 5.15,
+        "mid": 4.975,
+        "iv": 0.1144,
+        "open_interest": 25,
+        "distance_pct": 2.002479618289057
+      }
+    ],
+    "puts": [
+      {
+        "occ_symbol": "DIA261016P00532000",
+        "strike": 532.0,
+        "right": "P",
+        "expiry": "2026-10-16",
+        "dte": 42,
+        "bid": 7.25,
+        "ask": 7.6,
+        "mid": 7.425,
+        "iv": 0.1207,
+        "open_interest": 194,
+        "distance_pct": -0.06386895593042638
+      },
+      {
+        "occ_symbol": "DIA261016P00531000",
+        "strike": 531.0,
+        "right": "P",
+        "expiry": "2026-10-16",
+        "dte": 42,
+        "bid": 6.85,
+        "ask": 7.2,
+        "mid": 7.025,
+        "iv": 0.1214,
+        "open_interest": 39,
+        "distance_pct": -0.2517188263140158
+      },
+      {
+        "occ_symbol": "DIA261009P00532000",
+        "strike": 532.0,
+        "right": "P",
+        "expiry": "2026-10-09",
+        "dte": 35,
+        "bid": 6.45,
+        "ask": 6.85,
+        "mid": 6.65,
+        "iv": 0.118,
+        "open_interest": 1,
+        "distance_pct": -0.06386895593042638
+      },
+      {
+        "occ_symbol": "DIA261016P00530000",
+        "strike": 530.0,
+        "right": "P",
+        "expiry": "2026-10-16",
+        "dte": 42,
+        "bid": 6.45,
+        "ask": 6.8,
+        "mid": 6.625,
+        "iv": 0.122,
+        "open_interest": 741,
+        "distance_pct": -0.43956869669760523
+      },
+      {
+        "occ_symbol": "DIA261016P00529000",
+        "strike": 529.0,
+        "right": "P",
+        "expiry": "2026-10-16",
+        "dte": 42,
+        "bid": 6.1,
+        "ask": 6.45,
+        "mid": 6.275,
+        "iv": 0.123,
+        "open_interest": 27,
+        "distance_pct": -0.6274185670811947
+      }
+    ],
+    "dte_min": 7,
+    "dte_max": 45,
+    "call_boundary": 540.0,
+    "put_boundary": 533.0,
+    "note": null
+  },
+  "playbook": {
+    "entries": [
+      {
+        "key": "BULLISH_BREAKOUT",
+        "name": "Upside break",
+        "trigger": 540.0,
+        "trigger_label": "call wall",
+        "target": 542.0,
+        "target_label": "next resistance strike above the call wall",
+        "invalidation": 532.0,
+        "invalidation_label": "nearest support strike below spot",
+        "strategy": "Long calls or call spreads."
+      },
+      {
+        "key": "BEARISH_BREAKDOWN",
+        "name": "Downside break",
+        "trigger": 533.0,
+        "trigger_label": "put wall",
+        "target": 532.0,
+        "target_label": "next support strike below the put wall",
+        "invalidation": 540.0,
+        "invalidation_label": "nearest resistance strike above spot",
+        "strategy": "Long puts or put spreads."
+      }
+    ],
+    "range_low": null,
+    "range_high": null,
+    "range_magnet": null,
+    "spot_in_range": false
+  },
+  "alerts": [
+    {
+      "code": "FLIP_PROXIMITY",
+      "severity": "WARNING",
+      "message": "Spot is within 1% of the gamma flip at 532.58. Dealer hedging changes character across this level.",
+      "level": 532.5798960004463
+    },
+    {
+      "code": "SPOT_BELOW_PUT_WALL",
+      "severity": "WARNING",
+      "message": "Spot is already below the 533 put wall, so the largest negative-gamma strike is above the market rather than below it.",
+      "level": 533.0
+    },
+    {
+      "code": "POSITIONING_NOISE_DOMINATED",
+      "severity": "WARNING",
+      "message": "Net gamma is 0.9% of gross, below the 3% floor. A net this small is within the range a known-wrong carry assumption can move it (docs/validation.md section 9), so no direction is reported. Per-strike walls below are unaffected and remain usable.",
+      "level": null
+    },
+    {
+      "code": "LEVELS_OVERLAP",
+      "severity": "INFO",
+      "message": "Gamma is concentrated on both sides of spot: 533 carries net gamma of the sign normally found on the other side of the market. These strikes are listed separately rather than sorted into support or resistance, because either placement would misdescribe them.",
+      "level": null
+    }
+  ],
+  "summary": [
+    "Dealer positioning is not readable on this chain. Net gamma is 0.9% of gross, below the 3% floor. A net this small is within the range a known-wrong carry assumption can move it (docs/validation.md section 9), so no direction is reported. Per-strike walls below are unaffected and remain usable.",
+    "The computed walls bracket 533 to 540, against a spot of 532.34.",
+    "Open interest is centred on 520 (max pain), -2.32 % from spot.",
+    "ATM 30-day implied vol is 11.6%. No regime label: that needs at least 20 prior snapshots to compare against and there are 0."
+  ]
+}

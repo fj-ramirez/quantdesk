@@ -242,3 +242,212 @@ export interface SnapshotSummary {
   contract_count: number;
   is_eod: boolean;
 }
+
+// ---------------------------------------------------------------------------------------
+// Report (T39/T40) -- `GET /api/report/{underlying}?filter=`
+//
+// GENERATED, not hand-written. Every interface below was emitted by a script from the live
+// FastAPI `/openapi.json` `components.schemas` (`ReportOut` and its dependencies) and pasted
+// verbatim, with only the two documented narrowings noted under `Report`. This matters: the
+// last time this project split an API task from its frontend task, the handoff was described
+// as "purely additive" when it actually widened several fields to nullable, and that hid nine
+// real type errors. Machine transcription cannot make that mistake.
+//
+// Regenerate the same way after any change to `backend/app/api/schemas.py`'s report models:
+// dump `/openapi.json` and re-emit these from `ReportOut`.
+//
+// Note the nullability, which is load-bearing and easy to get wrong by hand:
+// `DealerPositioning`'s `net_gex`, `abs_gex` and `ratio_floor` are all nullable (they pass
+// through the engine's NaN-to-null conversion), as are `MaxPain.strike` and every
+// `ReportLevel.strike`.
+// ---------------------------------------------------------------------------------------
+
+/** The strike minimising total intrinsic value of all open contracts at expiry.
+ *
+ * Every field is null together when the filter admitted no open contracts -- the daily
+ * `ZERO_DTE`-after-the-close case. Render a dash, never a zero. */
+export interface MaxPain {
+  strike: number | null;
+  distance: number | null;
+  distance_pct: number | null;
+  total_pain: number | null;
+  strikes_evaluated: number;
+  contracts: number;
+  open_interest: number;
+}
+
+/** Both ratios are **puts / calls**. The example report that seeded this feature inverted
+ * exactly this and derived a bearish reading from the inversion; label it explicitly in the
+ * UI so a reader can tell which way round it is. Null (not `Infinity`) when there are no
+ * calls. */
+export interface PutCallRatios {
+  call_open_interest: number;
+  put_open_interest: number;
+  total_open_interest: number;
+  open_interest_ratio: number | null;
+  call_volume: number;
+  put_volume: number;
+  total_volume: number;
+  volume_ratio: number | null;
+  call_contracts: number;
+  put_contracts: number;
+  missing_open_interest: number;
+  missing_volume: number;
+}
+
+/** ATM implied vol at a constant ~30-day maturity, and a regime label only if earned.
+ *
+ * `atm_iv` is a decimal fraction (0.229 = 22.9%), so render it with `formatIv`.
+ *
+ * **`label` is null on every deployment today** and that is the correct, intended state:
+ * nothing persists past ATM IVs, so there is no distribution to place the current number in.
+ * Render "insufficient history" -- never substitute "NORMAL". Inventing the band is the
+ * specific failure the source report made (it printed "NORMAL VOLATILITY (17.9%)" against a
+ * chain whose real ATM vol was 22.9%). */
+export interface IvRegime {
+  atm_iv: number | null;
+  target_dte: number;
+  lower_dte: number | null;
+  upper_dte: number | null;
+  interpolated: boolean;
+  contracts: number;
+  label: string | null;
+  history_observations: number;
+  min_history_required: number;
+}
+
+/** Direction of dealer gamma, gated on `ratio` (= |net GEX| / gross GEX) clearing
+ * `ratio_floor`.
+ *
+ * When `noise_dominated` is true, `direction` is null and `label` reads "NOISE-DOMINATED".
+ * That is DIA's everyday case (0.9% against a 3% floor) and the UI must show the label, not
+ * fall back to reading the sign of `net_gex` itself -- `docs/validation.md` section 9
+ * establishes that DIA's sign flips under a plausible carry correction. */
+export interface DealerPositioning {
+  net_gex: number | null;
+  abs_gex: number | null;
+  ratio: number | null;
+  ratio_floor: number | null;
+  noise_dominated: boolean;
+  direction: string | null;
+  label: string;
+  description: string;
+}
+
+/** One support or resistance strike. `side` is `RESISTANCE`, `SUPPORT` or `STRADDLING`. */
+export interface ReportLevel {
+  strike: number | null;
+  net_gex: number | null;
+  abs_gex: number | null;
+  open_interest: number;
+  distance: number | null;
+  distance_pct: number | null;
+  side: string;
+  above_spot: boolean;
+}
+
+/** `resistance` and `support` are guaranteed disjoint and correctly ordered by the backend:
+ * every resistance strike is above every support strike, always. Strikes that would break
+ * that invariant (negative net gamma above spot, or positive below it) are a real market
+ * condition and arrive in `straddling` with `overlapping` set and `overlap_note` explaining
+ * it. Render that note -- do not merge `straddling` into either list. */
+export interface LevelSet {
+  resistance: ReportLevel[];
+  support: ReportLevel[];
+  straddling: ReportLevel[];
+  overlapping: boolean;
+  overlap_note: string | null;
+  call_wall: number | null;
+  put_wall: number | null;
+  flip_point: number | null;
+}
+
+/** One screened contract. `mid` is null unless both sides are quoted. */
+export interface PremiumCandidate {
+  occ_symbol: string;
+  strike: number | null;
+  right: string;
+  /** ISO date. */
+  expiry: string;
+  dte: number;
+  bid: number | null;
+  ask: number | null;
+  mid: number | null;
+  iv: number | null;
+  open_interest: number;
+  distance_pct: number | null;
+}
+
+/** Screening output, never a recommendation -- label it as such wherever it renders.
+ * Either side is legitimately empty when its wall sits far from spot; `note` says why, and
+ * must be shown rather than leaving an unexplained blank section. */
+export interface PremiumSelling {
+  calls: PremiumCandidate[];
+  puts: PremiumCandidate[];
+  dte_min: number;
+  dte_max: number;
+  call_boundary: number | null;
+  put_boundary: number | null;
+  note: string | null;
+}
+
+/** `trigger` / `target` / `invalidation` are computed levels or null. A null means no
+ * computed level sits there: render a dash, never a derived number. */
+export interface PlaybookEntry {
+  key: string;
+  name: string;
+  trigger: number | null;
+  trigger_label: string;
+  target: number | null;
+  target_label: string;
+  invalidation: number | null;
+  invalidation_label: string;
+  strategy: string;
+}
+
+/** The range fields are populated only when spot actually sits between the two walls. */
+export interface Playbook {
+  entries: PlaybookEntry[];
+  range_low: number | null;
+  range_high: number | null;
+  range_magnet: number | null;
+  spot_in_range: boolean;
+}
+
+/** `severity` is `INFO` or `WARNING`. */
+export interface RiskAlert {
+  code: string;
+  severity: string;
+  message: string;
+  level: number | null;
+}
+
+/** `GET /api/report/{underlying}?filter=` response body.
+ *
+ * Two narrowings from the generated output, both deliberate and both matching what
+ * `GexResult` above already does:
+ *   - `underlying: Underlying` rather than `string` -- the backend canonicalizes it through
+ *     the same `Underlying` enum before it ever reaches a response.
+ *   - `snapshot: SnapshotInfo` rather than a duplicate `SnapshotMeta` -- the generated
+ *     `SnapshotMetaOut` is field-for-field identical to `SnapshotInfo` above, so reusing it
+ *     keeps one staleness-badge type (T34) across the dashboard and the report.
+ *
+ * Nothing else was touched. `filter` stays a plain string because an explicit expiry list
+ * echoes back as `"EXPIRIES:2026-09-18"`, outside the enum. */
+export interface Report {
+  underlying: Underlying;
+  filter: string;
+  spot: number;
+  /** ISO 8601 UTC. The snapshot's own instant, not the time the report was requested. */
+  generated_at: string;
+  snapshot: SnapshotInfo;
+  max_pain: MaxPain;
+  ratios: PutCallRatios;
+  iv_regime: IvRegime;
+  positioning: DealerPositioning;
+  levels: LevelSet;
+  premium: PremiumSelling;
+  playbook: Playbook;
+  alerts: RiskAlert[];
+  summary: string[];
+}
