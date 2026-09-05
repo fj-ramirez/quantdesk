@@ -23,6 +23,7 @@ two: the second call finds the row the first one wrote and does nothing.
 
 from __future__ import annotations
 
+import asyncio
 import datetime as dt
 import json
 import logging
@@ -94,6 +95,20 @@ def has_eod_snapshot_today(
     )
     with session_factory() as session:
         return session.execute(stmt).first() is not None
+
+
+def _missing_underlyings(
+    symbols: Sequence[str], session_factory: sessionmaker[Session], today: dt.date
+) -> list[str]:
+    """Sync helper bundling every `has_eod_snapshot_today` check into one blocking call, so
+    `catch_up_missed_eod` can push the whole thing to a worker thread with a single
+    `asyncio.to_thread` (T35) instead of one hop per symbol.
+    """
+    return [
+        underlying
+        for underlying in symbols
+        if not has_eod_snapshot_today(underlying, session_factory, today)
+    ]
 
 
 def last_completed_trading_day(now: dt.datetime) -> dt.date:
@@ -170,11 +185,17 @@ async def catch_up_missed_eod(
         return []
 
     effective_session_factory = session_factory or get_session_factory()
-    missing = [
-        underlying
-        for underlying in symbols
-        if not has_eod_snapshot_today(underlying, effective_session_factory, today)
-    ]
+    # T35: this is `asyncio.create_task`d from `app/main.py`'s lifespan so boot doesn't wait on
+    # it, but a bare `await` here of a *synchronous* DB call is not the same thing as getting
+    # off the event loop -- there is exactly one event loop thread, and `has_eod_snapshot_today`
+    # opening a psycopg connection blocks that whole thread for as long as the TCP handshake
+    # takes. With Postgres unreachable (down, wrong host, firewalled) that handshake blocks on
+    # an OS-level connect timeout, which starves every other coroutine on the loop -- including
+    # the one uvicorn needs to run to finish logging "Application startup complete" and start
+    # accepting connections. `asyncio.to_thread` (same pattern `app/jobs/capture.py` already
+    # uses for its own sync repository calls) moves the blocking work to a worker thread so the
+    # loop stays free regardless of how long the connection attempt takes.
+    missing = await asyncio.to_thread(_missing_underlyings, symbols, effective_session_factory, today)
     if not missing:
         logger.info(
             json.dumps({"event": "catchup_noop", "date": today.isoformat(), "symbols": list(symbols)})

@@ -238,8 +238,20 @@ def get_engine(database_url: str | None = None) -> Engine:
     Never called at import time -- Alembic's ``env.py`` and tests each need a different URL,
     and constructing an engine has side effects (connection pool setup) that don't belong at
     module import.
+
+    T35: psycopg's default connect timeout is "however long the OS takes to give up on the
+    TCP handshake" -- unbounded from this app's point of view, and the actual mechanism behind
+    the startup hang the moment any caller runs a connection attempt synchronously (as
+    `app/jobs/catchup.py`'s `has_eod_snapshot_today` used to). Moving that call to a worker
+    thread (see `catch_up_missed_eod`) already keeps a slow connect off the event loop, but a
+    short, explicit `connect_timeout` still bounds how long that thread -- and, for the
+    catch-up's own logging, how long the user waits to see it give up -- is on the hook for.
+    Only applied to Postgres URLs: SQLite (every test's `session_factory`) has no such
+    keyword and would fail `create_engine` outright.
     """
-    return create_engine(database_url or settings.DATABASE_URL)
+    url = database_url or settings.DATABASE_URL
+    connect_args = {"connect_timeout": 5} if url.startswith("postgresql") else {}
+    return create_engine(url, connect_args=connect_args)
 
 
 def get_sessionmaker(engine: Engine) -> sessionmaker[Session]:
