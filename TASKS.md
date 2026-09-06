@@ -568,13 +568,112 @@ the mocks; DIA visibly shows the noise-dominated positioning label rather than a
 
 ---
 
+### T41 · Sonnet · T39, T40
+**CFD level translation: report levels in the instrument the user actually trades**
+
+The user executes in a CFD account, so a GLD report's strikes are not the numbers on their
+screen — they trade **XAUUSD**, quoted in USD per troy ounce, while GLD is a share worth a
+fraction of an ounce. The same mismatch applies to **DIA vs US30** (DIA tracks ~1/100 of the
+Dow), **SPX/SPY vs US500** and **QQQ vs NAS100**. Build this as a general mapping, not a
+gold special case.
+
+**There is no free automated source for the ratio.** The supervisor checked on 2026-09-05:
+stooq now sits behind a JavaScript proof-of-work challenge, and SPDR's GLD page renders its
+NAV client-side so ounces-per-share is not in the HTML. Do not add a provider for this and do
+not hardcode a ratio — **the user supplies it**, and the design below is built around that
+rather than treating it as a limitation.
+
+### How the ratio is anchored
+
+The user types the CFD spot their platform shows. The ratio is then derived from the two
+observed spots, which is self-calibrating and cannot go stale:
+
+    k = cfd_spot / underlying_spot          # e.g. XAUUSD 4412.50 / GLD 406.77
+    cfd_level = underlying_level * k
+
+This is deliberately *not* a stored ounces-per-share constant. GLD's gold backing erodes
+continuously with the trust's expense ratio, index-CFD ratios drift with dividends, and any
+constant we persisted would silently rot. Anchoring on two simultaneous spots absorbs all of
+that.
+
+- Accept an optional `cfd_spot` query parameter on `GET /api/report/{underlying}`. Absent, the
+  report is exactly what it is today — this must stay entirely optional.
+- The frontend supplies it from a field on the report page, held in URL state
+  (`state/urlState.ts`) so `?symbol=GLD&cfd=4412.50` deep-links, the same way `filter` does.
+- Keep a `CFD_INSTRUMENTS` mapping of underlying → display name (`GLD` → `XAUUSD`, `DIA` →
+  `US30`, `SPX`/`SPY` → `US500`, `QQQ` → `NAS100`) so the UI can label the field and the
+  converted block correctly. Adding an instrument must be one line here.
+
+### What converts, and what must not
+
+This is the part to get right; a wrong conversion here produces confident, wrong trade levels.
+
+**Convert (they are prices in the underlying's units):** spot, call wall, put wall, flip
+point, max pain, every support/resistance level, every playbook trigger, target and stop, and
+the strike of each premium-screen row.
+
+**Never convert:**
+
+- **Dollar GEX magnitudes** — net, absolute and per-strike. These are US dollars of *dealer
+  delta in GLD options* per 1 % move. There is no dealer gamma in the CFD; a "XAUUSD net GEX"
+  figure would be meaningless. Leave them in the report unchanged and unconverted.
+- **Premium prices** in the premium-selling screen. Those are GLD option premiums. Translate
+  the strike so the user can see where it sits in gold terms, but the premium stays a GLD
+  option premium and must never render as a CFD price.
+- **Implied volatility.** It is GLD's implied vol. Related to gold's, not identical. Keep it
+  labelled as the underlying's.
+
+**The invariant worth testing:** percentage distances from spot are *identical* in both units,
+because this is a pure scaling. GLD's 415 call wall is +2.02 % from a 406.77 spot, and its
+translation is +2.02 % from the translated spot. A test should assert exactly that — it is what
+proves the mapping is a scaling and not something subtler.
+
+### Honesty requirements
+
+Translated levels are **GLD option levels expressed in gold terms, not levels with their own
+gamma behind them**. The UI and the text render must both say so. Also surface:
+
+- GLD trades 09:30–16:00 ET; XAUUSD trades nearly around the clock. A level computed from a
+  GLD close maps onto a market that keeps moving after that close — pair this with the
+  existing T34 freshness badge rather than duplicating it.
+- GLD can trade at a premium or discount to its NAV, so the ratio is a snapshot of this
+  moment, not a constant.
+- Echo back the implied ratio and the spot pair it came from, so the user can eyeball it
+  against their platform in one glance.
+
+When `cfd_spot` is absent, render nothing converted and no placeholder numbers — same rule as
+the null IV regime label and T37's empty states. Do not invent a default ratio.
+
+### Deliverables
+
+- Extend `backend/app/gex/report.py` (still pure) with the conversion and the instrument map.
+  A converted block hangs off the existing result rather than replacing any field, so an
+  unconverted report is byte-identical to today's.
+- Include the converted levels in `render_text`, in the playbook and levels sections — the
+  user asked specifically for *trade plans* to carry them, and the text render is what gets
+  copied out of the app.
+- Report page: a labelled CFD-spot input (label from `CFD_INSTRUMENTS`, e.g. "XAUUSD spot"),
+  URL-backed, with the converted levels shown alongside the native ones rather than replacing
+  them. Both numbers visible; the user reasons in GLD and executes in XAUUSD.
+- Tests: the percentage invariant above; that GEX magnitudes, premiums and IV are untouched;
+  that an absent `cfd_spot` leaves the response unchanged; that a zero, negative or
+  non-numeric `cfd_spot` is rejected rather than producing infinities.
+
+Acceptance: `GET /api/report/GLD?cfd_spot=4412.50` returns converted levels whose percentage
+distances match the unconverted ones exactly, with GEX magnitudes unchanged; the report page
+shows an XAUUSD field for GLD and a US30 field for DIA; the copied text report carries the
+translated playbook; `uv run pytest`, `ruff check .`, `npm test`, `npm run lint` and `tsc -b`
+all pass.
+
+---
+
 ## Model assignment summary
 
 | Model | Tasks |
 |---|---|
 | Opus | T01, T07, T08, T10, T21, T23, T25, T33, T39 |
 | Opus (review) | T06, T17, T24 |
-| Sonnet | T00, T02–T05, T09, T11–T16, T18–T20, T22, T26–T32, T34–T38, T40 |
+| Sonnet | T00, T02–T05, T09, T11–T16, T18–T20, T22, T26–T32, T34–T38, T40, T41 |
 
 Parallelizable groups once their dependency is done: {T02, T03, T04} after T01; {T12} alongside all of Phase 1; {T13, T14} after T12; {T27, T28} anytime.
 
