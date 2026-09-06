@@ -722,6 +722,206 @@ def test_render_text_snapshot(gld_report):
     assert text.endswith("\n")
 
 
+
+# --------------------------------------------------------------------------------------
+# CFD translation (T41) — the report re-expressed in the instrument the user actually trades
+# --------------------------------------------------------------------------------------
+
+
+@pytest.fixture(scope="module")
+def gld_result_and_frame() -> Any:
+    snapshot = _fixture_snapshot("GLD", "gld.json")
+    frame = to_frame(snapshot)
+    result = compute_all(snapshot, ExpiryFilter.ALL, frame=frame)
+    return result, frame
+
+
+#: The user's own platform quote used throughout these tests, echoing the task's own example
+#: (XAUUSD against a GLD spot near 406.77).
+_CFD_SPOT = 4412.50
+
+
+def test_cfd_instrument_map_covers_every_supported_underlying():
+    """Adding an instrument is one line in `CFD_INSTRUMENTS`; this pins the five it must cover
+    today (T41's own examples: GLD/XAUUSD, DIA/US30, SPX & SPY/US500, QQQ/NAS100)."""
+    assert R.CFD_INSTRUMENTS == {
+        "GLD": "XAUUSD",
+        "DIA": "US30",
+        "SPX": "US500",
+        "SPY": "US500",
+        "QQQ": "NAS100",
+    }
+
+
+def test_cfd_is_none_when_no_cfd_spot_is_supplied(gld_report):
+    """The default, and every deployment's state today: no converted block, no placeholder."""
+    _result, report = gld_report
+    assert report.cfd is None
+    assert report.to_dict()["cfd"] is None
+
+
+def test_absent_cfd_spot_leaves_the_report_byte_identical(gld_result_and_frame):
+    """`build_report(..., cfd_spot=None)` must produce the same report `build_report(...)`
+    (T39's own default) does — the whole point of `cfd` being an *additional* field rather
+    than a rewrite of any existing one."""
+    result, frame = gld_result_and_frame
+    with_default = R.build_report(result, frame, ExpiryFilter.ALL)
+    explicit_none = R.build_report(result, frame, ExpiryFilter.ALL, cfd_spot=None)
+    assert with_default.to_dict() == explicit_none.to_dict()
+
+
+def test_cfd_spot_only_adds_the_cfd_block_and_changes_nothing_else(gld_result_and_frame):
+    """Supplying `cfd_spot` must not perturb a single field this report already had.
+
+    Compares the two `to_dict()` outputs with the `cfd` key removed from each — every other
+    key, including `positioning` (GEX magnitudes), `premium` (bid/ask/mid/iv) and `iv_regime`,
+    must be untouched by translation.
+    """
+    result, frame = gld_result_and_frame
+    native = R.build_report(result, frame, ExpiryFilter.ALL).to_dict()
+    translated = R.build_report(result, frame, ExpiryFilter.ALL, cfd_spot=_CFD_SPOT).to_dict()
+
+    native.pop("cfd")
+    translated.pop("cfd")
+    assert native == translated
+
+
+def test_cfd_translation_never_touches_gex_premiums_or_iv(gld_result_and_frame):
+    """Belt-and-braces on the specific fields T41 calls out as never-convert, read straight off
+    the dataclasses rather than through `to_dict()`."""
+    result, frame = gld_result_and_frame
+    report = R.build_report(result, frame, ExpiryFilter.ALL, cfd_spot=_CFD_SPOT)
+
+    assert report.positioning.net_gex == pytest.approx(result.levels.net_gex)
+    assert report.positioning.abs_gex == pytest.approx(result.levels.abs_gex)
+    for level in (*report.levels.resistance, *report.levels.support, *report.levels.straddling):
+        # `net_gex`/`abs_gex` on each level are dollars of dealer delta in the underlying's
+        # options — translation must not have touched them.
+        assert isinstance(level.net_gex, float)
+    for candidate in (*report.premium.calls, *report.premium.puts):
+        assert candidate.mid is None or isinstance(candidate.mid, float)
+    # The CFD block itself carries no IV, no bid/ask/mid anywhere in its shape.
+    cfd_dict = report.cfd.to_dict()
+    for blob in (cfd_dict, *cfd_dict["premium_calls"], *cfd_dict["premium_puts"]):
+        assert "iv" not in blob
+        assert "mid" not in blob
+        assert "bid" not in blob
+        assert "ask" not in blob
+
+
+def test_cfd_percentage_distance_invariant(gld_result_and_frame):
+    """T41's own acceptance test: percentage distances from spot are identical in both units.
+
+    This holds by construction (`CfdLevel.distance_pct` is passed through, never recomputed —
+    see `translate_to_cfd`), but this test proves it holds for the *actual* numbers this
+    fixture chain produces, not merely that the code path exists.
+    """
+    result, frame = gld_result_and_frame
+    report = R.build_report(result, frame, ExpiryFilter.ALL, cfd_spot=_CFD_SPOT)
+    cfd = report.cfd
+    ratio = _CFD_SPOT / result.spot
+
+    assert cfd.ratio == pytest.approx(ratio)
+    assert cfd.cfd_spot == _CFD_SPOT
+    assert cfd.underlying_spot == pytest.approx(result.spot)
+
+    for native_level, cfd_level in zip(report.levels.resistance, cfd.resistance, strict=True):
+        assert cfd_level.strike == pytest.approx(native_level.strike * ratio)
+        assert cfd_level.distance_pct == native_level.distance_pct
+        # And the translated distance, independently recomputed, agrees to float precision —
+        # this is the "+2.02% in both units" check made concrete.
+        recomputed = (cfd_level.strike - cfd.cfd_spot) / cfd.cfd_spot * 100.0
+        assert recomputed == pytest.approx(native_level.distance_pct, abs=1e-9)
+
+    for native_level, cfd_level in zip(report.levels.support, cfd.support, strict=True):
+        assert cfd_level.strike == pytest.approx(native_level.strike * ratio)
+        assert cfd_level.distance_pct == native_level.distance_pct
+
+    if report.max_pain.strike is not None:
+        assert cfd.max_pain.strike == pytest.approx(report.max_pain.strike * ratio)
+        assert cfd.max_pain.distance_pct == report.max_pain.distance_pct
+
+    if report.levels.call_wall is not None:
+        assert cfd.call_wall.strike == pytest.approx(report.levels.call_wall * ratio)
+    if report.levels.put_wall is not None:
+        assert cfd.put_wall.strike == pytest.approx(report.levels.put_wall * ratio)
+
+    for native_entry, cfd_entry in zip(report.playbook.entries, cfd.playbook, strict=True):
+        assert native_entry.key == cfd_entry.key
+        for native_val, cfd_val in (
+            (native_entry.trigger, cfd_entry.trigger),
+            (native_entry.target, cfd_entry.target),
+            (native_entry.invalidation, cfd_entry.invalidation),
+        ):
+            if native_val is None:
+                assert cfd_val is None
+            else:
+                assert cfd_val == pytest.approx(native_val * ratio)
+
+
+def test_cfd_premium_candidate_strike_translates_but_nothing_else(gld_result_and_frame):
+    # DIA's fixture actually screens in candidates on this filter; use it here so the
+    # premium-strike translation has real rows to check rather than an empty screen.
+    dia_snapshot = _fixture_snapshot("DIA", "dia.json")
+    dia_frame = to_frame(dia_snapshot)
+    dia_result = compute_all(dia_snapshot, ExpiryFilter.ALL, frame=dia_frame)
+    report = R.build_report(dia_result, dia_frame, ExpiryFilter.ALL, cfd_spot=44125.0)
+    ratio = 44125.0 / dia_result.spot
+
+    by_symbol = {c.occ_symbol: c for c in report.cfd.premium_calls + report.cfd.premium_puts}
+    native_candidates = list(report.premium.calls) + list(report.premium.puts)
+    assert native_candidates, "expected at least one screened DIA candidate on this fixture"
+    for candidate in native_candidates:
+        translated = by_symbol[candidate.occ_symbol]
+        assert translated.strike == pytest.approx(candidate.strike * ratio)
+
+
+@pytest.mark.parametrize("bad_spot", [0.0, -100.0, float("nan"), float("inf")])
+def test_translate_to_cfd_rejects_non_positive_or_non_finite_spot(gld_result_and_frame, bad_spot):
+    """A zero, negative, NaN or infinite `cfd_spot` must raise rather than silently producing
+    an infinite or NaN translated level."""
+    result, frame = gld_result_and_frame
+    with pytest.raises(ValueError):
+        R.build_report(result, frame, ExpiryFilter.ALL, cfd_spot=bad_spot)
+
+
+def test_translate_to_cfd_rejects_an_unmapped_underlying():
+    with pytest.raises(ValueError, match="no CFD instrument"):
+        R.translate_to_cfd(
+            "NOPE",
+            100.0,
+            50.0,
+            R.LevelSet(
+                resistance=(), support=(), straddling=(), overlapping=False, overlap_note=None,
+                call_wall=None, put_wall=None, flip_point=None,
+            ),
+            R.MaxPain(strike=None, distance=None, distance_pct=None, total_pain=None, strikes_evaluated=0, contracts=0, open_interest=0),
+            R.Playbook(entries=(), range_low=None, range_high=None, range_magnet=None, spot_in_range=False),
+            R.PremiumSelling(calls=(), puts=(), dte_min=7, dte_max=45, call_boundary=None, put_boundary=None, note=None),
+        )
+
+
+def test_render_text_carries_the_cfd_translation(gld_result_and_frame):
+    """The user asked specifically for trade plans to carry the translated numbers; the text
+    render is what gets copied out of the app."""
+    result, frame = gld_result_and_frame
+    report = R.build_report(result, frame, ExpiryFilter.ALL, cfd_spot=_CFD_SPOT)
+    text = R.render_text(report)
+
+    assert "XAUUSD" in text
+    assert "TRANSLATION" in text
+    assert f"{_CFD_SPOT:,.2f}" in text
+    # The translated call wall value appears somewhere in the rendered text.
+    assert f"{report.cfd.call_wall.strike:,.2f}" in text
+
+
+def test_render_text_has_no_cfd_section_without_cfd_spot(gld_report):
+    _result, report = gld_report
+    text = R.render_text(report)
+    assert "XAUUSD" not in text
+    assert "TRANSLATION" not in text
+
+
 def test_render_text_marks_dia_noise_dominated_when_it_is():
     """The rendered text must carry the positioning label verbatim, whatever it is."""
     positioning = R.dealer_positioning(-8_824_612.39, 1_037_320_166.19)

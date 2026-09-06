@@ -52,9 +52,17 @@ router = APIRouter(prefix="/report", tags=["report"])
 
 _FILTER_DESC = "ExpiryFilter name, or 'EXPIRIES:<date>[,<date>...]' for an explicit list."
 _FORMAT_DESC = "'json' (default) for the structured report, or 'text' for the rendered report."
+_CFD_SPOT_DESC = (
+    "The CFD instrument's spot, read off the user's own trading platform (T41), e.g. "
+    "XAUUSD for GLD. Omit to get today's report exactly, with no converted block. Must be a "
+    "positive, finite number -- FastAPI rejects a non-numeric value with 422 on its own, and "
+    "`gt=0` rejects zero or negative here."
+)
 
 
-def _build(row: Snapshot, filters: ExpiryFilter | list[dt.date]) -> tuple[Any, ReportOut]:
+def _build(
+    row: Snapshot, filters: ExpiryFilter | list[dt.date], cfd_spot: float | None
+) -> tuple[Any, ReportOut]:
     """Load `row`'s Parquet chain once and return `(ReportResult, ReportOut)`.
 
     Both are returned because `?format=text` renders from the dataclass while the JSON
@@ -63,6 +71,10 @@ def _build(row: Snapshot, filters: ExpiryFilter | list[dt.date]) -> tuple[Any, R
 
     `resolve_snapshot_path` is the required join point for `parquet_path`; never join
     `DATA_DIR` by hand here (see that function's docstring and TASKS.md T30).
+
+    `cfd_spot` (T41) is threaded straight through to `build_report`, which leaves
+    `ReportResult.cfd` `None` when it is `None` -- the only state this parameter can be in
+    given `?cfd_spot=` is optional, so an unconverted report is unaffected either way.
     """
     path = resolve_snapshot_path(row)
     try:
@@ -78,7 +90,14 @@ def _build(row: Snapshot, filters: ExpiryFilter | list[dt.date]) -> tuple[Any, R
     # itself, so both halves of the report describe one contract population.
     frame = to_frame(snapshot)
     result = compute_all(snapshot, filters, frame=frame)
-    report = build_report(result, frame, filters)
+    try:
+        report = build_report(result, frame, filters, cfd_spot=cfd_spot)
+    except ValueError as exc:
+        # `translate_to_cfd` raises on a non-positive/non-finite spot or an unmapped
+        # underlying. `gt=0` on the query parameter already rejects zero/negative before this
+        # is ever reached, but the pure module re-validates rather than trusting the caller --
+        # this is the belt to that braces, not dead code.
+        raise HTTPException(status_code=422, detail=str(exc)) from None
 
     payload = report.to_dict()
     payload["snapshot"] = _snapshot_meta(payload["snapshot"], row)
@@ -108,6 +127,7 @@ def get_report(
     snapshot_id: Annotated[
         int | None, Query(alias="snapshot", description="Pin a specific snapshot id.")
     ] = None,
+    cfd_spot: Annotated[float | None, Query(alias="cfd_spot", gt=0, description=_CFD_SPOT_DESC)] = None,
 ) -> Any:
     """The options-intelligence report for `underlying`'s most recent snapshot (or `snapshot`).
 
@@ -118,6 +138,11 @@ def get_report(
     and adding one is a migration T39 was scoped away from -- so the IV regime label comes back
     `None` and the UI renders "insufficient history". That is the honest answer on this
     database, not a gap to paper over with a hardcoded band.
+
+    `cfd_spot` (T41) is optional and off by default: absent, `ReportOut.cfd` is `None` and the
+    rest of the response is unaffected. `Query(..., gt=0)` rejects a zero, negative or
+    non-numeric value with a 422 before it ever reaches `app.gex.report` -- there is no path by
+    which a bad spot here produces an infinity or a NaN scattered through the converted block.
     """
     canonical = _canonical_underlying(underlying)
     parsed_filter = _parse_filter(filter_)
@@ -131,7 +156,7 @@ def get_report(
     session_factory = get_session_factory()
     with session_factory() as session:
         row = _resolve(session, canonical, snapshot_id)
-        report, out = _build(row, parsed_filter)
+        report, out = _build(row, parsed_filter, cfd_spot)
 
     if normalized == "text":
         # `charset=utf-8` stated explicitly: the rendered report is ASCII today but the

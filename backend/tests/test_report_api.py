@@ -311,3 +311,72 @@ def test_pinned_snapshot_for_the_wrong_symbol_is_404(
     _patch(monkeypatch, session_factory)
     response = client.get("/api/report/DIA", params={"snapshot": indexed_gld})
     assert response.status_code == 404
+
+
+# --------------------------------------------------------------------------------------
+# CFD translation (T41) -- `?cfd_spot=` at the HTTP boundary
+# --------------------------------------------------------------------------------------
+
+
+def test_absent_cfd_spot_leaves_the_response_unchanged(
+    client, monkeypatch, session_factory, indexed_gld
+):
+    """No `cfd_spot` query param -> `cfd` is `null` and every other field is exactly what a
+    request built before T41 existed would have returned."""
+    _patch(monkeypatch, session_factory)
+
+    without = client.get("/api/report/GLD").json()
+    assert without["cfd"] is None
+
+    with_param_omitted_entirely = client.get("/api/report/GLD", params={"filter": "ALL"}).json()
+    assert with_param_omitted_entirely["cfd"] is None
+    without.pop("generated_at")
+    with_param_omitted_entirely.pop("generated_at")
+    assert without == with_param_omitted_entirely
+
+
+def test_cfd_spot_returns_a_converted_block_matching_the_percentage_invariant(
+    client, monkeypatch, session_factory, gld_snapshot, indexed_gld
+):
+    """`GET /api/report/GLD?cfd_spot=4412.50` -- T41's acceptance criterion at the wire.
+
+    Cross-checked against a direct `translate_to_cfd` call so the endpoint cannot drift from
+    the pure module, and the percentage-distance invariant is asserted on the actual numbers
+    this fixture produces.
+    """
+    _patch(monkeypatch, session_factory)
+    cfd_spot = 4412.50
+
+    frame = to_frame(gld_snapshot)
+    result = compute_all(gld_snapshot, ExpiryFilter.ALL, frame=frame)
+    expected = build_report(result, frame, ExpiryFilter.ALL, cfd_spot=cfd_spot).to_dict()
+
+    body = client.get("/api/report/GLD", params={"cfd_spot": cfd_spot}).json()
+
+    assert body["cfd"] is not None
+    assert body["cfd"] == expected["cfd"]
+
+    ratio = cfd_spot / body["spot"]
+    assert body["cfd"]["ratio"] == pytest.approx(ratio)
+    for native, translated in zip(body["levels"]["resistance"], body["cfd"]["resistance"], strict=True):
+        assert translated["strike"] == pytest.approx(native["strike"] * ratio)
+        assert translated["distance_pct"] == native["distance_pct"]
+
+    # Never-convert fields: unaffected by the presence of `cfd_spot`.
+    without_cfd = client.get("/api/report/GLD").json()
+    assert body["positioning"] == without_cfd["positioning"]
+    assert body["ratios"] == without_cfd["ratios"]
+    assert body["iv_regime"] == without_cfd["iv_regime"]
+    assert body["premium"] == without_cfd["premium"]
+
+
+@pytest.mark.parametrize("bad_value", ["0", "-1", "-4412.50", "not-a-number"])
+def test_bad_cfd_spot_is_rejected_with_422(
+    client, monkeypatch, session_factory, indexed_gld, bad_value
+):
+    """Zero, negative and non-numeric `cfd_spot` are all rejected rather than producing
+    infinities -- `Query(..., gt=0)` handles the numeric cases and FastAPI's own type
+    validation handles the non-numeric one."""
+    _patch(monkeypatch, session_factory)
+    response = client.get("/api/report/GLD", params={"cfd_spot": bad_value})
+    assert response.status_code == 422

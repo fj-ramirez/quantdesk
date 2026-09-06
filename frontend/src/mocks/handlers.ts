@@ -11,7 +11,20 @@
  * correct.
  */
 import { http, HttpResponse } from 'msw';
-import type { ChainResponse, ExpiryFilter, GexResult, LevelHistoryRow, Report, SnapshotSummary, Underlying } from '../api/types';
+import { CFD_INSTRUMENTS } from '../api/types';
+import type {
+  CfdLevel,
+  CfdPlaybookEntry,
+  CfdPremiumCandidate,
+  CfdTranslation,
+  ChainResponse,
+  ExpiryFilter,
+  GexResult,
+  LevelHistoryRow,
+  Report,
+  SnapshotSummary,
+  Underlying,
+} from '../api/types';
 import gexSpxFixture from './fixtures/gex-spx.json';
 import gexSpyFixture from './fixtures/gex-spy.json';
 import gexQqqFixture from './fixtures/gex-qqq.json';
@@ -136,7 +149,67 @@ const REPORT_ZERO_DTE_BY_UNDERLYING: Record<Underlying, Report> = {
 
 function reportFor(underlying: Underlying, filter: ExpiryFilter): Report {
   const base = filter === 'ZERO_DTE' ? REPORT_ZERO_DTE_BY_UNDERLYING[underlying] : REPORT_BY_UNDERLYING[underlying];
-  return { ...base, filter };
+  // None of the committed fixtures were captured with a CFD spot attached (T41 postdates
+  // them), so the base fixture always carries `cfd: null` -- `translateToCfd` below is what
+  // attaches a converted block when the request actually asks for one.
+  return { ...base, filter, cfd: null };
+}
+
+/** Mirrors `app.gex.report.translate_to_cfd` (T41) closely enough to exercise the report
+ * page's CFD UI end to end under MSW. NOT the real conversion -- the live API's own
+ * `app/gex/report.py` is the source of truth; this only has to reproduce the same *shape* and
+ * the same pure scaling (`level * ratio`, `distance_pct` passed through unchanged) so a test
+ * asserting the percentage invariant against these mocks is asserting something real. Returns
+ * `null` exactly when the real endpoint would leave `ReportOut.cfd` `null`: no spot, or a
+ * non-positive/non-finite one. */
+function translateToCfd(report: Report, cfdSpot: number | null): CfdTranslation | null {
+  if (cfdSpot == null || !Number.isFinite(cfdSpot) || cfdSpot <= 0) return null;
+  const instrument = CFD_INSTRUMENTS[report.underlying];
+  const ratio = cfdSpot / report.spot;
+
+  function level(side: string, nativeStrike: number | null, distancePct: number | null = null): CfdLevel | null {
+    if (nativeStrike == null) return null;
+    return { side, native_strike: nativeStrike, strike: nativeStrike * ratio, distance_pct: distancePct };
+  }
+
+  function levels(rows: { strike: number | null; side: string; distance_pct: number | null }[]): CfdLevel[] {
+    return rows
+      .map((row) => level(row.side, row.strike, row.distance_pct))
+      .filter((row): row is CfdLevel => row !== null);
+  }
+
+  const playbook: CfdPlaybookEntry[] = report.playbook.entries.map((entry) => ({
+    key: entry.key,
+    trigger: entry.trigger == null ? null : entry.trigger * ratio,
+    target: entry.target == null ? null : entry.target * ratio,
+    invalidation: entry.invalidation == null ? null : entry.invalidation * ratio,
+  }));
+
+  function candidates(rows: { occ_symbol: string; strike: number | null }[]): CfdPremiumCandidate[] {
+    return rows.map((row) => ({ occ_symbol: row.occ_symbol, strike: row.strike == null ? null : row.strike * ratio }));
+  }
+
+  return {
+    underlying: report.underlying,
+    instrument,
+    cfd_spot: cfdSpot,
+    underlying_spot: report.spot,
+    ratio,
+    call_wall: level('CALL_WALL', report.levels.call_wall),
+    put_wall: level('PUT_WALL', report.levels.put_wall),
+    flip_point: level('FLIP_POINT', report.levels.flip_point),
+    max_pain: level('MAX_PAIN', report.max_pain.strike, report.max_pain.distance_pct),
+    resistance: levels(report.levels.resistance),
+    support: levels(report.levels.support),
+    straddling: levels(report.levels.straddling),
+    playbook,
+    premium_calls: candidates(report.premium.calls),
+    premium_puts: candidates(report.premium.puts),
+    note:
+      `These are ${report.underlying} option levels expressed in ${instrument} terms via a snapshot ratio ` +
+      `(${instrument} ${cfdSpot.toFixed(2)} / ${report.underlying} ${report.spot.toFixed(2)} = ${ratio.toFixed(6)}) -- ` +
+      'not levels with their own gamma, because there is no dealer gamma in a CFD.',
+  };
 }
 
 /** Mirrors `app.gex.report.render_text` closely enough for the panel to be exercised, but is
@@ -162,6 +235,14 @@ function renderReportText(report: Report): string {
     ...report.levels.resistance.map((level, i) => `  ${i + 1}. ${level.strike} (resistance)`),
     ...report.levels.support.map((level, i) => `  ${i + 1}. ${level.strike} (support)`),
     '',
+    ...(report.cfd
+      ? [
+          `${report.cfd.instrument} TRANSLATION`,
+          `Anchor: ${report.cfd.instrument} ${report.cfd.cfd_spot.toFixed(2)} / ${report.underlying} ${report.cfd.underlying_spot.toFixed(2)} = ratio ${report.cfd.ratio.toFixed(6)}`,
+          report.cfd.note,
+          '',
+        ]
+      : []),
     'MARKET SENTIMENT',
     `P/C ratio (open interest): ${report.ratios.open_interest_ratio?.toFixed(2) ?? '--'}`,
     '',
@@ -169,7 +250,11 @@ function renderReportText(report: Report): string {
     'Screening output computed from the current chain, not a recommendation.',
     '',
     'PLAYBOOK',
-    ...report.playbook.entries.map((entry) => `${entry.name}: trigger ${entry.trigger ?? '--'}`),
+    ...report.playbook.entries.map((entry, i) => {
+      const cfdEntry = report.cfd?.playbook[i];
+      const base = `${entry.name}: trigger ${entry.trigger ?? '--'}`;
+      return cfdEntry ? `${base}  [${report.cfd!.instrument} ${cfdEntry.trigger?.toFixed(2) ?? '--'}]` : base;
+    }),
     '',
     'RISK ALERTS',
     ...report.alerts.map((alert) => `[${alert.severity}] ${alert.code}`),
@@ -239,7 +324,21 @@ export const handlers = [
     const url = new URL(request.url);
     const filterParam = url.searchParams.get('filter');
     const filter = isExpiryFilter(filterParam) ? filterParam : 'ALL';
-    const report = reportFor(underlying, filter);
+    const base = reportFor(underlying, filter);
+
+    // T41: a zero, negative or non-numeric `cfd_spot` is rejected with 422, matching the real
+    // endpoint's `Query(..., gt=0)` -- never silently ignored or turned into an infinity.
+    const cfdSpotParam = url.searchParams.get('cfd_spot');
+    let cfdSpot: number | null = null;
+    if (cfdSpotParam !== null) {
+      const parsed = Number(cfdSpotParam);
+      if (!Number.isFinite(parsed) || parsed <= 0) {
+        return HttpResponse.json({ detail: `cfd_spot must be a positive number, got '${cfdSpotParam}'` }, { status: 422 });
+      }
+      cfdSpot = parsed;
+    }
+    const report: Report = { ...base, cfd: translateToCfd(base, cfdSpot) };
+
     // `format=text` returns the rendered report as plain text, exactly as the real endpoint
     // does -- the collapsible panel fetches this rather than reassembling it client-side.
     if (url.searchParams.get('format') === 'text') {

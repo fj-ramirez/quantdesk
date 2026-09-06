@@ -189,6 +189,82 @@ describe('Report page', () => {
   });
 });
 
+describe('CFD level translation (T41)', () => {
+  it('labels the CFD-spot field from CFD_INSTRUMENTS for GLD and DIA', async () => {
+    renderReport('/report?symbol=GLD');
+    await awaitReportLoaded('GLD');
+    expect(screen.getByLabelText('XAUUSD spot')).toBeInTheDocument();
+
+    fireEvent.change(screen.getByLabelText(/Symbol/), { target: { value: 'DIA' } });
+    await awaitReportLoaded('DIA');
+    expect(screen.getByLabelText('US30 spot')).toBeInTheDocument();
+  });
+
+  it('an absent ?cfd= leaves the report exactly as it is without T41 -- no converted block', async () => {
+    renderReport('/report?symbol=GLD');
+    await awaitReportLoaded('GLD');
+
+    expect(screen.getByLabelText('XAUUSD spot')).toHaveValue('');
+    // None of the native sections gain a bracketed CFD figure when no spot is supplied.
+    expect(screen.queryByText(/XAUUSD [\d,]+\.\d{2}/)).not.toBeInTheDocument();
+  });
+
+  it('?symbol=GLD&cfd=4412.50 deep-links the field and requests a converted report', async () => {
+    renderReport('/report?symbol=GLD&cfd=4412.50');
+    await awaitReportLoaded('GLD');
+
+    expect(screen.getByLabelText('XAUUSD spot')).toHaveValue('4412.50');
+    // The anchor callout: ratio and the spot pair, so the user can eyeball it against their
+    // own platform.
+    expect(screen.getByText(/XAUUSD 4,412\.50 \/ GLD 406\.77 = ratio/)).toBeInTheDocument();
+  });
+
+  it('shows the converted call wall alongside the native one, never in its place', async () => {
+    renderReport('/report?symbol=GLD&cfd=4412.50');
+    await awaitReportLoaded('GLD');
+
+    const gamma = screen.getByRole('region', { name: 'Gamma exposure' });
+    // Native call wall (415) is still present...
+    expect(within(gamma).getByText('415')).toBeInTheDocument();
+    // ...alongside its XAUUSD translation, shown rather than substituted.
+    expect(gamma.textContent).toMatch(/XAUUSD 4,501\.78/);
+  });
+
+  it('percentage distance from spot is identical in both units (T41 invariant)', async () => {
+    renderReport('/report?symbol=GLD&cfd=4412.50');
+    await awaitReportLoaded('GLD');
+
+    // GLD's 415 call wall is +2.02% from a 406.77 spot -- shown on the native chip...
+    const resistance = screen.getByRole('region', { name: 'Top resistance levels' });
+    expect(resistance.textContent).toMatch(/\+2\.02%/);
+    // ...and its XAUUSD translation (4,501.78) sits alongside it, not a recomputed distance.
+    expect(resistance.textContent).toMatch(/XAUUSD 4,501\.78/);
+    // Only one "+2.02%" -- the CFD chip does not print a second, independently-derived figure.
+    expect(resistance.textContent?.match(/\+2\.02%/g)).toHaveLength(1);
+  });
+
+  it('typing a non-positive CFD spot surfaces a validation message and sends no conversion', async () => {
+    renderReport('/report?symbol=GLD');
+    await awaitReportLoaded('GLD');
+
+    fireEvent.change(screen.getByLabelText('XAUUSD spot'), { target: { value: '-5' } });
+
+    await waitFor(() => expect(screen.getByRole('alert')).toHaveTextContent(/positive number/));
+    // The bad value must never reach the report as a converted block.
+    expect(screen.queryByText(/XAUUSD [\d,]+\.\d{2}/)).not.toBeInTheDocument();
+  });
+
+  it('the copyable full-text report carries the translated playbook', async () => {
+    renderReport('/report?symbol=GLD&cfd=4412.50');
+    await awaitReportLoaded('GLD');
+
+    fireEvent.click(screen.getByRole('button', { name: 'View full report' }));
+    await waitFor(() => expect(screen.getByTestId('report-text')).toBeInTheDocument());
+
+    expect(screen.getByTestId('report-text').textContent).toMatch(/XAUUSD TRANSLATION/);
+  });
+});
+
 describe('Report page error and empty states (T37)', () => {
   it('a symbol with no snapshot renders the empty state with a capture affordance, not an error', async () => {
     server.use(

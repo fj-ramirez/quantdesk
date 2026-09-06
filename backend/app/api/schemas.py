@@ -21,6 +21,10 @@ import datetime as dt
 from pydantic import BaseModel, ConfigDict, Field
 
 __all__ = [
+    "CfdLevelOut",
+    "CfdPlaybookEntryOut",
+    "CfdPremiumCandidateOut",
+    "CfdTranslationOut",
     "ChainResponse",
     "ContractOut",
     "DealerPositioningOut",
@@ -429,13 +433,73 @@ class RiskAlertOut(BaseModel):
     level: float | None
 
 
+class CfdLevelOut(BaseModel):
+    """`app.gex.report.CfdLevel.to_dict()` (T41). `strike` is the translated price;
+    `native_strike` is the underlying's own, and `distance_pct` is passed through unchanged
+    from the level it was translated from -- never recomputed, per the percentage-distance
+    invariant."""
+
+    side: str
+    native_strike: float | None
+    strike: float | None
+    distance_pct: float | None
+
+
+class CfdPlaybookEntryOut(BaseModel):
+    """`app.gex.report.CfdPlaybookEntry.to_dict()` (T41). `key` matches the native
+    `PlaybookEntryOut.key` it was translated from."""
+
+    key: str
+    trigger: float | None
+    target: float | None
+    invalidation: float | None
+
+
+class CfdPremiumCandidateOut(BaseModel):
+    """`app.gex.report.CfdPremiumCandidate.to_dict()` (T41). Only the strike translates --
+    `occ_symbol` is the join key back to the native `PremiumCandidateOut`."""
+
+    occ_symbol: str
+    strike: float | None
+
+
+class CfdTranslationOut(BaseModel):
+    """`app.gex.report.CfdTranslation.to_dict()` (T41) -- the report re-expressed in the CFD
+    instrument the user actually trades, anchored on `cfd_spot / underlying_spot`. `None` on
+    `ReportOut.cfd` whenever the request omitted `cfd_spot`; this model never carries GEX
+    magnitudes, premium prices or IV, because none of those convert (see the module docstring
+    on `translate_to_cfd`)."""
+
+    underlying: str
+    instrument: str
+    cfd_spot: float
+    underlying_spot: float
+    ratio: float
+    call_wall: CfdLevelOut | None
+    put_wall: CfdLevelOut | None
+    flip_point: CfdLevelOut | None
+    max_pain: CfdLevelOut | None
+    resistance: tuple[CfdLevelOut, ...]
+    support: tuple[CfdLevelOut, ...]
+    straddling: tuple[CfdLevelOut, ...]
+    playbook: tuple[CfdPlaybookEntryOut, ...]
+    premium_calls: tuple[CfdPremiumCandidateOut, ...]
+    premium_puts: tuple[CfdPremiumCandidateOut, ...]
+    note: str
+
+
 class ReportOut(BaseModel):
-    """`GET /api/report/{underlying}?filter=` response body.
+    """`GET /api/report/{underlying}?filter=&cfd_spot=` response body.
 
     A verbatim `app.gex.report.ReportResult.to_dict()`, with `snapshot` upgraded to
     `SnapshotMetaOut` exactly as `GexResultOut` does -- the same `id` / `is_eod` /
     `effective_at` merge, so the report page can render T34's staleness badge from the
     identical fields the dashboard uses.
+
+    `cfd` (T41) is `None` unless the request supplied `cfd_spot` -- the default, and every
+    deployment's state today. It hangs off this model as one additional field rather than
+    replacing anything above it, so a request with no `cfd_spot` gets a response identical to
+    one from before T41 existed.
     """
 
     underlying: str
@@ -452,3 +516,4 @@ class ReportOut(BaseModel):
     playbook: PlaybookOut
     alerts: tuple[RiskAlertOut, ...]
     summary: tuple[str, ...]
+    cfd: CfdTranslationOut | None = None

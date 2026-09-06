@@ -18,8 +18,10 @@ export const queryKeys = {
   ) => ['gex-levels-history', underlying, filter, range] as const,
   chainLatest: (underlying: Underlying, expiry: string) => ['chain-latest', underlying, expiry] as const,
   snapshots: (underlying: Underlying, limit: number) => ['snapshots', underlying, limit] as const,
-  report: (underlying: Underlying, filter: ExpiryFilter) => ['report', underlying, filter] as const,
-  reportText: (underlying: Underlying, filter: ExpiryFilter) => ['report-text', underlying, filter] as const,
+  report: (underlying: Underlying, filter: ExpiryFilter, cfdSpot?: number) =>
+    ['report', underlying, filter, cfdSpot ?? null] as const,
+  reportText: (underlying: Underlying, filter: ExpiryFilter, cfdSpot?: number) =>
+    ['report-text', underlying, filter, cfdSpot ?? null] as const,
 };
 
 /**
@@ -66,11 +68,16 @@ export function useSnapshots(underlying: Underlying, limit = 30) {
 
 /** T39/T40's report endpoint. Same `(underlying, filter)` contract as `useGexResult`, minus
  * the pinned-snapshot dimension: the report page always reads the latest capture, because a
- * playbook drawn from a snapshot the user pinned days ago would be actively misleading. */
-export function useReport(underlying: Underlying, filter: ExpiryFilter) {
+ * playbook drawn from a snapshot the user pinned days ago would be actively misleading.
+ *
+ * `cfdSpot` (T41) is optional; passing it re-fetches with `?cfd_spot=` and the response's
+ * `cfd` block carries the converted levels. Leaving it out is the default and produces
+ * exactly today's report -- see `queryKeys.report`, which folds it into the cache key so a
+ * change to the typed spot doesn't silently serve a stale conversion. */
+export function useReport(underlying: Underlying, filter: ExpiryFilter, cfdSpot?: number) {
   return useQuery({
-    queryKey: queryKeys.report(underlying, filter),
-    queryFn: () => apiClient.report(underlying, filter),
+    queryKey: queryKeys.report(underlying, filter, cfdSpot),
+    queryFn: () => apiClient.report(underlying, filter, cfdSpot),
   });
 }
 
@@ -80,11 +87,12 @@ export function useReport(underlying: Underlying, filter: ExpiryFilter) {
  * "View full report" panel, so the common case (glance at the summary cards, leave) costs one
  * request rather than two. It is a separate endpoint round trip rather than a client-side
  * re-render of `useReport`'s data specifically so the copyable text is the backend's own
- * `render_text` output and cannot drift from it. */
-export function useReportText(underlying: Underlying, filter: ExpiryFilter, enabled: boolean) {
+ * `render_text` output and cannot drift from it. `cfdSpot` (T41) is forwarded so the copied
+ * text carries the same translated playbook the on-screen cards show. */
+export function useReportText(underlying: Underlying, filter: ExpiryFilter, enabled: boolean, cfdSpot?: number) {
   return useQuery({
-    queryKey: queryKeys.reportText(underlying, filter),
-    queryFn: () => apiClient.reportText(underlying, filter),
+    queryKey: queryKeys.reportText(underlying, filter, cfdSpot),
+    queryFn: () => apiClient.reportText(underlying, filter, cfdSpot),
     enabled,
   });
 }

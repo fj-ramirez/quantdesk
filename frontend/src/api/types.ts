@@ -25,6 +25,19 @@
 export const UNDERLYINGS = ['SPX', 'SPY', 'QQQ', 'GLD', 'DIA'] as const;
 export type Underlying = (typeof UNDERLYINGS)[number];
 
+/** Underlying -> the CFD instrument the user actually trades (T41), for labelling the report
+ * page's CFD-spot input. A UI-side mirror of the backend's own `CFD_INSTRUMENTS`
+ * (`backend/app/gex/report.py`), which owns the canonical mapping and does the actual
+ * conversion; this copy exists only so the field can be labelled before any report data has
+ * loaded. Keep the two in sync -- adding an instrument is one line in each. */
+export const CFD_INSTRUMENTS: Record<Underlying, string> = {
+  GLD: 'XAUUSD',
+  DIA: 'US30',
+  SPX: 'US500',
+  SPY: 'US500',
+  QQQ: 'NAS100',
+};
+
 export const EXPIRY_FILTERS = ['ALL', 'ZERO_DTE', 'THIS_WEEK', 'MONTHLY_ONLY', 'EX_ZERO_DTE'] as const;
 export type ExpiryFilter = (typeof EXPIRY_FILTERS)[number];
 
@@ -422,7 +435,66 @@ export interface RiskAlert {
   level: number | null;
 }
 
-/** `GET /api/report/{underlying}?filter=` response body.
+// ---------------------------------------------------------------------------------------
+// CFD translation (T41) -- `?cfd_spot=` re-expresses the report in the instrument the user
+// actually trades. `null` on every field below whenever the request omitted `cfd_spot`;
+// GENERATED the same way as the rest of this section, from `ReportOut`'s `CfdTranslationOut`.
+// ---------------------------------------------------------------------------------------
+
+/** One support/resistance/wall/max-pain level translated into CFD terms. `strike` is the
+ * translated price; `native_strike` is the underlying's own, for a renderer that wants both.
+ * `distance_pct` is **identical** to the native level's -- a pure scaling never changes a
+ * percentage distance from spot, which is the T41 invariant to check this against. */
+export interface CfdLevel {
+  side: string;
+  native_strike: number | null;
+  strike: number | null;
+  distance_pct: number | null;
+}
+
+/** One playbook entry's trigger/target/invalidation translated into CFD terms. `key` matches
+ * the native `PlaybookEntry.key` it was translated from, for zipping the two tuples together. */
+export interface CfdPlaybookEntry {
+  key: string;
+  trigger: number | null;
+  target: number | null;
+  invalidation: number | null;
+}
+
+/** One premium-screen row's *strike* translated into CFD terms -- never the premium, IV, bid
+ * or ask, which stay the underlying's. `occ_symbol` is the join key back to the native
+ * `PremiumCandidate`. */
+export interface CfdPremiumCandidate {
+  occ_symbol: string;
+  strike: number | null;
+}
+
+/** The whole report re-expressed in the CFD instrument the user actually trades, anchored on
+ * `ratio = cfd_spot / underlying_spot` -- derived fresh from the two spots every request,
+ * never a stored constant (GLD's gold backing erodes with the trust's expense ratio, and any
+ * cached ratio would silently rot). Carries no GEX magnitude, premium price or IV anywhere in
+ * its shape: those never convert (see `backend/app/gex/report.py`'s `translate_to_cfd`).
+ * `note` is the honesty text that must render wherever these numbers do. */
+export interface CfdTranslation {
+  underlying: Underlying;
+  instrument: string;
+  cfd_spot: number;
+  underlying_spot: number;
+  ratio: number;
+  call_wall: CfdLevel | null;
+  put_wall: CfdLevel | null;
+  flip_point: CfdLevel | null;
+  max_pain: CfdLevel | null;
+  resistance: CfdLevel[];
+  support: CfdLevel[];
+  straddling: CfdLevel[];
+  playbook: CfdPlaybookEntry[];
+  premium_calls: CfdPremiumCandidate[];
+  premium_puts: CfdPremiumCandidate[];
+  note: string;
+}
+
+/** `GET /api/report/{underlying}?filter=&cfd_spot=` response body.
  *
  * Two narrowings from the generated output, both deliberate and both matching what
  * `GexResult` above already does:
@@ -433,7 +505,11 @@ export interface RiskAlert {
  *     keeps one staleness-badge type (T34) across the dashboard and the report.
  *
  * Nothing else was touched. `filter` stays a plain string because an explicit expiry list
- * echoes back as `"EXPIRIES:2026-09-18"`, outside the enum. */
+ * echoes back as `"EXPIRIES:2026-09-18"`, outside the enum.
+ *
+ * `cfd` (T41) is `null` unless the request supplied `cfd_spot` -- the default, and every
+ * fixture below's state, since none of them were captured with a CFD spot attached. Render
+ * the converted levels *alongside* the native ones when it is present, never in their place. */
 export interface Report {
   underlying: Underlying;
   filter: string;
@@ -450,4 +526,5 @@ export interface Report {
   playbook: Playbook;
   alerts: RiskAlert[];
   summary: string[];
+  cfd: CfdTranslation | null;
 }

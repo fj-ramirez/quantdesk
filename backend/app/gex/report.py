@@ -81,12 +81,17 @@ from app.gex.engine import (
 
 __all__ = [
     "ATM_MONEYNESS_WINDOW",
+    "CFD_INSTRUMENTS",
     "DEFAULT_PREMIUM_DTE_MAX",
     "DEFAULT_PREMIUM_DTE_MIN",
     "DEFAULT_TARGET_DTE",
     "FLIP_PROXIMITY_PCT",
     "MIN_IV_HISTORY",
     "POSITIONING_RATIO_FLOOR",
+    "CfdLevel",
+    "CfdPlaybookEntry",
+    "CfdPremiumCandidate",
+    "CfdTranslation",
     "DealerPositioning",
     "IvRegime",
     "LevelSet",
@@ -101,6 +106,7 @@ __all__ = [
     "RiskAlert",
     "build_report",
     "render_text",
+    "translate_to_cfd",
 ]
 
 
@@ -157,6 +163,25 @@ DEFAULT_PREMIUM_TOP_N = 5
 #: a proximity alert. A display threshold for when to *mention* a computed level — it makes
 #: no claim about the market, and no number downstream depends on it.
 FLIP_PROXIMITY_PCT = 0.01
+
+#: Underlying -> the CFD instrument the user actually executes in, for display only (T41).
+#:
+#: The user trades a CFD account, not the underlying's own shares/index, so a GLD report's
+#: strikes ($406.77) are not the numbers on their platform -- they trade XAUUSD, quoted in
+#: USD per troy ounce. Same mismatch for DIA vs US30 (DIA tracks ~1/100 of the Dow), SPX/SPY
+#: vs US500 and QQQ vs NAS100. Adding an instrument is one line here.
+#:
+#: There is deliberately no ratio stored alongside these names. GLD's gold backing erodes
+#: continuously with the trust's expense ratio, index-CFD ratios drift with dividends, and any
+#: constant persisted here would silently rot -- see :func:`translate_to_cfd`, which derives
+#: the ratio fresh from two observed spots every time instead.
+CFD_INSTRUMENTS: dict[str, str] = {
+    "GLD": "XAUUSD",
+    "DIA": "US30",
+    "SPX": "US500",
+    "SPY": "US500",
+    "QQQ": "NAS100",
+}
 
 
 def _f(x: Any) -> float | None:
@@ -583,6 +608,143 @@ class RiskAlert:
 
 
 @dataclass(frozen=True, slots=True)
+class CfdLevel:
+    """One support/resistance/wall/max-pain level translated into CFD terms (T41).
+
+    ``strike`` is the *translated* price (``native_strike * ratio``); ``native_strike`` is
+    carried alongside so a renderer can look the pair up without re-deriving it, and
+    ``distance_pct`` is **the exact same float** as the underlying's ``ReportLevel`` /
+    ``MaxPain`` it was built from, never recomputed — see :func:`translate_to_cfd` for why
+    that equality is guaranteed rather than merely expected. ``side`` mirrors the source
+    level's own label (``RESISTANCE`` / ``SUPPORT`` / ``STRADDLING``) or names the figure
+    (``CALL_WALL``, ``PUT_WALL``, ``FLIP_POINT``, ``MAX_PAIN``) for the singleton levels.
+    """
+
+    side: str
+    native_strike: float
+    strike: float
+    distance_pct: float | None
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "side": self.side,
+            "native_strike": _f(self.native_strike),
+            "strike": _f(self.strike),
+            "distance_pct": _f(self.distance_pct),
+        }
+
+
+@dataclass(frozen=True, slots=True)
+class CfdPlaybookEntry:
+    """One playbook entry's trigger/target/invalidation translated into CFD terms (T41).
+
+    Mirrors :class:`PlaybookEntry` one-for-one (``key`` matches) so a renderer can zip the two
+    tuples together. A field is ``None`` exactly when the corresponding native field is
+    ``None`` — translating "no computed level sits there" produces the same absence, not a
+    scaled zero.
+    """
+
+    key: str
+    trigger: float | None
+    target: float | None
+    invalidation: float | None
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "key": self.key,
+            "trigger": _f(self.trigger),
+            "target": _f(self.target),
+            "invalidation": _f(self.invalidation),
+        }
+
+
+@dataclass(frozen=True, slots=True)
+class CfdPremiumCandidate:
+    """One premium-screen row's *strike* translated into CFD terms (T41).
+
+    Only the strike translates — see the module-level honesty note on :func:`translate_to_cfd`
+    for why ``mid``/``bid``/``ask``/``iv`` are never carried here: they are GLD option prices
+    and an implied vol on the underlying, not a CFD quantity, and must never render as one.
+    ``occ_symbol`` is the join key back to the native :class:`PremiumCandidate`.
+    """
+
+    occ_symbol: str
+    strike: float
+
+    def to_dict(self) -> dict[str, Any]:
+        return {"occ_symbol": self.occ_symbol, "strike": _f(self.strike)}
+
+
+@dataclass(frozen=True, slots=True)
+class CfdTranslation:
+    """The whole report re-expressed in the CFD the user actually trades (T41).
+
+    Anchored on two simultaneous spots, never a stored constant::
+
+        ratio = cfd_spot / underlying_spot
+        cfd_level = underlying_level * ratio
+
+    This is deliberately *not* a persisted ounces-per-share (or points-per-index-point)
+    constant: GLD's gold backing erodes continuously with the trust's expense ratio,
+    index-CFD ratios drift with dividends, and any constant this module cached would silently
+    rot. Anchoring on two observed spots absorbs all of that and cannot go stale — it is only
+    ever as old as the ``cfd_spot`` the caller just supplied.
+
+    Only *prices in the underlying's units* are translated: spot, walls, flip point, max pain,
+    every support/resistance level, every playbook trigger/target/invalidation, and the strike
+    of each premium-screen row. Dollar GEX magnitudes, premium prices and implied vol are never
+    touched — see :func:`translate_to_cfd`'s docstring — which is why this is a block hanging
+    off :class:`ReportResult` rather than a rewrite of it: everything this class does not carry
+    is genuinely unconverted, not merely unmentioned.
+
+    ``note`` is the honesty text T41 requires travel with every rendering of these numbers: they
+    are the underlying's option levels expressed in the CFD's units, not levels with their own
+    gamma (there is no dealer gamma in a CFD); the underlying trades a fixed US session while
+    the CFD trades nearly around the clock, so a level computed from the underlying's last
+    price maps onto a market that keeps moving (pair this with the existing staleness badge);
+    and the ratio is a snapshot of this instant, not a constant, because the two instruments can
+    trade at a premium or discount to each other that itself drifts.
+    """
+
+    underlying: str
+    instrument: str
+    cfd_spot: float
+    underlying_spot: float
+    ratio: float
+    call_wall: CfdLevel | None
+    put_wall: CfdLevel | None
+    flip_point: CfdLevel | None
+    max_pain: CfdLevel | None
+    resistance: tuple[CfdLevel, ...]
+    support: tuple[CfdLevel, ...]
+    straddling: tuple[CfdLevel, ...]
+    playbook: tuple[CfdPlaybookEntry, ...]
+    premium_calls: tuple[CfdPremiumCandidate, ...]
+    premium_puts: tuple[CfdPremiumCandidate, ...]
+    note: str
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "underlying": self.underlying,
+            "instrument": self.instrument,
+            "cfd_spot": _f(self.cfd_spot),
+            "underlying_spot": _f(self.underlying_spot),
+            "ratio": _f(self.ratio),
+            "call_wall": None if self.call_wall is None else self.call_wall.to_dict(),
+            "put_wall": None if self.put_wall is None else self.put_wall.to_dict(),
+            "flip_point": None if self.flip_point is None else self.flip_point.to_dict(),
+            "max_pain": None if self.max_pain is None else self.max_pain.to_dict(),
+            "resistance": [level.to_dict() for level in self.resistance],
+            "support": [level.to_dict() for level in self.support],
+            "straddling": [level.to_dict() for level in self.straddling],
+            "playbook": [entry.to_dict() for entry in self.playbook],
+            "premium_calls": [c.to_dict() for c in self.premium_calls],
+            "premium_puts": [c.to_dict() for c in self.premium_puts],
+            "note": self.note,
+        }
+
+
+@dataclass(frozen=True, slots=True)
 class ReportResult:
     """Everything :func:`build_report` produces for one snapshot under one expiry filter.
 
@@ -592,6 +754,11 @@ class ReportResult:
 
     ``generated_at`` is the snapshot's ``captured_at``, **not** the wall clock: this module
     reads no clock, and a report regenerated from an old snapshot must reproduce exactly.
+
+    ``cfd`` (T41) is ``None`` whenever the caller supplies no ``cfd_spot`` to
+    :func:`build_report` — the default, and the only state every deployment is in today. It
+    hangs off the result as one additional field rather than replacing anything above it, so a
+    report built with no CFD spot is identical to one built before T41 existed.
     """
 
     underlying: str
@@ -608,6 +775,7 @@ class ReportResult:
     playbook: Playbook
     alerts: tuple[RiskAlert, ...] = field(default=())
     summary: tuple[str, ...] = field(default=())
+    cfd: CfdTranslation | None = field(default=None)
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -625,6 +793,7 @@ class ReportResult:
             "playbook": self.playbook.to_dict(),
             "alerts": [a.to_dict() for a in self.alerts],
             "summary": list(self.summary),
+            "cfd": None if self.cfd is None else self.cfd.to_dict(),
         }
 
 
@@ -1244,6 +1413,128 @@ def build_playbook(result: GexResult, levels: LevelSet, pain: MaxPain) -> Playbo
     )
 
 
+def _cfd_level(side: str, native_strike: float | None, ratio: float, distance_pct: float | None) -> CfdLevel | None:
+    """One translated level, or ``None`` when the native value was itself ``None``.
+
+    ``strike = native_strike * ratio`` is the entire computation — a pure scaling, so
+    ``distance_pct`` is passed through **unchanged** rather than recomputed from the translated
+    numbers. That is what makes the T41 invariant ("percentage distances are identical in both
+    units") true by construction instead of true-by-coincidence: ``(s*k - spot*k) / (spot*k)``
+    is algebraically ``(s - spot) / spot`` for any ``k != 0``, so recomputing it would only ever
+    reproduce the same float with extra floating-point error, never a different (more correct)
+    number.
+    """
+    if native_strike is None:
+        return None
+    return CfdLevel(
+        side=side,
+        native_strike=float(native_strike),
+        strike=float(native_strike) * ratio,
+        distance_pct=distance_pct,
+    )
+
+
+def translate_to_cfd(
+    underlying: str,
+    cfd_spot: float,
+    underlying_spot: float,
+    levels: LevelSet,
+    pain: MaxPain,
+    playbook: Playbook,
+    premium: PremiumSelling,
+) -> CfdTranslation:
+    """Re-express every *price* in this report in the CFD instrument the user actually trades.
+
+    ``ratio = cfd_spot / underlying_spot``, anchored fresh on the two spots handed in — never a
+    stored constant (see :class:`CfdTranslation`'s docstring for why). Every subsequent
+    ``* ratio`` is the entire conversion: this function does no other arithmetic, so there is no
+    path by which a level here could drift from a naive hand-check of ``level * ratio``.
+
+    **What is translated** (all are prices in the underlying's own units): the call wall, put
+    wall, flip point, max pain, every support/resistance/straddling level, every playbook
+    trigger/target/invalidation, and the strike of each premium-screen row.
+
+    **What is never translated, and is simply absent from the object this returns:**
+
+    * Dollar GEX magnitudes (net, absolute, per-strike). These are US dollars of dealer delta
+      *in the underlying's options* per 1% move; there is no dealer gamma in a CFD, so a
+      "translated net GEX" would be a meaningless figure wearing a real one's units. They stay
+      only on :class:`ReportResult` itself, never duplicated or scaled here.
+    * Premium prices (bid/ask/mid) in the premium-screen candidates. They are the underlying's
+      option premiums; only the strike (where the contract sits in the CFD's terms) is carried
+      onto :class:`CfdPremiumCandidate`.
+    * Implied volatility. It is the underlying's implied vol, not the CFD's, and this module
+      never even receives :class:`IvRegime` — there is nothing here it could translate.
+
+    Raises:
+        ValueError: if ``cfd_spot`` or ``underlying_spot`` is not a positive, finite number, or
+            if ``underlying`` has no entry in :data:`CFD_INSTRUMENTS`. Called from the API layer,
+            this is what turns a zero, negative or garbled ``cfd_spot`` into a 422 rather than a
+            silently-produced infinity or NaN scattered through the response.
+    """
+    if not math.isfinite(cfd_spot) or cfd_spot <= 0:
+        raise ValueError(f"cfd_spot must be a positive, finite number; got {cfd_spot!r}")
+    if not math.isfinite(underlying_spot) or underlying_spot <= 0:
+        raise ValueError(
+            f"cannot derive a CFD ratio without a positive underlying spot; got {underlying_spot!r}"
+        )
+    instrument = CFD_INSTRUMENTS.get(underlying)
+    if instrument is None:
+        raise ValueError(f"no CFD instrument is configured for underlying {underlying!r}")
+
+    ratio = cfd_spot / underlying_spot
+
+    def _levels(rows: tuple[ReportLevel, ...]) -> tuple[CfdLevel, ...]:
+        return tuple(_cfd_level(row.side, row.strike, ratio, row.distance_pct) for row in rows)
+
+    playbook_entries = tuple(
+        CfdPlaybookEntry(
+            key=entry.key,
+            trigger=None if entry.trigger is None else entry.trigger * ratio,
+            target=None if entry.target is None else entry.target * ratio,
+            invalidation=None if entry.invalidation is None else entry.invalidation * ratio,
+        )
+        for entry in playbook.entries
+    )
+
+    def _candidates(rows: tuple[PremiumCandidate, ...]) -> tuple[CfdPremiumCandidate, ...]:
+        return tuple(
+            CfdPremiumCandidate(occ_symbol=row.occ_symbol, strike=row.strike * ratio) for row in rows
+        )
+
+    note = (
+        f"These are {underlying} option levels expressed in {instrument} terms via a "
+        f"snapshot ratio ({instrument} {cfd_spot:,.2f} / {underlying} {underlying_spot:,.2f} = "
+        f"{ratio:.6g}) -- not levels with their own gamma, because there is no dealer gamma in "
+        f"a CFD. {underlying} trades the standard US session (09:30-16:00 ET) while "
+        f"{instrument} trades nearly around the clock, so a level computed from the "
+        f"{underlying} close maps onto a market that keeps moving after that close; check the "
+        "data-freshness badge above alongside these numbers. The ratio itself is a snapshot of "
+        "this instant, not a constant: the two instruments can trade at a premium or discount "
+        "to one another and that spread drifts, which is exactly why it is derived fresh here "
+        "rather than stored."
+    )
+
+    return CfdTranslation(
+        underlying=underlying,
+        instrument=instrument,
+        cfd_spot=cfd_spot,
+        underlying_spot=underlying_spot,
+        ratio=ratio,
+        call_wall=_cfd_level("CALL_WALL", levels.call_wall, ratio, None),
+        put_wall=_cfd_level("PUT_WALL", levels.put_wall, ratio, None),
+        flip_point=_cfd_level("FLIP_POINT", levels.flip_point, ratio, None),
+        max_pain=_cfd_level("MAX_PAIN", pain.strike, ratio, pain.distance_pct),
+        resistance=_levels(levels.resistance),
+        support=_levels(levels.support),
+        straddling=_levels(levels.straddling),
+        playbook=playbook_entries,
+        premium_calls=_candidates(premium.calls),
+        premium_puts=_candidates(premium.puts),
+        note=note,
+    )
+
+
 def risk_alerts(
     result: GexResult,
     levels: LevelSet,
@@ -1419,6 +1710,7 @@ def build_report(
     premium_dte_max: int = DEFAULT_PREMIUM_DTE_MAX,
     premium_top_n: int = DEFAULT_PREMIUM_TOP_N,
     ratio_floor: float = POSITIONING_RATIO_FLOOR,
+    cfd_spot: float | None = None,
 ) -> ReportResult:
     """Compute every report figure for one ``GexResult`` and its frame.
 
@@ -1441,6 +1733,11 @@ def build_report(
         target_dte: Constant maturity for the ATM IV, in calendar days.
         premium_dte_min, premium_dte_max, premium_top_n: Premium-selling screen window.
         ratio_floor: Positioning confidence floor; see :data:`POSITIONING_RATIO_FLOOR`.
+        cfd_spot: The CFD instrument's spot, as typed by the user off their own platform
+            (T41). ``None`` — the default, and the state of every request that omits the
+            query parameter — leaves :attr:`ReportResult.cfd` ``None`` and produces a report
+            byte-for-byte identical to one built before T41 existed. There is no default ratio
+            and none is ever invented: see :func:`translate_to_cfd`.
 
     Returns:
         A :class:`ReportResult`; ``.to_dict()`` is JSON-serializable.
@@ -1470,6 +1767,13 @@ def build_report(
     )
     playbook = build_playbook(result, levels, pain)
     alerts = risk_alerts(result, levels, positioning)
+    cfd = (
+        None
+        if cfd_spot is None
+        else translate_to_cfd(
+            str(result.underlying), float(cfd_spot), float(result.spot), levels, pain, playbook, premium
+        )
+    )
 
     return ReportResult(
         underlying=str(result.underlying),
@@ -1488,6 +1792,7 @@ def build_report(
         playbook=playbook,
         alerts=alerts,
         summary=_summary(result, positioning, levels, pain, regime),
+        cfd=cfd,
     )
 
 
@@ -1564,6 +1869,11 @@ def render_text(result: ReportResult) -> str:
             )
         )
     )
+    if r.cfd is not None:
+        out.append(
+            f"{r.cfd.instrument} spot:    {r.cfd.cfd_spot:,.2f}  "
+            f"(ratio {r.cfd.ratio:.6g} from {r.underlying} {r.cfd.underlying_spot:,.2f})"
+        )
     out.append("")
 
     out += _banner("DEALER POSITIONING")
@@ -1579,25 +1889,65 @@ def render_text(result: ReportResult) -> str:
     out.append("")
 
     out += _banner("GAMMA EXPOSURE LANDSCAPE")
+    if r.cfd is not None:
+        out += _wrap(
+            f"Bracketed figures are the {r.cfd.instrument} translation -- see the "
+            f"{r.cfd.instrument} TRANSLATION section below for the ratio and the honesty notes "
+            "that must travel with these numbers."
+        )
+        out.append("")
     out.append("RESISTANCE (positive net gamma above spot)")
     out.append(_RULE)
-    out += _level_lines(r.levels.resistance)
+    out += _level_lines(r.levels.resistance, r.cfd.resistance if r.cfd else None)
     out.append("")
     out.append("SUPPORT (negative net gamma below spot)")
     out.append(_RULE)
-    out += _level_lines(r.levels.support)
+    out += _level_lines(r.levels.support, r.cfd.support if r.cfd else None)
     if r.levels.straddling:
         out.append("")
         out.append("STRADDLING SPOT (neither support nor resistance)")
         out.append(_RULE)
-        out += _level_lines(r.levels.straddling)
+        out += _level_lines(r.levels.straddling, r.cfd.straddling if r.cfd else None)
         if r.levels.overlap_note:
             out += _wrap(r.levels.overlap_note)
     out.append("")
-    out.append(f"Call wall: {_strike(r.levels.call_wall)}")
-    out.append(f"Put wall:  {_strike(r.levels.put_wall)}")
-    out.append(f"Gamma flip: {_num(r.levels.flip_point)}")
+    out.append(
+        f"Call wall: {_strike(r.levels.call_wall)}"
+        + ("" if not r.cfd or r.cfd.call_wall is None else f"  [{r.cfd.call_wall.strike:,.2f}]")
+    )
+    out.append(
+        f"Put wall:  {_strike(r.levels.put_wall)}"
+        + ("" if not r.cfd or r.cfd.put_wall is None else f"  [{r.cfd.put_wall.strike:,.2f}]")
+    )
+    out.append(
+        f"Gamma flip: {_num(r.levels.flip_point)}"
+        + ("" if not r.cfd or r.cfd.flip_point is None else f"  [{r.cfd.flip_point.strike:,.2f}]")
+    )
     out.append("")
+
+    if r.cfd is not None:
+        out += _banner(f"{r.cfd.instrument} TRANSLATION")
+        out.append(
+            f"Anchor: {r.cfd.instrument} {r.cfd.cfd_spot:,.2f} / {r.underlying} "
+            f"{r.cfd.underlying_spot:,.2f} = ratio {r.cfd.ratio:.6g}"
+        )
+        out.append("")
+        out += _wrap(r.cfd.note)
+        out.append("")
+        out.append(
+            f"Call wall:  {_num(None if r.cfd.call_wall is None else r.cfd.call_wall.strike)}"
+        )
+        out.append(
+            f"Put wall:   {_num(None if r.cfd.put_wall is None else r.cfd.put_wall.strike)}"
+        )
+        out.append(
+            f"Gamma flip: {_num(None if r.cfd.flip_point is None else r.cfd.flip_point.strike)}"
+        )
+        out.append(
+            f"Max pain:   {_num(None if r.cfd.max_pain is None else r.cfd.max_pain.strike)} "
+            f"({_pct(None if r.cfd.max_pain is None else r.cfd.max_pain.distance_pct)})"
+        )
+        out.append("")
 
     out += _banner("MARKET SENTIMENT")
     ratios = r.ratios
@@ -1638,10 +1988,10 @@ def render_text(result: ReportResult) -> str:
     )
     out.append("")
     out.append(f"Calls at or above the {_strike(r.premium.call_boundary)} call wall:")
-    out += _candidate_lines(r.premium.calls)
+    out += _candidate_lines(r.premium.calls, r.cfd.premium_calls if r.cfd else None)
     out.append("")
     out.append(f"Puts at or below the {_strike(r.premium.put_boundary)} put wall:")
-    out += _candidate_lines(r.premium.puts)
+    out += _candidate_lines(r.premium.puts, r.cfd.premium_puts if r.cfd else None)
     if r.premium.note:
         out.append("")
         out += _wrap(r.premium.note)
@@ -1654,13 +2004,20 @@ def render_text(result: ReportResult) -> str:
         "a rule of thumb. Screening output, not a recommendation."
     )
     out.append("")
+    cfd_by_key = {entry.key: entry for entry in (r.cfd.playbook if r.cfd else ())}
     for entry in r.playbook.entries:
+        cfd_entry = cfd_by_key.get(entry.key)
         out.append(f"{entry.name.upper()}")
         out.append(f"  Trigger:      {_strike(entry.trigger)}  ({entry.trigger_label})")
         out.append(f"  Target:       {_strike(entry.target)}  ({entry.target_label})")
         out.append(
             f"  Invalidation: {_strike(entry.invalidation)}  ({entry.invalidation_label})"
         )
+        if r.cfd is not None and cfd_entry is not None:
+            out.append(
+                f"  {r.cfd.instrument}:      trigger {_num(cfd_entry.trigger)}  "
+                f"target {_num(cfd_entry.target)}  invalidation {_num(cfd_entry.invalidation)}"
+            )
         out.append(f"  Structures:   {entry.strategy}")
         out.append("")
     if r.playbook.spot_in_range:
@@ -1705,22 +2062,44 @@ def _wrap(text: str, *, indent: str = "") -> list[str]:
     return lines or [""]
 
 
-def _level_lines(levels: tuple[ReportLevel, ...]) -> list[str]:
+def _level_lines(
+    levels: tuple[ReportLevel, ...], cfd_levels: tuple[CfdLevel, ...] | None = None
+) -> list[str]:
+    """One line per level. ``cfd_levels`` is the same tuple length and order (T41's
+    :func:`translate_to_cfd` builds it by mapping over these exact rows), so it is zipped in
+    rather than looked up -- appending ``  [instrument strike]`` when present."""
     if not levels:
         return ["  (none)"]
-    return [
-        f"  {i:>2}. {level.strike:>10g}  net {level.net_gex:>+16,.0f}  "
-        f"{_pct(level.distance_pct)}  OI {level.open_interest:>10,}"
-        for i, level in enumerate(levels, start=1)
-    ]
+    pairs = cfd_levels if cfd_levels is not None else [None] * len(levels)
+    lines = []
+    for i, (level, cfd) in enumerate(zip(levels, pairs, strict=True), start=1):
+        line = (
+            f"  {i:>2}. {level.strike:>10g}  net {level.net_gex:>+16,.0f}  "
+            f"{_pct(level.distance_pct)}  OI {level.open_interest:>10,}"
+        )
+        if cfd is not None:
+            line += f"  [{cfd.strike:,.2f}]"
+        lines.append(line)
+    return lines
 
 
-def _candidate_lines(candidates: tuple[PremiumCandidate, ...]) -> list[str]:
+def _candidate_lines(
+    candidates: tuple[PremiumCandidate, ...], cfd_candidates: tuple[CfdPremiumCandidate, ...] | None = None
+) -> list[str]:
+    """One line per candidate. Only the translated *strike* is ever appended -- premium, IV and
+    bid/ask stay the underlying's, per :func:`translate_to_cfd`'s honesty rule."""
     if not candidates:
         return ["  (none)"]
-    return [
-        f"  {i:>2}. {c.strike:>10g} {c.right}  mid {_num(c.mid):>7}  "
-        f"IV {_DASH if c.iv is None else f'{c.iv:.1%}':>7}  {c.dte:>3}d  "
-        f"{_pct(c.distance_pct)}  OI {c.open_interest:>9,}"
-        for i, c in enumerate(candidates, start=1)
-    ]
+    by_symbol = {c.occ_symbol: c for c in (cfd_candidates or ())}
+    lines = []
+    for i, c in enumerate(candidates, start=1):
+        line = (
+            f"  {i:>2}. {c.strike:>10g} {c.right}  mid {_num(c.mid):>7}  "
+            f"IV {_DASH if c.iv is None else f'{c.iv:.1%}':>7}  {c.dte:>3}d  "
+            f"{_pct(c.distance_pct)}  OI {c.open_interest:>9,}"
+        )
+        cfd = by_symbol.get(c.occ_symbol)
+        if cfd is not None:
+            line += f"  [{cfd.strike:,.2f}]"
+        lines.append(line)
+    return lines

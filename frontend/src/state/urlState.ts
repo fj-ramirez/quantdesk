@@ -25,9 +25,16 @@ export interface DashboardParams {
   /** `null` means "latest" — the `/gex/{underlying}/latest` endpoint, not a pinned
    * historical snapshot. */
   snapshotId: string | null;
+  /** T41: the CFD spot the user typed off their own platform (e.g. XAUUSD for GLD), as raw
+   * URL text -- `?cfd=4412.50`. `null` when absent, which must leave the report exactly as it
+   * is today: no converted block, no placeholder. Kept as a string rather than a parsed
+   * number here because validating "is this usable" is a report-page concern (T41), not a
+   * URL-state one -- this hook's job is only to read/write the query param faithfully. */
+  cfdSpot: string | null;
   setSymbol: (symbol: Underlying) => void;
   setFilter: (filter: ExpiryFilter) => void;
   setSnapshotId: (snapshotId: string | null) => void;
+  setCfdSpot: (cfdSpot: string | null) => void;
 }
 
 /**
@@ -42,6 +49,7 @@ export function useDashboardParams(): DashboardParams {
   const symbolRaw = searchParams.get('symbol');
   const filterRaw = searchParams.get('filter');
   const snapshotId = searchParams.get('snapshot');
+  const cfdSpot = searchParams.get('cfd');
 
   const symbol = isUnderlying(symbolRaw) ? symbolRaw : DEFAULT_SYMBOL;
   const filter = isExpiryFilter(filterRaw) ? filterRaw : DEFAULT_FILTER;
@@ -55,6 +63,10 @@ export function useDashboardParams(): DashboardParams {
         // symbols without clearing it would silently request the wrong underlying's
         // snapshot (or a 404) once T11 is live.
         params.delete('snapshot');
+        // T41: the CFD ratio is anchored on *this* underlying's spot -- a GLD-derived
+        // XAUUSD ratio means nothing once the symbol switches to DIA, so it must not survive
+        // the switch as a silently-wrong number.
+        params.delete('cfd');
         return params;
       });
     },
@@ -84,8 +96,20 @@ export function useDashboardParams(): DashboardParams {
     [setSearchParams],
   );
 
+  const setCfdSpot = useCallback(
+    (next: string | null) => {
+      setSearchParams((prev) => {
+        const params = new URLSearchParams(prev);
+        if (next) params.set('cfd', next);
+        else params.delete('cfd');
+        return params;
+      });
+    },
+    [setSearchParams],
+  );
+
   return useMemo(
-    () => ({ symbol, filter, snapshotId, setSymbol, setFilter, setSnapshotId }),
-    [symbol, filter, snapshotId, setSymbol, setFilter, setSnapshotId],
+    () => ({ symbol, filter, snapshotId, cfdSpot, setSymbol, setFilter, setSnapshotId, setCfdSpot }),
+    [symbol, filter, snapshotId, cfdSpot, setSymbol, setFilter, setSnapshotId, setCfdSpot],
   );
 }

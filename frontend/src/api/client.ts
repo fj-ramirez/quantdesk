@@ -141,15 +141,18 @@ export const apiClient = {
     return apiFetch<SnapshotSummary[]>('/api/snapshots', { underlying, limit });
   },
 
-  report(underlying: Underlying, filter: ExpiryFilter): Promise<Report> {
-    return apiFetch<Report>(`/api/report/${underlying}`, { filter });
+  /** `cfdSpot` (T41) is optional and threaded straight through as `?cfd_spot=`; omit it and
+   * the response is today's report unchanged, with `cfd: null`. */
+  report(underlying: Underlying, filter: ExpiryFilter, cfdSpot?: number): Promise<Report> {
+    return apiFetch<Report>(`/api/report/${underlying}`, { filter, cfd_spot: cfdSpot });
   },
 
   /** The same report rendered as plain text by the backend (`app.gex.report.render_text`).
    * Fetched rather than reassembled in the browser so the copyable text and the on-screen
-   * numbers can never drift apart. */
-  reportText(underlying: Underlying, filter: ExpiryFilter): Promise<string> {
-    return apiFetchText(`/api/report/${underlying}`, { filter, format: 'text' });
+   * numbers can never drift apart. `cfdSpot` carries the CFD translation into the copyable
+   * text too (T41), the same way it does in the JSON response. */
+  reportText(underlying: Underlying, filter: ExpiryFilter, cfdSpot?: number): Promise<string> {
+    return apiFetchText(`/api/report/${underlying}`, { filter, format: 'text', cfd_spot: cfdSpot });
   },
 
   /** T37's "Capture now" affordance. The only non-GET call in this client; it takes roughly

@@ -20,13 +20,16 @@
  *    renders as "insufficient history"; a noise-dominated chain (DIA) shows that label instead
  *    of a direction. Neither is a loading state and neither should be styled as a failure.
  */
-import { useCallback, useState } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 import { ApiError } from '../api/client';
 import { useCaptureSnapshot, useReport, useReportText } from '../api/queries';
 import {
+  CFD_INSTRUMENTS,
   EXPIRY_FILTERS,
   EXPIRY_FILTER_LABELS,
   UNDERLYINGS,
+  type CfdLevel,
+  type CfdPlaybookEntry,
   type ExpiryFilter,
   type PlaybookEntry,
   type PremiumCandidate,
@@ -107,7 +110,18 @@ function Card({
  * signed distance and the section heading both restate the side in text, so hue is never the
  * only channel.
  */
-function LevelChip({ level, palette }: { level: ReportLevel; palette: VizPalette }) {
+/** `strike -> CfdLevel`, built once per render from a `CfdTranslation` side. `native_strike`
+ * is the join key back to the `ReportLevel` it was translated from -- see
+ * `backend/app/gex/report.py`'s `CfdLevel` docstring. */
+function cfdLevelIndex(levels: CfdLevel[] | undefined): Map<number, CfdLevel> {
+  const map = new Map<number, CfdLevel>();
+  for (const level of levels ?? []) {
+    if (level.native_strike != null) map.set(level.native_strike, level);
+  }
+  return map;
+}
+
+function LevelChip({ level, cfd, instrument, palette }: { level: ReportLevel; cfd?: CfdLevel; instrument?: string; palette: VizPalette }) {
   const color = level.side === 'SUPPORT' ? palette.levelSupport : level.side === 'RESISTANCE' ? palette.levelResistance : palette.textMuted;
   return (
     <li
@@ -130,6 +144,15 @@ function LevelChip({ level, palette }: { level: ReportLevel; palette: VizPalette
       <strong style={{ fontSize: 15 }}>{formatStrike(level.strike)}</strong>
       <span style={{ fontSize: 12, color: palette.textSecondary }}>{formatPctValue(level.distance_pct)}</span>
       <span style={{ fontSize: 12, color: palette.textMuted }}>{formatGex(level.net_gex)}</span>
+      {/* T41: the same level in the CFD's terms, alongside the native strike -- never in its
+          place. The percentage distance above is deliberately not repeated here: it is
+          identical in both units by construction, so showing it twice would only invite the
+          reader to wonder whether it should differ. */}
+      {cfd && instrument && cfd.strike != null && (
+        <span style={{ fontSize: 12, color: palette.textMuted }}>
+          [{instrument} {formatStrike(cfd.strike)}]
+        </span>
+      )}
     </li>
   );
 }
@@ -137,14 +160,19 @@ function LevelChip({ level, palette }: { level: ReportLevel; palette: VizPalette
 function LevelChips({
   heading,
   levels,
+  cfdLevels,
+  instrument,
   emptyMessage,
   palette,
 }: {
   heading: string;
   levels: ReportLevel[];
+  cfdLevels?: CfdLevel[];
+  instrument?: string;
   emptyMessage: string;
   palette: VizPalette;
 }) {
+  const cfdIndex = useMemo(() => cfdLevelIndex(cfdLevels), [cfdLevels]);
   return (
     <section aria-label={heading} style={{ marginTop: 16 }}>
       <h3 style={{ margin: '0 0 8px', fontSize: 14, color: palette.textPrimary }}>{heading}</h3>
@@ -153,7 +181,13 @@ function LevelChips({
       ) : (
         <ul style={{ display: 'flex', flexWrap: 'wrap', gap: 8, margin: 0, padding: 0 }}>
           {levels.map((level) => (
-            <LevelChip key={`${level.side}-${level.strike}`} level={level} palette={palette} />
+            <LevelChip
+              key={`${level.side}-${level.strike}`}
+              level={level}
+              cfd={level.strike == null ? undefined : cfdIndex.get(level.strike)}
+              instrument={instrument}
+              palette={palette}
+            />
           ))}
         </ul>
       )}
@@ -217,11 +251,21 @@ function CandidateTable({ rows, palette, caption }: { rows: PremiumCandidate[]; 
   );
 }
 
-function PlaybookCard({ entry, palette }: { entry: PlaybookEntry; palette: VizPalette }) {
-  const rows: { label: string; value: number | null; hint: string }[] = [
-    { label: 'Trigger', value: entry.trigger, hint: entry.trigger_label },
-    { label: 'Target', value: entry.target, hint: entry.target_label },
-    { label: 'Invalidation', value: entry.invalidation, hint: entry.invalidation_label },
+function PlaybookCard({
+  entry,
+  cfdEntry,
+  instrument,
+  palette,
+}: {
+  entry: PlaybookEntry;
+  cfdEntry?: CfdPlaybookEntry;
+  instrument?: string;
+  palette: VizPalette;
+}) {
+  const rows: { label: string; value: number | null; cfdValue: number | null | undefined; hint: string }[] = [
+    { label: 'Trigger', value: entry.trigger, cfdValue: cfdEntry?.trigger, hint: entry.trigger_label },
+    { label: 'Target', value: entry.target, cfdValue: cfdEntry?.target, hint: entry.target_label },
+    { label: 'Invalidation', value: entry.invalidation, cfdValue: cfdEntry?.invalidation, hint: entry.invalidation_label },
   ];
   return (
     <section
@@ -236,7 +280,14 @@ function PlaybookCard({ entry, palette }: { entry: PlaybookEntry; palette: VizPa
               {row.label}
             </dt>
             {/* A null is a real answer: no computed level sits there. Never a derived number. */}
-            <dd style={{ margin: 0, fontVariantNumeric: 'tabular-nums' }}>{formatStrike(row.value)}</dd>
+            <dd style={{ margin: 0, fontVariantNumeric: 'tabular-nums' }}>
+              {formatStrike(row.value)}
+              {instrument && row.cfdValue != null && (
+                <span style={{ marginLeft: 6, fontSize: 11, color: palette.textMuted }}>
+                  [{instrument} {formatStrike(row.cfdValue)}]
+                </span>
+              )}
+            </dd>
           </div>
         ))}
       </dl>
@@ -258,10 +309,20 @@ function PlaybookCard({ entry, palette }: { entry: PlaybookEntry; palette: VizPa
  * the failure is caught and surfaced as a message rather than throwing into a click handler,
  * because a silently dead copy button is worse than one that says it did not work.
  */
-function FullReportPanel({ symbol, filter, palette }: { symbol: Underlying; filter: ExpiryFilter; palette: VizPalette }) {
+function FullReportPanel({
+  symbol,
+  filter,
+  cfdSpot,
+  palette,
+}: {
+  symbol: Underlying;
+  filter: ExpiryFilter;
+  cfdSpot?: number;
+  palette: VizPalette;
+}) {
   const [open, setOpen] = useState(false);
   const [copyState, setCopyState] = useState<'idle' | 'copied' | 'failed'>('idle');
-  const { data, isLoading, isError, error } = useReportText(symbol, filter, open);
+  const { data, isLoading, isError, error } = useReportText(symbol, filter, open, cfdSpot);
 
   const onCopy = useCallback(async () => {
     if (!data) return;
@@ -359,8 +420,26 @@ function NoDataYet({ symbol, palette }: { symbol: Underlying; palette: VizPalett
 // Page
 // ---------------------------------------------------------------------------------------
 
-function ReportBody({ report, symbol, filter, palette }: { report: ReportData; symbol: Underlying; filter: ExpiryFilter; palette: VizPalette }) {
-  const { positioning, iv_regime: iv, ratios, levels, max_pain: maxPain, premium, playbook, alerts, summary } = report;
+function ReportBody({
+  report,
+  symbol,
+  filter,
+  cfdSpot,
+  palette,
+}: {
+  report: ReportData;
+  symbol: Underlying;
+  filter: ExpiryFilter;
+  cfdSpot?: number;
+  palette: VizPalette;
+}) {
+  const { positioning, iv_regime: iv, ratios, levels, max_pain: maxPain, premium, playbook, alerts, summary, cfd } = report;
+  const cfdPlaybookByKey = useMemo(() => {
+    const map = new Map<string, CfdPlaybookEntry>();
+    for (const entry of cfd?.playbook ?? []) map.set(entry.key, entry);
+    return map;
+  }, [cfd]);
+  const cfdStraddlingByStrike = useMemo(() => cfdLevelIndex(cfd?.straddling), [cfd]);
 
   return (
     <>
@@ -370,11 +449,37 @@ function ReportBody({ report, symbol, filter, palette }: { report: ReportData; s
         {report.snapshot.is_eod ? ' · EOD' : ''} · {report.filter}
       </p>
 
+      {/* T41: the CFD spot the user typed, the ratio it implies, and the honesty text that
+          must travel with every converted number below -- shown once, near the top, rather
+          than repeated section by section. */}
+      {cfd && (
+        <p
+          style={{
+            margin: '0 0 16px',
+            fontSize: 12,
+            color: palette.textSecondary,
+            borderLeft: `3px solid ${palette.baseline}`,
+            paddingLeft: 10,
+          }}
+        >
+          {cfd.instrument} {formatPrice(cfd.cfd_spot)} / {symbol} {formatPrice(cfd.underlying_spot)} = ratio{' '}
+          {cfd.ratio.toFixed(4)}. {cfd.note}
+        </p>
+      )}
+
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12 }}>
         <Card title="Current price" palette={palette}>
           <p style={{ margin: 0, fontSize: 26, fontVariantNumeric: 'tabular-nums' }}>{formatPrice(report.spot)}</p>
+          {cfd && (
+            <p style={{ margin: '2px 0 0', fontSize: 15, color: palette.textSecondary, fontVariantNumeric: 'tabular-nums' }}>
+              {cfd.instrument} {formatPrice(cfd.cfd_spot)}
+            </p>
+          )}
           <p style={{ margin: '4px 0 0', fontSize: 13, color: palette.textSecondary }}>
             Max pain {formatStrike(maxPain.strike)} ({formatPctValue(maxPain.distance_pct)})
+            {cfd?.max_pain?.strike != null && (
+              <span style={{ color: palette.textMuted }}> [{cfd.instrument} {formatStrike(cfd.max_pain.strike)}]</span>
+            )}
           </p>
         </Card>
 
@@ -410,12 +515,16 @@ function ReportBody({ report, symbol, filter, palette }: { report: ReportData; s
       <LevelChips
         heading="Top resistance levels"
         levels={levels.resistance}
+        cfdLevels={cfd?.resistance}
+        instrument={cfd?.instrument}
         emptyMessage="No positive-gamma strike sits above spot in this expiry scope."
         palette={palette}
       />
       <LevelChips
         heading="Top support levels"
         levels={levels.support}
+        cfdLevels={cfd?.support}
+        instrument={cfd?.instrument}
         emptyMessage="No negative-gamma strike sits below spot in this expiry scope."
         palette={palette}
       />
@@ -429,7 +538,13 @@ function ReportBody({ report, symbol, filter, palette }: { report: ReportData; s
           <p style={{ margin: '0 0 8px', fontSize: 13, color: palette.textSecondary }}>{levels.overlap_note}</p>
           <ul style={{ display: 'flex', flexWrap: 'wrap', gap: 8, margin: 0, padding: 0 }}>
             {levels.straddling.map((level) => (
-              <LevelChip key={`straddle-${level.strike}`} level={level} palette={palette} />
+              <LevelChip
+                key={`straddle-${level.strike}`}
+                level={level}
+                cfd={level.strike == null ? undefined : cfdStraddlingByStrike.get(level.strike)}
+                instrument={cfd?.instrument}
+                palette={palette}
+              />
             ))}
           </ul>
         </section>
@@ -456,17 +571,30 @@ function ReportBody({ report, symbol, filter, palette }: { report: ReportData; s
             </tr>
             <tr>
               <th scope="row">Call wall</th>
-              <td>{formatStrike(levels.call_wall)}</td>
+              <td>
+                {formatStrike(levels.call_wall)}
+                {cfd?.call_wall?.strike != null && (
+                  <span style={{ color: palette.textMuted }}> [{cfd.instrument} {formatStrike(cfd.call_wall.strike)}]</span>
+                )}
+              </td>
             </tr>
             <tr>
               <th scope="row">Put wall</th>
-              <td>{formatStrike(levels.put_wall)}</td>
+              <td>
+                {formatStrike(levels.put_wall)}
+                {cfd?.put_wall?.strike != null && (
+                  <span style={{ color: palette.textMuted }}> [{cfd.instrument} {formatStrike(cfd.put_wall.strike)}]</span>
+                )}
+              </td>
             </tr>
             <tr>
               <th scope="row">Gamma flip</th>
               <td>
                 {formatStrike(levels.flip_point)}
                 <span style={{ color: palette.textMuted }}> ({formatDistancePct(levels.flip_point, report.spot)})</span>
+                {cfd?.flip_point?.strike != null && (
+                  <span style={{ color: palette.textMuted }}> [{cfd.instrument} {formatStrike(cfd.flip_point.strike)}]</span>
+                )}
               </td>
             </tr>
           </tbody>
@@ -507,7 +635,13 @@ function ReportBody({ report, symbol, filter, palette }: { report: ReportData; s
         ) : (
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12 }}>
             {playbook.entries.map((entry) => (
-              <PlaybookCard key={entry.key} entry={entry} palette={palette} />
+              <PlaybookCard
+                key={entry.key}
+                entry={entry}
+                cfdEntry={cfdPlaybookByKey.get(entry.key)}
+                instrument={cfd?.instrument}
+                palette={palette}
+              />
             ))}
           </div>
         )}
@@ -543,7 +677,7 @@ function ReportBody({ report, symbol, filter, palette }: { report: ReportData; s
         </section>
       )}
 
-      <FullReportPanel symbol={symbol} filter={filter} palette={palette} />
+      <FullReportPanel symbol={symbol} filter={filter} cfdSpot={cfdSpot} palette={palette} />
     </>
   );
 }
@@ -551,10 +685,22 @@ function ReportBody({ report, symbol, filter, palette }: { report: ReportData; s
 export function Report() {
   // Same URL state as the dashboard and history pages, so `/report?symbol=GLD&filter=ALL`
   // deep-links and the nav carries the selection between pages (AppShell forwards `search`).
-  const { symbol, filter, setSymbol, setFilter } = useDashboardParams();
+  const { symbol, filter, cfdSpot: cfdSpotRaw, setSymbol, setFilter, setCfdSpot } = useDashboardParams();
   const { theme } = useTheme();
   const palette = vizPaletteFor(theme);
-  const { data, isLoading, isError, error } = useReport(symbol, filter);
+
+  // T41: parse and validate the typed CFD spot client-side, so a value in progress (empty, a
+  // stray letter, a momentarily negative sign while typing "-5" the user is about to correct)
+  // never gets sent to the API at all -- only a value that could possibly be right is. This is
+  // deliberately stricter than the backend needs to be (it already rejects non-positive/
+  // non-finite with a 422): sending a known-bad value would otherwise turn the *entire*
+  // report into an error page over a field that is supposed to be an optional add-on.
+  const cfdSpotParsed = cfdSpotRaw != null && cfdSpotRaw.trim() !== '' ? Number(cfdSpotRaw) : null;
+  const cfdSpotInvalid = cfdSpotParsed != null && (!Number.isFinite(cfdSpotParsed) || cfdSpotParsed <= 0);
+  const cfdSpotValid = cfdSpotParsed != null && !cfdSpotInvalid ? cfdSpotParsed : undefined;
+  const cfdInstrument = CFD_INSTRUMENTS[symbol];
+
+  const { data, isLoading, isError, error } = useReport(symbol, filter, cfdSpotValid);
 
   // T37: a 404 whose detail says there is no snapshot yet is an empty state, not a failure.
   // Anything else with a 404 (a missing Parquet file, say) is a genuine error and keeps the
@@ -585,7 +731,28 @@ export function Report() {
             ))}
           </select>
         </label>
+        {/* T41: the CFD instrument the user actually trades. Optional and URL-backed
+            (`?cfd=`), so `/report?symbol=GLD&cfd=4412.50` deep-links. Leaving it blank leaves
+            the report exactly as it is without T41 -- no converted block, no placeholder. */}
+        <label style={{ fontSize: 13 }}>
+          {cfdInstrument} spot{' '}
+          <input
+            type="text"
+            inputMode="decimal"
+            placeholder="e.g. 4412.50"
+            aria-label={`${cfdInstrument} spot`}
+            value={cfdSpotRaw ?? ''}
+            onChange={(event) => setCfdSpot(event.target.value.length > 0 ? event.target.value : null)}
+            style={{ width: 110 }}
+          />
+        </label>
       </div>
+
+      {cfdSpotInvalid && (
+        <p role="alert" style={{ fontSize: 12, color: palette.textSecondary, marginTop: -6 }}>
+          {cfdInstrument} spot must be a positive number — the CFD translation is off until this is fixed.
+        </p>
+      )}
 
       {isLoading && <p aria-live="polite">Loading the {symbol} report…</p>}
 
@@ -598,7 +765,7 @@ export function Report() {
         </p>
       )}
 
-      {data && <ReportBody report={data} symbol={symbol} filter={filter} palette={palette} />}
+      {data && <ReportBody report={data} symbol={symbol} filter={filter} cfdSpot={cfdSpotValid} palette={palette} />}
     </div>
   );
 }
