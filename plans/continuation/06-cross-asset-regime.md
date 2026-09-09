@@ -56,8 +56,9 @@ raises `ProviderError` on a non-CSV body), `backend/app/config.py` (`BAR_PROVIDE
 default gains the `cboe_index` group), `backend/app/scan/cross_asset.py` (pure:
 `term_structure`, `vrp`, `sector_correlation`, `percentile_252`, returning a frozen
 `CrossAssetRow`), `backend/app/api/scan.py` (`GET /api/scan/cross-asset`),
-`frontend/src/components/regime/RegimeStrip.tsx`, `api/queries.ts`, `api/types.ts`, MSW
-handlers and fixtures, tests both sides, `docs/validation-scan.md`.
+`frontend/src/components/regime/RegimeStrip.tsx` (visual spec in [07-ui.md](07-ui.md), built on
+T55's shared kit), `api/queries.ts`, `api/types.ts`, MSW handlers and fixtures, tests both
+sides, `docs/validation-scan.md`.
 
 The first step is a live request for each of the six CSV URLs. Record in the provider
 docstring which exist, their column names, and the earliest date. A missing index is dropped

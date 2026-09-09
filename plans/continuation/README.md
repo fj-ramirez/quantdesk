@@ -20,15 +20,20 @@ $50/month. All new data sources here are free and keyless by design.
 
 ```
 T42 foundation: daily bars provider + table + universe + job + backfill      (Opus)
- ├── T43 breakout ledger, pure module + API   (Sonnet) ── T44 /scan page (Sonnet)
- ├── T45 trend/chop scorer, pure module + API (Opus)   ── T46 scan page columns (Sonnet)
+ ├── T43 breakout ledger, pure module + API   (Sonnet) ─┐
+ ├── T45 trend/chop scorer, pure module + API (Opus)   ─┴─ T55 UI kit ── T44 /scan page (breakouts + trend; T46 folded in)
  ├── T50 rotation math + API (Opus, needs T45 for nothing; needs T42) ── T51 /rotation page (Sonnet)
  ├── T52 ETF shares-outstanding ingest (Sonnet) ── T53 /flows page (Sonnet)
  └── T54 cross-asset regime strip (Sonnet; adds a Cboe index-history bar provider)
 
 T47 extend option capture to sector/industry ETFs (Sonnet, independent of T42)
  └── T48 regime metrics, pure module + API (Opus; also needs T42 and T45 for IV/RV) ── T49 /regime page (Sonnet)
+
+T55 UI kit (Sonnet; frontend only) ── T44, T49, T51, T53, T54's strip ── T56 /overview page
 ```
+
+UI specs for every page, the shared kit and the overview live in [07-ui.md](07-ui.md); a page
+task's block in its tool's plan file is superseded by that document.
 
 ## Dispatch order
 
@@ -47,9 +52,11 @@ concurrently; the dependency graph does not capture write collisions.
 | 2 | T43, T47 | Disjoint: T43 owns `app/scan/` + `app/api/scan.py`; T47 owns `models/chain.py`, `jobs/capture.py`, `jobs/scheduler.py`, `config.py`, `frontend/src/api/types.ts`. Both make a one-line additive mount edit in `app/main.py`. |
 | 3 | T45 | Extends `app/scan/indicators.py` and `app/api/scan.py`, so it needs T43 merged first. Not parallelizable with anything that writes either file. |
 | 4 | T52 | Writes `app/api/scan.py`, `jobs/scheduler.py`, `models/db.py` and a migration; run alone, after T45. |
-| 5 | T48, T44 | T48 needs T42, T45 and T47. T44 needs T43 and T16, and writes only frontend files, so it can run alongside T48. |
-| 6 | T50, T46, T54 | T46 needs T45 merged. T54 adds a bars provider — a `BAR_PROVIDER_GROUPS` config change plus a new module, per T42's registry design. |
-| 7 | T49, T53, T51 | Page tasks; check for shared frontend route/nav files before running together. |
+| 4′ | T55 | **Ready now** (T43, T45, T47 are merged). Frontend only, so it runs alongside T52 with no shared files. |
+| 5 | T48, T44 | T48 needs T42, T45 and T47. T44 needs T55 and writes only frontend files, so it runs alongside T48. |
+| 6 | T50, T54 | T54 adds a bars provider — a `BAR_PROVIDER_GROUPS` config change plus a new module, per T42's registry design — and its `RegimeStrip` follows 07-ui.md. |
+| 7 | T49, T53, T51 | Page tasks. Each writes `App.tsx` and its own `pages/`/`components/` folder; `App.tsx` is a one-line route swap per task, so run them sequentially or let the supervisor apply the route lines. |
+| 8 | T56 | After T44, T49, T51 and T54. |
 
 Model note: the user asked on 2026-09-09 to use Sonnet wherever possible. T42 was specced for
 Opus and built by Sonnet without trouble, supervised by Opus. The `Model` column in TASKS.md

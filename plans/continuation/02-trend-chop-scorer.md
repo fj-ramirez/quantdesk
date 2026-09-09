@@ -61,8 +61,11 @@ fixture matches a hand-computed Wilder value to 1e-6; percentiles across a 3-sym
 are exactly {0, 0.5, 1}; `GET /api/scan/trend` returns `iv30=None` for a symbol without a
 chain and a number for SPY; `uv run pytest` and `ruff check .` pass.
 
-### T46 · Sonnet · T44, T45
+### T46 · folded into T44
 **Scan page: trend view**
+
+> **UI spec superseded (2026-09-09):** the page spec and task block for this view now live in
+> [07-ui.md](07-ui.md); the paragraph below is kept for history. Dispatch from 07-ui.md.
 
 Paths: `frontend/src/pages/Scan.tsx` (view toggle in URL state, `?view=trend`),
 `frontend/src/components/scan/TrendTable.tsx`, `frontend/src/components/scan/Sparkline.tsx`

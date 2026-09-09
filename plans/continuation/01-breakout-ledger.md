@@ -69,8 +69,11 @@ above the range produce one event; a symbol with three events reports `rate=None
 returns within 2 s for 45 symbols × 500 bars on the dev machine (measure it and record the
 number in the docstring); `uv run pytest` and `ruff check .` pass.
 
-### T44 · Sonnet · T43, T16
-**Scan page: breakouts view**
+### T44 · Sonnet · T55
+**Scan page: breakouts and trend views**
+
+> **UI spec superseded (2026-09-09):** the page spec and task block for this view now live in
+> [07-ui.md](07-ui.md); the paragraph below is kept for history. Dispatch from 07-ui.md.
 
 Paths: `frontend/src/pages/Scan.tsx`, `frontend/src/components/scan/BreakoutTable.tsx`,
 `frontend/src/components/scan/EventChart.tsx` (lightweight-charts, already a dependency),

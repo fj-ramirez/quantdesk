@@ -16,6 +16,7 @@ plans/
     04-sector-rotation.md           T50, T51
     05-etf-flows.md                 T52, T53
     06-cross-asset-regime.md        T54
+    07-ui.md                        T55, T56, and the full specs for T44, T49, T51, T53
 ```
 
 ## Conventions
@@ -25,7 +26,7 @@ plans/
   block shape used by `TASKS.md`), *Verified facts* (measured by the supervisor, not assumed),
   *Acceptance*, *Likely first-contact failures*, *Out of scope*.
 - Task IDs are allocated here and reserved in `TASKS.md` before dispatch. Next free ID after
-  this initiative: **T55**.
+  this initiative: **T57**.
 - Model choice follows the project rule: Opus for new pure-math modules and new subsystems,
   Sonnet for views, ingestion against a spec, and additive wiring.
 - The standing prompt preamble applies to every task: *"Read PLAN.md first. Work only inside

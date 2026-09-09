@@ -74,8 +74,11 @@ row with today's as-of date and a second run inserts nothing; a fixture where th
 is yesterday causes a skip, not a row; `compute_flows` on a hand-built fixture returns the
 hand-computed percentages; `uv run pytest` and `ruff check .` pass.
 
-### T53 · Sonnet · T52, T44
+### T53 · Sonnet · T52, T55
 **Flows page**
+
+> **UI spec superseded (2026-09-09):** the page spec and task block for this view now live in
+> [07-ui.md](07-ui.md); the paragraph below is kept for history. Dispatch from 07-ui.md.
 
 Paths: `frontend/src/pages/Flows.tsx`, `frontend/src/components/flows/FlowBars.tsx`
 (echarts), `frontend/src/components/flows/FlowSparkline.tsx`, `api/queries.ts`,

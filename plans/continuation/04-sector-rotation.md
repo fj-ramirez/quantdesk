@@ -60,8 +60,11 @@ and the test asserts that sequence; relative returns on a hand-built 3-symbol fi
 average returns 4; the API rejects an unknown group with 422; `uv run pytest` and `ruff check
 .` pass.
 
-### T51 · Sonnet · T50, T44
+### T51 · Sonnet · T50, T55
 **Rotation page**
+
+> **UI spec superseded (2026-09-09):** the page spec and task block for this view now live in
+> [07-ui.md](07-ui.md); the paragraph below is kept for history. Dispatch from 07-ui.md.
 
 Paths: `frontend/src/pages/Rotation.tsx`, `frontend/src/components/rotation/RrgChart.tsx`
 (echarts scatter with `lines` series for trails and `markArea` quadrants; no new dependency),

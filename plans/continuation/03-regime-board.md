@@ -117,8 +117,11 @@ beyond" is hand-checked on a fixture with a known strike ladder; a DIA fixture n
 verdict; the API returns a row per core and extended symbol with `None` where inputs are
 missing; `uv run pytest` and `ruff check .` pass.
 
-### T49 · Sonnet · T48, T44
+### T49 · Sonnet · T48, T55
 **Regime page**
+
+> **UI spec superseded (2026-09-09):** the page spec and task block for this view now live in
+> [07-ui.md](07-ui.md); the paragraph below is kept for history. Dispatch from 07-ui.md.
 
 Paths: `frontend/src/pages/Regime.tsx`, `frontend/src/components/regime/RegimeTable.tsx`,
 `api/queries.ts`, `api/types.ts`, `App.tsx`, `AppShell.tsx`, MSW handlers and fixtures, tests.

@@ -671,23 +671,29 @@ all pass.
 
 The user's assets are fading breakouts; they want to see which markets have continuation and
 where money rotates between sectors. Full specs live in `plans/continuation/` (one file per
-tool, same block shape as here). IDs T42–T54 are reserved; next free ID is **T55**.
+tool, same block shape as here). IDs T42–T56 are reserved; next free ID is **T57**.
+
+UI added 2026-09-09: the page tasks were too thin to dispatch, so `07-ui.md` now carries the
+full specs for every page, a shared UI kit (T55) that all pages build on, and an overview page
+(T56). T46 is folded into T44 because both backends already exist.
 
 | ID | Model | Depends on | Task | Plan |
 |---|---|---|---|---|
 | T42 | Sonnet | T01, T05, T31 | Daily bars: provider ABC + Yahoo (Stooq died behind a JS proof-of-work wall, verified 2026-09-09), `daily_bars` table, 17:30 ET job, backfill CLI, `/api/bars` | [00-foundation-daily-bars.md](plans/continuation/00-foundation-daily-bars.md) |
 | T43 | Sonnet | T42 | Breakout ledger: pure `app/scan/breakouts.py` + `/api/scan/breakouts` | [01-breakout-ledger.md](plans/continuation/01-breakout-ledger.md) |
-| T44 | Sonnet | T43, T16 | `/scan` page, breakouts view | same |
+| T44 | Sonnet | T55 | `/scan` page: breakouts and trend views (absorbs T46) | [07-ui.md](plans/continuation/07-ui.md) |
 | T45 | Opus | T42, T43 | Trend/chop scorer: ADX, ER, CHOP, variance ratio, RV, IV/RV, rank composite | [02-trend-chop-scorer.md](plans/continuation/02-trend-chop-scorer.md) |
-| T46 | Sonnet | T44, T45 | `/scan` page, trend view | same |
+| T46 | — | — | folded into T44 | — |
 | T47 | Sonnet | T02, T38 | Extend option capture to sector/industry ETFs via a separate 16:45 ET job | [03-regime-board.md](plans/continuation/03-regime-board.md) |
 | T48 | Opus | T42, T45, T47 | Regime metrics: wall spacing, room beyond, 0DTE share, verdict with reasons | same |
-| T49 | Sonnet | T48, T44 | `/regime` page | same |
+| T49 | Sonnet | T48, T55 | `/regime` page | [07-ui.md](plans/continuation/07-ui.md) |
 | T50 | Opus | T42 | Rotation math: weekly RRG approximation, relative returns, sector-level breadth | [04-sector-rotation.md](plans/continuation/04-sector-rotation.md) |
-| T51 | Sonnet | T50, T44 | `/rotation` page | same |
+| T51 | Sonnet | T50, T55 | `/rotation` page | [07-ui.md](plans/continuation/07-ui.md) |
 | T52 | Sonnet | T42 | ETF flows: issuer shares-outstanding survey, then ingest for supported families | [05-etf-flows.md](plans/continuation/05-etf-flows.md) |
-| T53 | Sonnet | T52, T44 | `/flows` page | same |
-| T54 | Sonnet | T42, T45 | Cross-asset strip: Cboe index-history bars provider, term structure, VRP, correlation | [06-cross-asset-regime.md](plans/continuation/06-cross-asset-regime.md) |
+| T53 | Sonnet | T52, T55 | `/flows` page | [07-ui.md](plans/continuation/07-ui.md) |
+| T54 | Sonnet | T42, T45, T55 | Cross-asset strip: Cboe index-history bars provider, term structure, VRP, correlation; strip visual spec in 07-ui.md | [06-cross-asset-regime.md](plans/continuation/06-cross-asset-regime.md) |
+| T55 | Sonnet | T43, T45, T47 | Scan UI kit: route-aware TopBar, `useScanParams`, ScanTable/Sparkline/StatusChip/EmptyState, recorded MSW fixtures, stub routes | [07-ui.md](plans/continuation/07-ui.md) |
+| T56 | Sonnet | T44, T49, T51, T54 | `/overview` page: tape strip, where continuation is, open now | [07-ui.md](plans/continuation/07-ui.md) |
 
 Dispatch order and the one open decision (universe width) are in
 `plans/continuation/README.md`.
@@ -700,7 +706,7 @@ Dispatch order and the one open decision (universe width) are in
 |---|---|
 | Opus | T01, T07, T08, T10, T21, T23, T25, T33, T39, T42, T45, T48, T50 |
 | Opus (review) | T06, T17, T24 |
-| Sonnet | T00, T02–T05, T09, T11–T16, T18–T20, T22, T26–T32, T34–T38, T40, T41, T43, T44, T46, T47, T49, T51–T54 |
+| Sonnet | T00, T02–T05, T09, T11–T16, T18–T20, T22, T26–T32, T34–T38, T40–T44, T47, T49, T51–T56 (T46 folded into T44) |
 
 Parallelizable groups once their dependency is done: {T02, T03, T04} after T01; {T12} alongside all of Phase 1; {T13, T14} after T12; {T27, T28} anytime.
 
