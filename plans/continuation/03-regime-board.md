@@ -130,6 +130,55 @@ Acceptance: verdict cell expands to reasons; noise-dominated rows are visibly di
 carry no verdict colour; clicking a symbol navigates to `/?symbol=XLK` preserving the filter;
 `npm test` and `npm run lint` pass; supervisor sees live rows.
 
+## Verified facts (2026-09-09, from T47's first live 16:45 run)
+
+**Cboe's delayed feed serves hours-stale payloads for thin ETFs, and those land flagged as
+EOD.** This is the single most important thing T48 must design around, because a regime
+verdict is only as honest as the chain under it.
+
+Observed on the first real 16:45 extended capture. Of the 23 extended symbols, five ended the
+day with an `is_eod` snapshot whose `captured_at` is **before the 16:00 close**:
+
+| Symbol | EOD `captured_at` (ET) | Contracts | Staleness at the close |
+|---|---|---|---|
+| XBI | 11:39 | 2,088 | 4h 21m |
+| XLC | 13:33 | 964 | 2h 27m |
+| XLRE | 13:35 | 222 | 2h 25m |
+| GDX | 15:33 | 3,042 | 27m |
+| KRE | 15:35 | 1,552 | 25m |
+
+The mechanism is `app/jobs/capture.py::_persist_sync`. `captured_at` is Cboe's own payload
+timestamp, recorded verbatim, and the duplicate check keys on an exact
+`(underlying, captured_at)` match. For SPX/SPY that timestamp advances on every request
+(verified 2026-09-04), so the check only ever fires on a genuine retry. For a thin sector ETF
+it does **not** advance — Cboe regenerates the payload only on activity — so a 16:45 fetch can
+return a payload identical to one served hours earlier. The existing row is then promoted to
+`is_eod=True` rather than a fresh row being written.
+
+That promotion is deliberate and correct on its own terms (its docstring explains that
+skipping without promoting would leave the day with no `is_eod` row at all). The problem it
+cannot solve is upstream: **at 16:45 Cboe simply had nothing newer to give for those symbols**,
+so a fresh fetch would have stored the same stale instant anyway. The promotion reveals the
+staleness; it does not cause it.
+
+Consequences T48 must handle rather than inherit silently:
+
+- A regime verdict for XBI computed from that snapshot describes **11:39 ET**, not the close.
+  Its 0DTE contracts had not yet expired at that instant, so the 0DTE-share component and any
+  wall spacing measured against the closing spot are both describing a different market.
+- Staleness is **per symbol and varies day to day** with each ETF's activity. It is not a
+  fixed property of a symbol, so it cannot be handled with a static exclusion list.
+- `app/jobs/calendar.py::effective_data_time` (T34) already exists to express an honest "as
+  of" instant, and `/api/health/capture` already reports `last_eod_capture_at` per symbol.
+  The pieces to surface this are in place; T48 has to use them.
+
+**Requirement on T48:** every regime row carries the age of the chain it was computed from,
+and a row whose chain predates the close is marked as such rather than being presented
+alongside genuinely-at-the-close rows as if they were equivalent. Whether that means a
+staleness column, a chip, or suppressing the verdict entirely past some threshold is T48's
+call to make and justify — but silently ranking a 11:39 chain against a 16:44 one is not an
+option. The same rule applies to `/regime`'s page task (T49, spec in `07-ui.md`).
+
 ## Verified facts (2026-09-09)
 
 - `Underlying` is a closed `StrEnum`; `underlying_for_root` raises on unknown roots by design.
