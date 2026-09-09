@@ -12,6 +12,9 @@ import type {
   GexResult,
   LevelHistoryRow,
   Report,
+  RotationBenchmark,
+  RotationGroup,
+  RotationResponse,
   SnapshotSummary,
   SymbolBreakoutsResponse,
   SymbolTrendResponse,
@@ -209,6 +212,15 @@ export const apiClient = {
 
   universe(): Promise<UniverseResponse> {
     return apiFetch<UniverseResponse>('/api/universe');
+  },
+
+  /** T51's `/rotation` page. */
+  rotation(opts: { group: RotationGroup; benchmark: RotationBenchmark; weeks: number }): Promise<RotationResponse> {
+    return apiFetch<RotationResponse>('/api/scan/rotation', {
+      group: opts.group,
+      benchmark: opts.benchmark,
+      weeks: opts.weeks,
+    });
   },
 
   captureHealth(): Promise<CaptureHealth> {

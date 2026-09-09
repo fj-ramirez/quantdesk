@@ -25,6 +25,7 @@ import type {
   GexResult,
   LevelHistoryRow,
   Report,
+  RotationResponse,
   SnapshotSummary,
   SymbolBreakoutsResponse,
   SymbolTrendResponse,
@@ -62,6 +63,9 @@ import trendSpyFixture from './fixtures/scan/trend_SPY.json';
 import barsSpyFixture from './fixtures/scan/bars_SPY.json';
 import universeFixture from './fixtures/scan/universe.json';
 import healthCaptureFixture from './fixtures/scan/health_capture.json';
+import rotationSectorsFixture from './fixtures/scan/rotation_sectors.json';
+import rotationIndustriesRspFixture from './fixtures/scan/rotation_industries_rsp.json';
+import rotationAssetsFixture from './fixtures/scan/rotation_assets.json';
 
 // T47 added 23 more `Underlying` members (sector/industry ETFs), none of which has a mock
 // fixture -- these handlers were built and are tested against exactly the original five, and
@@ -462,6 +466,26 @@ export const handlers = [
   }),
 
   http.get('*/api/universe', () => HttpResponse.json(universeFixture as UniverseResponse)),
+
+  // T51: `/rotation`. Three fixtures, one per `(group, benchmark)` combination the page and
+  // its tests actually exercise -- see `fixtures/scan/README.md`'s "Rotation fixtures"
+  // section. Selection is by `group` alone (each group was only ever recorded against one
+  // benchmark), which is enough for the deep-link and pinned-crosshair acceptance cases; the
+  // response's own `group`/`benchmark`/`weeks` fields are the live-recorded values, not
+  // echoed from the request, so the fixture's data never mismatches the trail length it
+  // actually contains (same "illustrative, not correctness reference" caveat this file's own
+  // docstring already states for filter-dependent numbers elsewhere).
+  http.get('*/api/scan/rotation', ({ request }) => {
+    const url = new URL(request.url);
+    const group = url.searchParams.get('group');
+    if (group === 'industries') {
+      return HttpResponse.json(rotationIndustriesRspFixture as RotationResponse);
+    }
+    if (group === 'assets') {
+      return HttpResponse.json(rotationAssetsFixture as RotationResponse);
+    }
+    return HttpResponse.json(rotationSectorsFixture as RotationResponse);
+  }),
 
   http.get('*/api/health/capture', () => HttpResponse.json(healthCaptureFixture as CaptureHealth)),
 

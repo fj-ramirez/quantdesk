@@ -45,3 +45,35 @@ only two fixtures needed a hand edit:
 
 No other fixture was edited. `bars_SPY.json`, `breakouts_SPY.json`, `trend_SPY.json` and
 `universe.json` are all the unmodified live response.
+
+## Rotation fixtures (T51)
+
+Recorded 2026-09-09 against the same live backend, one file per `(group, benchmark, weeks)`
+combination the page and its tests exercise:
+
+```
+curl -s "http://localhost:8001/api/scan/rotation?group=sectors&benchmark=SPY&weeks=6"      > rotation_sectors.json
+curl -s "http://localhost:8001/api/scan/rotation?group=industries&benchmark=RSP&weeks=6"   > rotation_industries_rsp.json
+curl -s "http://localhost:8001/api/scan/rotation?group=assets&benchmark=SPY&weeks=6"        > rotation_assets.json
+```
+
+All three are the live response, byte-for-byte (only re-indented). `rotation_sectors.json` is
+the page's default (`group=sectors&benchmark=SPY&weeks=6`, matching `useScanParams`'
+defaults); `rotation_industries_rsp.json` is the exact deep-link combination
+07-ui.md's acceptance line names (`/rotation?group=industries&benchmark=RSP&weeks=6`);
+`rotation_assets.json` is the live case where SPY, benchmarked against itself, sits at exactly
+`(100, 100)` on every trail week — used for the "renders on the crosshair" acceptance check.
+`breadth` is identical across all three (the backend always computes it over the fixed 11
+sector ETFs regardless of the requested `group`), which is itself worth recording: the
+Breadth block's numbers do not change when the toolbar's `group` changes, only its own fixed
+sector-level inputs do.
+
+- **`rotation_sectors_null.json`** — a copy of `rotation_sectors.json` with `XLRE`'s first two
+  trail points' `rs_ratio_approx`/`rs_momentum_approx` both set to `null`. The live universe
+  has no symbol still inside its z-score warm-up (every sector ETF has years of history), so
+  this is fabricated to exercise plan 04's documented state ("the z-score window with fewer
+  than `w` weeks after a new symbol is added to the universe... return `None` rows rather than
+  a partial-window number") — `RrgChart` must omit these two points from the trail/scatter
+  rather than plotting them at `(0, 0)`.
+
+No other rotation fixture was edited.

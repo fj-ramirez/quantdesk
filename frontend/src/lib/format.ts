@@ -103,3 +103,13 @@ export function formatRatio(value: number | null | undefined): string {
   if (value == null || !Number.isFinite(value)) return DASH;
   return `${value.toFixed(2)}×`;
 }
+
+/** T51 addition -- a signed fraction to a whole-percent figure: 0.0222 -> "+2.22%",
+ * -0.0170 -> "-1.70%". Used for `/rotation`'s relative returns and breadth's 20-day change,
+ * which (unlike `formatPct`'s rate/percentile callers) are two-sided and read better with an
+ * explicit sign than a bare percentage would. */
+export function formatSignedPct(value: number | null | undefined): string {
+  if (value == null || !Number.isFinite(value)) return DASH;
+  const pct = value * 100;
+  return `${pct >= 0 ? "+" : ""}${pct.toFixed(2)}%`;
+}

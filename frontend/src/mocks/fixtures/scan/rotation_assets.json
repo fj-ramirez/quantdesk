@@ -1,0 +1,474 @@
+{
+  "group": "assets",
+  "benchmark": "SPY",
+  "weeks": 6,
+  "w": 14,
+  "symbols": [
+    {
+      "symbol": "SPY",
+      "trail": [
+        {
+          "date": "2026-08-07",
+          "rs_ratio_approx": 100,
+          "rs_momentum_approx": 100
+        },
+        {
+          "date": "2026-08-14",
+          "rs_ratio_approx": 100,
+          "rs_momentum_approx": 100
+        },
+        {
+          "date": "2026-08-21",
+          "rs_ratio_approx": 100,
+          "rs_momentum_approx": 100
+        },
+        {
+          "date": "2026-08-28",
+          "rs_ratio_approx": 100,
+          "rs_momentum_approx": 100
+        },
+        {
+          "date": "2026-09-04",
+          "rs_ratio_approx": 100,
+          "rs_momentum_approx": 100
+        },
+        {
+          "date": "2026-09-11",
+          "rs_ratio_approx": 100,
+          "rs_momentum_approx": 100
+        }
+      ],
+      "return_5": 0,
+      "return_20": 0,
+      "return_65": 0
+    },
+    {
+      "symbol": "QQQ",
+      "trail": [
+        {
+          "date": "2026-08-07",
+          "rs_ratio_approx": 98.91015596119921,
+          "rs_momentum_approx": 101.75175423037794
+        },
+        {
+          "date": "2026-08-14",
+          "rs_ratio_approx": 99.3429039077441,
+          "rs_momentum_approx": 101.18065842942129
+        },
+        {
+          "date": "2026-08-21",
+          "rs_ratio_approx": 98.97565791902008,
+          "rs_momentum_approx": 99.71040005243358
+        },
+        {
+          "date": "2026-08-28",
+          "rs_ratio_approx": 99.0825484521881,
+          "rs_momentum_approx": 100.52343103182433
+        },
+        {
+          "date": "2026-09-04",
+          "rs_ratio_approx": 99.30763281696191,
+          "rs_momentum_approx": 100.7103772448927
+        },
+        {
+          "date": "2026-09-11",
+          "rs_ratio_approx": 99.6680942523928,
+          "rs_momentum_approx": 100.82290581417807
+        }
+      ],
+      "return_5": 0.01142878967499783,
+      "return_20": 0.007692471989956706,
+      "return_65": -0.017158477216272505
+    },
+    {
+      "symbol": "IWM",
+      "trail": [
+        {
+          "date": "2026-08-07",
+          "rs_ratio_approx": 99.89770969227311,
+          "rs_momentum_approx": 100.08461803981427
+        },
+        {
+          "date": "2026-08-14",
+          "rs_ratio_approx": 100.1849039898106,
+          "rs_momentum_approx": 100.31817223210585
+        },
+        {
+          "date": "2026-08-21",
+          "rs_ratio_approx": 99.88442431940194,
+          "rs_momentum_approx": 99.57527210536139
+        },
+        {
+          "date": "2026-08-28",
+          "rs_ratio_approx": 98.82393696181926,
+          "rs_momentum_approx": 98.86947323591241
+        },
+        {
+          "date": "2026-09-04",
+          "rs_ratio_approx": 98.80212767575304,
+          "rs_momentum_approx": 100.11224112944463
+        },
+        {
+          "date": "2026-09-11",
+          "rs_ratio_approx": 98.38218361304565,
+          "rs_momentum_approx": 99.64549079771157
+        }
+      ],
+      "return_5": -0.0005724798980786261,
+      "return_20": -0.02405147538951058,
+      "return_65": -0.001715750158864382
+    },
+    {
+      "symbol": "GLD",
+      "trail": [
+        {
+          "date": "2026-08-07",
+          "rs_ratio_approx": 99.60428023516425,
+          "rs_momentum_approx": 102.7099949692314
+        },
+        {
+          "date": "2026-08-14",
+          "rs_ratio_approx": 99.81453614629707,
+          "rs_momentum_approx": 100.51510381124884
+        },
+        {
+          "date": "2026-08-21",
+          "rs_ratio_approx": 101.62328035008525,
+          "rs_momentum_approx": 103.30560161995696
+        },
+        {
+          "date": "2026-08-28",
+          "rs_ratio_approx": 100.71441765437751,
+          "rs_momentum_approx": 98.06897401532909
+        },
+        {
+          "date": "2026-09-04",
+          "rs_ratio_approx": 100.70630437245737,
+          "rs_momentum_approx": 99.70857268083832
+        },
+        {
+          "date": "2026-09-11",
+          "rs_ratio_approx": 100.83361921632022,
+          "rs_momentum_approx": 99.92788815095922
+        }
+      ],
+      "return_5": 0.0158084331144992,
+      "return_20": 0.016727536196696535,
+      "return_65": -0.015235640640530623
+    },
+    {
+      "symbol": "SLV",
+      "trail": [
+        {
+          "date": "2026-08-07",
+          "rs_ratio_approx": 99.39681496057263,
+          "rs_momentum_approx": 101.27411658356824
+        },
+        {
+          "date": "2026-08-14",
+          "rs_ratio_approx": 99.61259366163638,
+          "rs_momentum_approx": 100.57423071242675
+        },
+        {
+          "date": "2026-08-21",
+          "rs_ratio_approx": 100.59325615191727,
+          "rs_momentum_approx": 102.19959759999327
+        },
+        {
+          "date": "2026-08-28",
+          "rs_ratio_approx": 100.21946820195484,
+          "rs_momentum_approx": 98.82989063464022
+        },
+        {
+          "date": "2026-09-04",
+          "rs_ratio_approx": 100.39982007307407,
+          "rs_momentum_approx": 100.1645678872231
+        },
+        {
+          "date": "2026-09-11",
+          "rs_ratio_approx": 100.95117074334564,
+          "rs_momentum_approx": 101.01380935008098
+        }
+      ],
+      "return_5": 0.04749006775567466,
+      "return_20": 0.048162060565040354,
+      "return_65": -0.04594990569877999
+    },
+    {
+      "symbol": "USO",
+      "trail": [
+        {
+          "date": "2026-08-07",
+          "rs_ratio_approx": 99.14819706877175,
+          "rs_momentum_approx": 98.8087495024762
+        },
+        {
+          "date": "2026-08-14",
+          "rs_ratio_approx": 99.80093457124175,
+          "rs_momentum_approx": 101.00805920249431
+        },
+        {
+          "date": "2026-08-21",
+          "rs_ratio_approx": 100.72645191060127,
+          "rs_momentum_approx": 101.28825493879545
+        },
+        {
+          "date": "2026-08-28",
+          "rs_ratio_approx": 100.38209168002503,
+          "rs_momentum_approx": 99.53196878643269
+        },
+        {
+          "date": "2026-09-04",
+          "rs_ratio_approx": 101.36628219836267,
+          "rs_momentum_approx": 101.18689592385702
+        },
+        {
+          "date": "2026-09-11",
+          "rs_ratio_approx": 101.90217988338686,
+          "rs_momentum_approx": 100.51676601477571
+        }
+      ],
+      "return_5": 0.06275208063710824,
+      "return_20": 0.1877997847874604,
+      "return_65": 0.09067660137456457
+    },
+    {
+      "symbol": "TLT",
+      "trail": [
+        {
+          "date": "2026-08-07",
+          "rs_ratio_approx": 97.68924397165699,
+          "rs_momentum_approx": 98.90233769410032
+        },
+        {
+          "date": "2026-08-14",
+          "rs_ratio_approx": 97.89328857458659,
+          "rs_momentum_approx": 100.47563202530274
+        },
+        {
+          "date": "2026-08-21",
+          "rs_ratio_approx": 98.5661348463561,
+          "rs_momentum_approx": 101.3201715106056
+        },
+        {
+          "date": "2026-08-28",
+          "rs_ratio_approx": 98.88058611958454,
+          "rs_momentum_approx": 100.58890283558743
+        },
+        {
+          "date": "2026-09-04",
+          "rs_ratio_approx": 98.81779362823225,
+          "rs_momentum_approx": 99.83362778355637
+        },
+        {
+          "date": "2026-09-11",
+          "rs_ratio_approx": 99.06946524791373,
+          "rs_momentum_approx": 100.53426464194851
+        }
+      ],
+      "return_5": -0.002521844941991591,
+      "return_20": 0.005046328487453788,
+      "return_65": -0.07046722068683031
+    },
+    {
+      "symbol": "HYG",
+      "trail": [
+        {
+          "date": "2026-08-07",
+          "rs_ratio_approx": 97.23438093647158,
+          "rs_momentum_approx": 96.89911388780634
+        },
+        {
+          "date": "2026-08-14",
+          "rs_ratio_approx": 97.78536868854731,
+          "rs_momentum_approx": 100.91986814415725
+        },
+        {
+          "date": "2026-08-21",
+          "rs_ratio_approx": 98.73544510213016,
+          "rs_momentum_approx": 101.37780133623315
+        },
+        {
+          "date": "2026-08-28",
+          "rs_ratio_approx": 98.76636878332357,
+          "rs_momentum_approx": 100.00851189567594
+        },
+        {
+          "date": "2026-09-04",
+          "rs_ratio_approx": 98.57426318351169,
+          "rs_momentum_approx": 99.70122353655609
+        },
+        {
+          "date": "2026-09-11",
+          "rs_ratio_approx": 99.09474209575154,
+          "rs_momentum_approx": 100.76850350316866
+        }
+      ],
+      "return_5": -0.002328986627527674,
+      "return_20": 0.003965850545946559,
+      "return_65": -0.038075154464699335
+    },
+    {
+      "symbol": "UUP",
+      "trail": [
+        {
+          "date": "2026-08-07",
+          "rs_ratio_approx": 98.05764310839108,
+          "rs_momentum_approx": 97.7303208376234
+        },
+        {
+          "date": "2026-08-14",
+          "rs_ratio_approx": 98.22036259947646,
+          "rs_momentum_approx": 100.23235074126791
+        },
+        {
+          "date": "2026-08-21",
+          "rs_ratio_approx": 98.70307923842522,
+          "rs_momentum_approx": 100.63854169703531
+        },
+        {
+          "date": "2026-08-28",
+          "rs_ratio_approx": 99.01522381643093,
+          "rs_momentum_approx": 100.38326773177222
+        },
+        {
+          "date": "2026-09-04",
+          "rs_ratio_approx": 98.84152194766688,
+          "rs_momentum_approx": 99.75782567917706
+        },
+        {
+          "date": "2026-09-11",
+          "rs_ratio_approx": 99.22621863838162,
+          "rs_momentum_approx": 100.5178075767173
+        }
+      ],
+      "return_5": -0.008959705958237252,
+      "return_20": 0.004956300614334719,
+      "return_65": -0.03397553862543767
+    },
+    {
+      "symbol": "EEM",
+      "trail": [
+        {
+          "date": "2026-08-07",
+          "rs_ratio_approx": 98.6489352669741,
+          "rs_momentum_approx": 100.01265070484799
+        },
+        {
+          "date": "2026-08-14",
+          "rs_ratio_approx": 99.09941610190522,
+          "rs_momentum_approx": 100.57045995118209
+        },
+        {
+          "date": "2026-08-21",
+          "rs_ratio_approx": 99.75769431171318,
+          "rs_momentum_approx": 100.64454458672203
+        },
+        {
+          "date": "2026-08-28",
+          "rs_ratio_approx": 99.65117823941308,
+          "rs_momentum_approx": 99.91942899866086
+        },
+        {
+          "date": "2026-09-04",
+          "rs_ratio_approx": 100.36627913800054,
+          "rs_momentum_approx": 100.77038952139195
+        },
+        {
+          "date": "2026-09-11",
+          "rs_ratio_approx": 100.52565487108129,
+          "rs_momentum_approx": 100.10917705371223
+        }
+      ],
+      "return_5": 0.024776364127400363,
+      "return_20": 0.05781667462203122,
+      "return_65": 0.025668627177417136
+    },
+    {
+      "symbol": "EFA",
+      "trail": [
+        {
+          "date": "2026-08-07",
+          "rs_ratio_approx": 100.55533748355754,
+          "rs_momentum_approx": 98.36425721261394
+        },
+        {
+          "date": "2026-08-14",
+          "rs_ratio_approx": 100.24800790810222,
+          "rs_momentum_approx": 99.12442280086495
+        },
+        {
+          "date": "2026-08-21",
+          "rs_ratio_approx": 101.37129797532383,
+          "rs_momentum_approx": 101.62295908973826
+        },
+        {
+          "date": "2026-08-28",
+          "rs_ratio_approx": 100.04387107104793,
+          "rs_momentum_approx": 97.86527441465674
+        },
+        {
+          "date": "2026-09-04",
+          "rs_ratio_approx": 100.57696709428818,
+          "rs_momentum_approx": 100.58734060079887
+        },
+        {
+          "date": "2026-09-11",
+          "rs_ratio_approx": 99.51007066548783,
+          "rs_momentum_approx": 98.49738031047885
+        }
+      ],
+      "return_5": -0.00015641366621799158,
+      "return_20": -0.003603352246121516,
+      "return_65": 0.008084559931444302
+    },
+    {
+      "symbol": "FXI",
+      "trail": [
+        {
+          "date": "2026-08-07",
+          "rs_ratio_approx": 100.1104887477593,
+          "rs_momentum_approx": 98.0976848046908
+        },
+        {
+          "date": "2026-08-14",
+          "rs_ratio_approx": 99.34516827050517,
+          "rs_momentum_approx": 98.33133972337845
+        },
+        {
+          "date": "2026-08-21",
+          "rs_ratio_approx": 100.4989691010471,
+          "rs_momentum_approx": 101.70575788648988
+        },
+        {
+          "date": "2026-08-28",
+          "rs_ratio_approx": 100.16573159360584,
+          "rs_momentum_approx": 99.14082280900742
+        },
+        {
+          "date": "2026-09-04",
+          "rs_ratio_approx": 100.41858659947918,
+          "rs_momentum_approx": 100.1221109503019
+        },
+        {
+          "date": "2026-09-11",
+          "rs_ratio_approx": 99.71182871106224,
+          "rs_momentum_approx": 98.6934920391936
+        }
+      ],
+      "return_5": -0.02314933471360192,
+      "return_20": -0.020757479364426734,
+      "return_65": -0.038162308366276654
+    }
+  ],
+  "breadth": {
+    "label": "sector-level breadth",
+    "equal_weight_ratio": 0.2815319943813074,
+    "equal_weight_ratio_change_20d": -0.017004438337782646,
+    "above_20d": 2,
+    "evaluated_20d": 11,
+    "above_50d": 5,
+    "evaluated_50d": 11
+  },
+  "note": "rs_ratio_approx / rs_momentum_approx are the common open approximation of JdK RS-Ratio / RS-Momentum (rolling z-scores of price/benchmark and its own week-over-week change). JdK RS-Ratio and RS-Momentum are a proprietary, patented construction; this is not that indicator and does not claim to match it."
+}

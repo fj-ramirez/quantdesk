@@ -42,32 +42,34 @@ describe('App', () => {
     expect(screen.getByRole('img', { name: /GEX by strike for SPX/ })).toBeInTheDocument();
   });
 
-  it('T47: the symbol switcher gains a second, labelled group for the extended ETFs', async () => {
+  it('T47: the asset dropdown gains a second, labelled group for the extended ETFs', async () => {
     renderApp('/');
     await waitFor(() => expect(screen.getByRole('heading', { name: 'SPX key levels' })).toBeInTheDocument());
 
-    const core = screen.getByRole('group', { name: 'Symbol' });
-    const extended = screen.getByRole('group', { name: 'Symbol (extended)' });
-    expect(within(core).getByRole('button', { name: 'GLD' })).toBeInTheDocument();
-    expect(within(core).queryByRole('button', { name: 'XLK' })).not.toBeInTheDocument();
-    expect(within(extended).getByRole('button', { name: 'XLK' })).toBeInTheDocument();
-    expect(within(extended).queryByRole('button', { name: 'SPX' })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Symbol SPX' }));
+    const core = screen.getByRole('group', { name: 'Core' });
+    const extended = screen.getByRole('group', { name: 'Extended' });
+    expect(within(core).getByRole('option', { name: 'GLD' })).toBeInTheDocument();
+    expect(within(core).queryByRole('option', { name: 'XLK' })).not.toBeInTheDocument();
+    expect(within(extended).getByRole('option', { name: 'XLK' })).toBeInTheDocument();
+    expect(within(extended).queryByRole('option', { name: 'SPX' })).not.toBeInTheDocument();
   });
 
-  it('clicking the QQQ symbol button updates the URL and reloads QQQ data', async () => {
+  it('clicking the QQQ symbol option updates the URL and reloads QQQ data', async () => {
     renderApp('/');
     await waitFor(() => expect(screen.getByRole('heading', { name: 'SPX key levels' })).toBeInTheDocument());
 
-    fireEvent.click(screen.getByRole('button', { name: 'QQQ' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Symbol SPX' }));
+    fireEvent.click(screen.getByRole('option', { name: 'QQQ' }));
 
     await waitFor(() => expect(screen.getByRole('heading', { name: 'QQQ key levels' })).toBeInTheDocument());
-    expect(screen.getByRole('button', { name: 'QQQ' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Symbol QQQ' })).toBeInTheDocument();
   });
 
   it('deep link ?symbol=QQQ&filter=ZERO_DTE renders the all-null-walls case cleanly, not as zeros', async () => {
     renderApp('/?symbol=QQQ&filter=ZERO_DTE');
 
-    expect(screen.getByRole('button', { name: 'QQQ' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Symbol QQQ' })).toBeInTheDocument();
     await waitFor(() => expect(screen.getByRole('heading', { name: 'QQQ key levels' })).toBeInTheDocument());
 
     // The dedicated ZERO_DTE mock fixture (gex-qqq-zero-dte.json) has every wall null; the
@@ -101,7 +103,7 @@ describe('App', () => {
     // existing error path rather than throwing -- the same path a genuine, temporary API
     // failure would hit for any symbol.
     renderApp('/?symbol=XLK');
-    expect(screen.getByRole('button', { name: 'XLK' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Symbol XLK' })).toBeInTheDocument();
     await waitFor(() => expect(screen.getByRole('alert')).toBeInTheDocument());
     expect(screen.getByRole('alert').textContent).toContain('Failed to load XLK GEX');
   });
@@ -113,7 +115,7 @@ describe('App', () => {
     fireEvent.keyDown(window, { key: ']' });
 
     await waitFor(() => expect(screen.getByRole('heading', { name: 'SPY key levels' })).toBeInTheDocument());
-    expect(screen.getByRole('button', { name: 'SPY' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Symbol SPY' })).toBeInTheDocument();
   });
 });
 
@@ -129,11 +131,11 @@ describe('T55 scan-family nav and stub routes', () => {
     }
   });
 
-  // T44 replaced /scan with the real page, so it is no longer in this list. The remaining
-  // four stay stubs until T49/T51/T53/T56 land.
+  // T44 replaced /scan and T51 replaced /rotation with real pages, so neither is in this
+  // list any more. The remaining two stay stubs until T49/T53 land ("last tab" T56/Overview
+  // remains a stub too, until T44/T49/T51/T54 all land).
   it.each([
     ['/regime', 'Regime'],
-    ['/rotation', 'Rotation'],
     ['/flows', 'Flows'],
     ['/overview', 'Overview'],
   ])('%s renders a one-line "not built yet" empty state, not a crash', async (path, label) => {
@@ -147,18 +149,25 @@ describe('T55 scan-family nav and stub routes', () => {
     expect(screen.queryByRole('region', { name: 'Scan is not built yet' })).not.toBeInTheDocument();
   });
 
-  it('the TopBar drops the symbol switcher on /scan and shows it again after navigating back to /', async () => {
+  it('/rotation renders the real rotation page (T51), not a stub', async () => {
+    renderApp('/rotation');
+    expect(await screen.findByRole('group', { name: 'Group' })).toBeInTheDocument();
+    expect(screen.queryByRole('region', { name: 'Rotation is not built yet' })).not.toBeInTheDocument();
+  });
+
+  it('the TopBar drops the asset dropdown on /scan and shows it again after navigating back to /', async () => {
     renderApp('/');
     await waitFor(() => expect(screen.getByRole('heading', { name: 'SPX key levels' })).toBeInTheDocument());
-    expect(screen.getByRole('group', { name: 'Symbol' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Symbol SPX' })).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole('link', { name: 'Scan' }));
-    // Keyed on the real page's own view toggle since T44 replaced the stub. The Symbol group
-    // is the dashboard control that must disappear; the View group is the scan page's.
+    // Keyed on the real page's own view toggle since T44 replaced the stub. The Symbol
+    // dropdown is the dashboard control that must disappear; the View group is the scan
+    // page's.
     await screen.findByRole('group', { name: 'View' });
-    expect(screen.queryByRole('group', { name: 'Symbol' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Symbol SPX' })).not.toBeInTheDocument();
 
     fireEvent.click(screen.getByRole('link', { name: 'Dashboard' }));
-    await waitFor(() => expect(screen.getByRole('group', { name: 'Symbol' })).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Symbol SPX' })).toBeInTheDocument());
   });
 });

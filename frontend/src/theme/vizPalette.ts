@@ -105,15 +105,23 @@ export function vizPaletteFor(theme: 'light' | 'dark'): VizPalette {
  */
 export function statusChipColor(status: string, palette: VizPalette): string {
   switch (status) {
+    // T51: RRG "leading" quadrant reuses the same colour as a working continuation -- see
+    // this function's own updated docstring above for why (RrgChart.tsx's quadrant
+    // markArea shading and RankTable's quadrant chip agree on one palette mapping).
     case 'continued':
     case 'continuation':
+    case 'leading':
       return palette.levelSupport;
     case 'failed':
     case 'fade':
+    case 'lagging':
       return palette.levelResistance;
     case 'pending':
     case 'mixed':
+    case 'weakening':
       return palette.seriesExZeroDte;
+    case 'improving':
+      return palette.divergingPositive;
     case 'noise-dominated':
     case 'n/a':
     default:

@@ -4,7 +4,7 @@
  */
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { apiClient } from './client';
-import type { ExpiryFilter, Underlying } from './types';
+import type { ExpiryFilter, RotationBenchmark, RotationGroup, Underlying } from './types';
 
 /** Query key prefix helpers, exported so a component can target `queryClient.invalidateQueries`
  * without duplicating the key shape (e.g. the T19 SSE hook invalidating on a push event). */
@@ -136,6 +136,8 @@ export const scanQueryKeys = {
   bars: (symbol: string, start?: string, end?: string) => ['bars', symbol, start ?? null, end ?? null] as const,
   universe: () => ['universe'] as const,
   captureHealth: () => ['capture-health'] as const,
+  rotation: (group: RotationGroup, benchmark: RotationBenchmark, weeks: number) =>
+    ['scan-rotation', group, benchmark, weeks] as const,
 };
 
 export function useBreakouts(params: { n?: number; k?: number; lookback?: number } = {}) {
@@ -191,5 +193,13 @@ export function useCaptureHealth() {
   return useQuery({
     queryKey: scanQueryKeys.captureHealth(),
     queryFn: () => apiClient.captureHealth(),
+  });
+}
+
+/** T51's `/rotation` page. `group`/`benchmark`/`weeks` come straight from `useScanParams`. */
+export function useRotation(group: RotationGroup, benchmark: RotationBenchmark, weeks: number) {
+  return useQuery({
+    queryKey: scanQueryKeys.rotation(group, benchmark, weeks),
+    queryFn: () => apiClient.rotation({ group, benchmark, weeks }),
   });
 }

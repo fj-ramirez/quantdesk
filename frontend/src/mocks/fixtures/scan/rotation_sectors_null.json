@@ -1,0 +1,436 @@
+{
+  "group": "sectors",
+  "benchmark": "SPY",
+  "weeks": 6,
+  "w": 14,
+  "symbols": [
+    {
+      "symbol": "XLK",
+      "trail": [
+        {
+          "date": "2026-08-07",
+          "rs_ratio_approx": 99.9227593322349,
+          "rs_momentum_approx": 102.12552769221004
+        },
+        {
+          "date": "2026-08-14",
+          "rs_ratio_approx": 100.11792504768452,
+          "rs_momentum_approx": 100.79149173298804
+        },
+        {
+          "date": "2026-08-21",
+          "rs_ratio_approx": 99.19985118130498,
+          "rs_momentum_approx": 98.56308646468872
+        },
+        {
+          "date": "2026-08-28",
+          "rs_ratio_approx": 99.54096742496041,
+          "rs_momentum_approx": 100.97610112687785
+        },
+        {
+          "date": "2026-09-04",
+          "rs_ratio_approx": 99.95465612113215,
+          "rs_momentum_approx": 101.05428384926333
+        },
+        {
+          "date": "2026-09-11",
+          "rs_ratio_approx": 100.52369657723074,
+          "rs_momentum_approx": 101.16315225808808
+        }
+      ],
+      "return_5": 0.022202227442881473,
+      "return_20": 0.020370642227373503,
+      "return_65": 0.008022552354237433
+    },
+    {
+      "symbol": "XLF",
+      "trail": [
+        {
+          "date": "2026-08-07",
+          "rs_ratio_approx": 100.73017488833126,
+          "rs_momentum_approx": 98.32222253634859
+        },
+        {
+          "date": "2026-08-14",
+          "rs_ratio_approx": 100.76700917509525,
+          "rs_momentum_approx": 99.63046777959507
+        },
+        {
+          "date": "2026-08-21",
+          "rs_ratio_approx": 100.71005240437547,
+          "rs_momentum_approx": 99.49509300864335
+        },
+        {
+          "date": "2026-08-28",
+          "rs_ratio_approx": 100.78054517983234,
+          "rs_momentum_approx": 99.80785843084679
+        },
+        {
+          "date": "2026-09-04",
+          "rs_ratio_approx": 100.69683617406355,
+          "rs_momentum_approx": 99.47645009457048
+        },
+        {
+          "date": "2026-09-11",
+          "rs_ratio_approx": 100.20075126183724,
+          "rs_momentum_approx": 98.75442519109558
+        }
+      ],
+      "return_5": -0.003258766342341679,
+      "return_20": -0.00223675165104098,
+      "return_65": 0.055452405069760013
+    },
+    {
+      "symbol": "XLE",
+      "trail": [
+        {
+          "date": "2026-08-07",
+          "rs_ratio_approx": 99.36491253615485,
+          "rs_momentum_approx": 98.10458472590305
+        },
+        {
+          "date": "2026-08-14",
+          "rs_ratio_approx": 100.97393019852153,
+          "rs_momentum_approx": 101.74516908384808
+        },
+        {
+          "date": "2026-08-21",
+          "rs_ratio_approx": 101.80140157650557,
+          "rs_momentum_approx": 100.79084573243526
+        },
+        {
+          "date": "2026-08-28",
+          "rs_ratio_approx": 101.25185336495531,
+          "rs_momentum_approx": 99.19782011653894
+        },
+        {
+          "date": "2026-09-04",
+          "rs_ratio_approx": 101.44660067659606,
+          "rs_momentum_approx": 99.99149969853552
+        },
+        {
+          "date": "2026-09-11",
+          "rs_ratio_approx": 101.71724365084299,
+          "rs_momentum_approx": 100.1175210101202
+        }
+      ],
+      "return_5": 0.007517212794450279,
+      "return_20": 0.0833581260248637,
+      "return_65": 0.09556535095094465
+    },
+    {
+      "symbol": "XLV",
+      "trail": [
+        {
+          "date": "2026-08-07",
+          "rs_ratio_approx": 100.57357564353104,
+          "rs_momentum_approx": 99.01423011547035
+        },
+        {
+          "date": "2026-08-14",
+          "rs_ratio_approx": 100.60699918940225,
+          "rs_momentum_approx": 99.75665460265405
+        },
+        {
+          "date": "2026-08-21",
+          "rs_ratio_approx": 101.78811097160388,
+          "rs_momentum_approx": 101.35382848976414
+        },
+        {
+          "date": "2026-08-28",
+          "rs_ratio_approx": 100.99492865119548,
+          "rs_momentum_approx": 98.72487093425404
+        },
+        {
+          "date": "2026-09-04",
+          "rs_ratio_approx": 100.92828173701972,
+          "rs_momentum_approx": 99.7086697192746
+        },
+        {
+          "date": "2026-09-11",
+          "rs_ratio_approx": 100.24590750938098,
+          "rs_momentum_approx": 99.02376138034728
+        }
+      ],
+      "return_5": -0.03043899193648658,
+      "return_20": 0.002100555544953364,
+      "return_65": 0.053201870104471194
+    },
+    {
+      "symbol": "XLI",
+      "trail": [
+        {
+          "date": "2026-08-07",
+          "rs_ratio_approx": 100.06684551116153,
+          "rs_momentum_approx": 99.45912839755566
+        },
+        {
+          "date": "2026-08-14",
+          "rs_ratio_approx": 100.13207637354813,
+          "rs_momentum_approx": 99.82017814715113
+        },
+        {
+          "date": "2026-08-21",
+          "rs_ratio_approx": 99.22927290342437,
+          "rs_momentum_approx": 98.414014575942
+        },
+        {
+          "date": "2026-08-28",
+          "rs_ratio_approx": 98.31571159420945,
+          "rs_momentum_approx": 98.6343654897096
+        },
+        {
+          "date": "2026-09-04",
+          "rs_ratio_approx": 97.92392883971692,
+          "rs_momentum_approx": 99.4691269608855
+        },
+        {
+          "date": "2026-09-11",
+          "rs_ratio_approx": 98.02479719214253,
+          "rs_momentum_approx": 100.30041052021768
+        }
+      ],
+      "return_5": -0.006250823037670328,
+      "return_20": -0.06500449263196639,
+      "return_65": -0.04586867716652954
+    },
+    {
+      "symbol": "XLY",
+      "trail": [
+        {
+          "date": "2026-08-07",
+          "rs_ratio_approx": 99.48359314492897,
+          "rs_momentum_approx": 99.91896188355754
+        },
+        {
+          "date": "2026-08-14",
+          "rs_ratio_approx": 98.7314873312622,
+          "rs_momentum_approx": 98.94383827799146
+        },
+        {
+          "date": "2026-08-21",
+          "rs_ratio_approx": 99.47028459491625,
+          "rs_momentum_approx": 100.80133077880265
+        },
+        {
+          "date": "2026-08-28",
+          "rs_ratio_approx": 98.986891131975,
+          "rs_momentum_approx": 99.25903613989097
+        },
+        {
+          "date": "2026-09-04",
+          "rs_ratio_approx": 98.15318444304557,
+          "rs_momentum_approx": 98.92312322256205
+        },
+        {
+          "date": "2026-09-11",
+          "rs_ratio_approx": 98.08357151378338,
+          "rs_momentum_approx": 99.89710320465491
+        }
+      ],
+      "return_5": -0.019386084997067732,
+      "return_20": -0.04676567150853117,
+      "return_65": -0.05280843909938915
+    },
+    {
+      "symbol": "XLP",
+      "trail": [
+        {
+          "date": "2026-08-07",
+          "rs_ratio_approx": 98.28794184399875,
+          "rs_momentum_approx": 97.70794623872261
+        },
+        {
+          "date": "2026-08-14",
+          "rs_ratio_approx": 98.88812644562091,
+          "rs_momentum_approx": 100.72531900258416
+        },
+        {
+          "date": "2026-08-21",
+          "rs_ratio_approx": 99.67504739382434,
+          "rs_momentum_approx": 100.9017795814899
+        },
+        {
+          "date": "2026-08-28",
+          "rs_ratio_approx": 99.15758677335441,
+          "rs_momentum_approx": 99.31105038483616
+        },
+        {
+          "date": "2026-09-04",
+          "rs_ratio_approx": 98.50216210840755,
+          "rs_momentum_approx": 99.18430761553927
+        },
+        {
+          "date": "2026-09-11",
+          "rs_ratio_approx": 98.39073542387511,
+          "rs_momentum_approx": 99.91548085877162
+        }
+      ],
+      "return_5": -0.026598644626868784,
+      "return_20": -0.008868987675587636,
+      "return_65": -0.03711614846604805
+    },
+    {
+      "symbol": "XLU",
+      "trail": [
+        {
+          "date": "2026-08-07",
+          "rs_ratio_approx": 97.60514308904456,
+          "rs_momentum_approx": 98.31714533129868
+        },
+        {
+          "date": "2026-08-14",
+          "rs_ratio_approx": 98.3738097461647,
+          "rs_momentum_approx": 100.93555494372353
+        },
+        {
+          "date": "2026-08-21",
+          "rs_ratio_approx": 98.13821644010225,
+          "rs_momentum_approx": 99.67751952214819
+        },
+        {
+          "date": "2026-08-28",
+          "rs_ratio_approx": 98.35368678255317,
+          "rs_momentum_approx": 100.29775667931656
+        },
+        {
+          "date": "2026-09-04",
+          "rs_ratio_approx": 98.69724749380332,
+          "rs_momentum_approx": 100.4136637586983
+        },
+        {
+          "date": "2026-09-11",
+          "rs_ratio_approx": 98.99685670355652,
+          "rs_momentum_approx": 100.37850413936955
+        }
+      ],
+      "return_5": 0.008108030835324076,
+      "return_20": -0.005281121026179614,
+      "return_65": -0.06335078041035169
+    },
+    {
+      "symbol": "XLB",
+      "trail": [
+        {
+          "date": "2026-08-07",
+          "rs_ratio_approx": 99.64161386160154,
+          "rs_momentum_approx": 101.23066259893427
+        },
+        {
+          "date": "2026-08-14",
+          "rs_ratio_approx": 99.1629830698925,
+          "rs_momentum_approx": 99.02994689657213
+        },
+        {
+          "date": "2026-08-21",
+          "rs_ratio_approx": 101.03979492584048,
+          "rs_momentum_approx": 102.26498373766198
+        },
+        {
+          "date": "2026-08-28",
+          "rs_ratio_approx": 100.24784620560663,
+          "rs_momentum_approx": 98.78852532129562
+        },
+        {
+          "date": "2026-09-04",
+          "rs_ratio_approx": 99.24104519478416,
+          "rs_momentum_approx": 98.72115349550558
+        },
+        {
+          "date": "2026-09-11",
+          "rs_ratio_approx": 98.75733780996141,
+          "rs_momentum_approx": 99.43435811538637
+        }
+      ],
+      "return_5": -0.013861944046505759,
+      "return_20": -0.024417255846849617,
+      "return_65": -0.01807292621992751
+    },
+    {
+      "symbol": "XLRE",
+      "trail": [
+        {
+          "date": "2026-08-07",
+          "rs_ratio_approx": null,
+          "rs_momentum_approx": null
+        },
+        {
+          "date": "2026-08-14",
+          "rs_ratio_approx": null,
+          "rs_momentum_approx": null
+        },
+        {
+          "date": "2026-08-21",
+          "rs_ratio_approx": 99.25620408522563,
+          "rs_momentum_approx": 100.21285303201749
+        },
+        {
+          "date": "2026-08-28",
+          "rs_ratio_approx": 98.6763385165958,
+          "rs_momentum_approx": 99.46362481447093
+        },
+        {
+          "date": "2026-09-04",
+          "rs_ratio_approx": 98.32443815700273,
+          "rs_momentum_approx": 99.66366742540792
+        },
+        {
+          "date": "2026-09-11",
+          "rs_ratio_approx": 98.54200833550598,
+          "rs_momentum_approx": 100.2728812285469
+        }
+      ],
+      "return_5": -0.015106782839410582,
+      "return_20": -0.004659356242039503,
+      "return_65": -0.06051291911641188
+    },
+    {
+      "symbol": "XLC",
+      "trail": [
+        {
+          "date": "2026-08-07",
+          "rs_ratio_approx": 98.76847278863215,
+          "rs_momentum_approx": 99.38950512938457
+        },
+        {
+          "date": "2026-08-14",
+          "rs_ratio_approx": 99.21271670361068,
+          "rs_momentum_approx": 101.28816876739954
+        },
+        {
+          "date": "2026-08-21",
+          "rs_ratio_approx": 99.29726726901924,
+          "rs_momentum_approx": 99.98326297887283
+        },
+        {
+          "date": "2026-08-28",
+          "rs_ratio_approx": 99.8579209847047,
+          "rs_momentum_approx": 101.48795406305022
+        },
+        {
+          "date": "2026-09-04",
+          "rs_ratio_approx": 99.43079899728056,
+          "rs_momentum_approx": 98.43249801953249
+        },
+        {
+          "date": "2026-09-11",
+          "rs_ratio_approx": 99.49278974302713,
+          "rs_momentum_approx": 99.94468419293085
+        }
+      ],
+      "return_5": -0.0012637449770903642,
+      "return_20": 0.006706385784749358,
+      "return_65": -0.03987143646631297
+    }
+  ],
+  "breadth": {
+    "label": "sector-level breadth",
+    "equal_weight_ratio": 0.2815319943813074,
+    "equal_weight_ratio_change_20d": -0.017004438337782646,
+    "above_20d": 2,
+    "evaluated_20d": 11,
+    "above_50d": 5,
+    "evaluated_50d": 11
+  },
+  "note": "rs_ratio_approx / rs_momentum_approx are the common open approximation of JdK RS-Ratio / RS-Momentum (rolling z-scores of price/benchmark and its own week-over-week change). JdK RS-Ratio and RS-Momentum are a proprietary, patented construction; this is not that indicator and does not claim to match it."
+}

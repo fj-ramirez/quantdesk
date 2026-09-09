@@ -24,7 +24,7 @@
 
 /** The five symbols the 16:20 EOD job (and its 20:00 safety net) captures -- read fact,
  * mirrors `Settings.SYMBOLS` (`backend/app/config.py`). This list drives nothing the core
- * capture doesn't already guarantee: it is the TopBar's first symbol-switcher group. */
+ * capture doesn't already guarantee: it is the TopBar's `AssetSelector` "Core" group. */
 export const CORE_UNDERLYINGS = ['SPX', 'SPY', 'QQQ', 'GLD', 'DIA'] as const;
 
 /** T47's sector/industry ETFs, captured by the separate 16:45 ET job -- a UI-side mirror of
@@ -32,10 +32,10 @@ export const CORE_UNDERLYINGS = ['SPX', 'SPY', 'QQQ', 'GLD', 'DIA'] as const;
  * verified live against Cboe on 2026-09-09 (see `app/models/chain.py`'s `Underlying` enum).
  * `GET /api/symbols` returns the same split at runtime for any consumer that needs to read it
  * off the server rather than this static copy (e.g. a future regime-board fetch); this array
- * exists so the TopBar's second switcher group and the URL-state validator do not have to wait
- * on a network round trip just to know their own symbol list. Keep the two in sync -- adding a
- * symbol here without adding it to `EXTENDED_SYMBOLS` (or vice versa) makes `?symbol=` accept
- * or reject a value the backend disagrees with. */
+ * exists so the TopBar's `AssetSelector` "Extended" group and the URL-state validator do not
+ * have to wait on a network round trip just to know their own symbol list. Keep the two in
+ * sync -- adding a symbol here without adding it to `EXTENDED_SYMBOLS` (or vice versa) makes
+ * `?symbol=` accept or reject a value the backend disagrees with. */
 export const EXTENDED_UNDERLYINGS = [
   'XLK', 'XLF', 'XLE', 'XLV', 'XLI', 'XLY', 'XLP', 'XLU', 'XLB', 'XLRE', 'XLC',
   'IWM', 'SMH', 'XBI', 'KRE', 'XOP', 'TLT', 'HYG', 'EEM', 'FXI', 'SLV', 'USO', 'GDX',
@@ -468,6 +468,82 @@ export interface SymbolBarsHealth {
 export interface BarsHealthBlock {
   symbols: SymbolBarsHealth[];
   stale_count: number;
+}
+
+// ---------------------------------------------------------------------------------------
+// Rotation (T50 backend, T51 page) -- `GET /api/scan/rotation?group=&benchmark=&weeks=`.
+//
+// Hand-written, mirrored from `backend/app/api/scan.py`'s rotation response models, verified
+// against the live backend on 2026-09-09 -- see `mocks/fixtures/scan/README.md`'s "Rotation
+// fixtures" section for the exact curl commands. Two things worth recording because they are
+// easy to get wrong by hand: the per-week trail fields are flat -- `return_5`/`return_20`/
+// `return_65`, not a nested `returns: {...}` object -- and they are fractions (0.0222 means
+// +2.22%), the same convention `formatPct` already assumes everywhere else in this file.
+// ---------------------------------------------------------------------------------------
+
+/** `/rotation`'s grouping toggle -- mirrors `useScanParams`' `ScanGroup` (`state/urlState.ts`)
+ * and the backend's `app/scan/groups.py` fixed lists. Kept as a plain string here (not
+ * re-exporting `ScanGroup`) so this file's own "mirrors the backend response" contract stays
+ * independent of the URL-state module's naming. */
+export type RotationGroup = 'sectors' | 'industries' | 'assets';
+
+/** `/rotation`'s benchmark toggle -- mirrors `ScanBenchmark`. */
+export type RotationBenchmark = 'SPY' | 'RSP';
+
+/** One week of one symbol's approximated JdK-style reading (plan 04's "Design decisions" --
+ * `rs = 100 * P / B`; `rs_ratio_approx = 100 + z(rs, w)`; `rs_momentum_approx = 100 +
+ * z(rs_ratio_t - rs_ratio_{t-1}, w)`). Both coordinates are `null` together during the
+ * z-score's warm-up window (fewer than `w` weeks of history) -- a real state, not a loading
+ * placeholder, and must be omitted from a scatter/trail rather than coerced to 0. */
+export interface RotationTrailPoint {
+  /** ISO date -- the actual last-bar date of that week's resample, which may be a
+   * holiday-shortened Thursday rather than Friday (plan 04's "Likely first-contact
+   * failures"). */
+  date: string;
+  rs_ratio_approx: number | null;
+  rs_momentum_approx: number | null;
+}
+
+/** One symbol's row: its trail (oldest-first, `weeks` entries) and relative return vs. the
+ * benchmark over three windows, as fractions (0.0222 = +2.22%), per
+ * `relative_returns` in plan 04 -- `(P_t/P_{t-n}) / (B_t/B_{t-n}) - 1`. */
+export interface RotationSymbol {
+  symbol: string;
+  trail: RotationTrailPoint[];
+  return_5: number | null;
+  return_20: number | null;
+  return_65: number | null;
+}
+
+/** Coarse, explicitly-labelled breadth block (plan 04's "Design decisions": constituent-level
+ * S&P 500 breadth needs 500 symbols of bars and is out of budget). `evaluated_20d`/
+ * `evaluated_50d` are the honest denominators for `above_20d`/`above_50d` -- render
+ * `above_20d / evaluated_20d`, never a number hardcoded against the 11-sector count, in case
+ * a sector ETF is ever excluded for gappy bars the way `ExcludedSymbol` already models
+ * elsewhere in this file. */
+export interface RotationBreadth {
+  label: string;
+  equal_weight_ratio: number | null;
+  equal_weight_ratio_change_20d: number | null;
+  above_20d: number;
+  evaluated_20d: number;
+  above_50d: number;
+  evaluated_50d: number;
+}
+
+/** `GET /api/scan/rotation?group=&benchmark=&weeks=` response. `note` is the backend's own
+ * honesty text about the approximation (plan 04, `07-ui.md`'s non-negotiables) -- render it
+ * verbatim in the info popover, never paraphrased into a claim of parity with the proprietary
+ * JdK indicator. `w` is the z-score rolling window in weeks (14 by default), separate from
+ * the requested trail length `weeks`. */
+export interface RotationResponse {
+  group: RotationGroup;
+  benchmark: RotationBenchmark;
+  weeks: number;
+  w: number;
+  note: string;
+  symbols: RotationSymbol[];
+  breadth: RotationBreadth;
 }
 
 /** One underlying's row in `GET /api/health/capture`'s `symbols` (the core five, T29) and
