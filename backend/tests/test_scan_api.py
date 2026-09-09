@@ -451,3 +451,92 @@ def test_get_symbol_trend_is_case_insensitive(client, session_factory, gex_sessi
     response = client.get("/api/scan/trend/spy")
     assert response.status_code == 200
     assert response.json()["symbol"] == "SPY"
+
+
+# --- GET /api/scan/rotation (T50) -------------------------------------------------------------
+
+
+def test_get_rotation_rejects_unknown_group_422(client):
+    """Acceptance item 5: the API rejects an unknown group with 422. No bars need to be
+    seeded -- `_validate_group` runs before any I/O, so this never touches the (unmocked, in
+    this test) real session factory at all.
+    """
+    response = client.get("/api/scan/rotation", params={"group": "nope"})
+    assert response.status_code == 422
+
+
+def test_get_rotation_rejects_unknown_benchmark_422(client):
+    response = client.get("/api/scan/rotation", params={"benchmark": "NOPE"})
+    assert response.status_code == 422
+
+
+def test_get_rotation_rejects_weeks_out_of_range_422(client):
+    response = client.get("/api/scan/rotation", params={"weeks": 0})
+    assert response.status_code == 422
+    response = client.get("/api/scan/rotation", params={"weeks": 27})
+    assert response.status_code == 422
+
+
+def test_get_rotation_returns_full_shape_for_seeded_and_unseeded_symbols(
+    client, session_factory, monkeypatch
+):
+    """One seeded sector (`XLK`) and the default benchmark (`SPY`) get real, non-`None` trail
+    points once warm-up completes; an unseeded sector (`XLF`) still appears in `symbols` (every
+    member of the requested group gets a row -- the same "never silently drop a universe
+    member" contract `/trend` already establishes) with a trail of `None`s rather than being
+    omitted or erroring.
+    """
+    anchor = dt.date(2026, 6, 5)  # a Friday -- arbitrary, just fixed so the test is deterministic
+    monkeypatch.setattr("app.api.scan._today", lambda: anchor)
+
+    start = anchor - dt.timedelta(days=299)
+    _seed_monotone(session_factory, "XLK", 300, start=start, start_close=50.0)
+    _seed_monotone(session_factory, "SPY", 300, start=start, start_close=400.0)
+
+    response = client.get("/api/scan/rotation", params={"group": "sectors", "weeks": 5})
+    assert response.status_code == 200
+    body = response.json()
+
+    assert body["group"] == "sectors"
+    assert body["benchmark"] == "SPY"
+    assert body["weeks"] == 5
+    assert body["w"] == 14
+    assert "approx" in body["note"].lower()
+    assert body["breadth"]["label"] == "sector-level breadth"
+
+    symbols = {row["symbol"] for row in body["symbols"]}
+    from app.scan.groups import SECTORS
+
+    assert symbols == set(SECTORS)
+
+    xlk = next(row for row in body["symbols"] if row["symbol"] == "XLK")
+    assert len(xlk["trail"]) == 5
+    # ~300 days is comfortably more than the ~38-week warm-up (2*14 weeks for the z-score
+    # stack, plus the 5-week trail) this route's own lookback is sized for.
+    last_point = xlk["trail"][-1]
+    assert last_point["rs_ratio_approx"] is not None
+    assert last_point["rs_momentum_approx"] is not None
+    assert all(key in last_point for key in ("date", "rs_ratio_approx", "rs_momentum_approx"))
+
+    xlf = next(row for row in body["symbols"] if row["symbol"] == "XLF")
+    assert len(xlf["trail"]) == 5
+    assert all(p["rs_ratio_approx"] is None for p in xlf["trail"])
+    assert all(p["rs_momentum_approx"] is None for p in xlf["trail"])
+    assert xlf["return_5"] is None
+    assert xlf["return_20"] is None
+    assert xlf["return_65"] is None
+
+
+def test_get_rotation_accepts_rsp_benchmark(client, session_factory, monkeypatch):
+    anchor = dt.date(2026, 6, 5)
+    monkeypatch.setattr("app.api.scan._today", lambda: anchor)
+    start = anchor - dt.timedelta(days=299)
+    _seed_monotone(session_factory, "SPY", 300, start=start, start_close=400.0)
+    _seed_monotone(session_factory, "RSP", 300, start=start, start_close=150.0)
+    _seed_monotone(session_factory, "QQQ", 300, start=start, start_close=300.0)
+
+    response = client.get(
+        "/api/scan/rotation", params={"group": "assets", "benchmark": "RSP"}
+    )
+    assert response.status_code == 200
+    assert response.json()["benchmark"] == "RSP"

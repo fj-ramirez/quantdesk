@@ -479,3 +479,263 @@ offline fixture in `tests/test_scan_api.py`.
 | Insufficient history → `None` components, not zeros | §12 above |
 | No indicator library added as a dependency | `adx`/`efficiency_ratio`/`choppiness`/`realized_vol`/`variance_ratio` are all hand-implemented in `app/scan/indicators.py` using only `numpy`/`pandas`/`math` — no new dependency in `backend/pyproject.toml` |
 | `uv run pytest` / `ruff check .` pass | 664 passed, 0 ruff errors — see the T45 report for verbatim output |
+
+
+---
+
+# Validation: sector rotation (T50)
+
+**Task:** T50, `plans/continuation/04-sector-rotation.md`. **Modules under test:**
+`backend/app/scan/rotation.py`, `backend/app/scan/groups.py`, `backend/app/api/scan.py`
+(`/rotation`).
+
+Same methodology as T43/T45 above: every fixture value below was produced by *running* the
+code, then independently re-derived a second way (a closed-form derivation, or a plain,
+unoptimized Python loop written straight from the formula with no calls into `app.scan
+.rotation`) before being pasted in. The independent-loop script for §17 lives at
+`C:\Users\felix\AppData\Local\Temp\claude\C--Users-felix-projects-gex-trading\d737d94d-31d1-
+42bc-9e5b-0a5005b50dc3\scratchpad\verify_rrg_independent.py` for this session (a scratch file,
+not committed) and its output is reproduced verbatim below; the same numbers are pinned as
+executable regression tests in `tests/test_scan_rotation.py`.
+
+
+## 15. The RRG-approximation formula, restated (and why it is named `_approx`)
+
+JdK RS-Ratio and RS-Momentum (the "Relative Rotation Graph," popularized by Julius de
+Kempenaer) are a **proprietary, patented construction** whose exact normalization has never
+been published. `app.scan.rotation.rrg_approx` implements the commonly published *open*
+approximation of that idea, and is named with the `_approx` suffix specifically so nothing
+downstream can quietly present it as the real indicator:
+
+```
+rs             = 100 * P_t / B_t                              (P = symbol close, B = benchmark close, same week)
+rs_ratio_approx    = 100 + z(rs, w)                            (w = 14 weeks, plan default)
+rs_momentum_approx = 100 + z(rs_ratio_approx_t - rs_ratio_approx_{t-1}, w)
+z(x, w)_t      = (x_t - mean(x[t-w+1..t])) / std(x[t-w+1..t])   population std (ddof=0), 0.0 when std==0
+```
+
+**Deviation from the T50 task block's own literal column names.** `plans/continuation/04-
+sector-rotation.md`'s T50 paths line writes the `rrg_approx` return columns as `rs_ratio,
+rs_momentum` (no suffix); the plan's own "Design decisions" section two paragraphs above that,
+and this task's separate, more specific Non-negotiables instruction, both require the
+`_approx`-suffixed names explicitly ("The plan requires `rs_ratio_approx` / `rs_momentum_approx`
+naming ... never claiming parity"). The two are in tension; this implementation follows the
+more specific, more recently stated instruction and names the actual `DataFrame` columns (not
+only the enclosing function) `rs_ratio_approx`/`rs_momentum_approx` everywhere -- the pure
+module, and the `/rotation` API response. `app.scan.rotation`'s own module docstring records
+this choice next to the code it affects, and the API's `note` field restates the disclaimer a
+third time so a page's info tooltip can surface it without reading either docstring.
+
+**Deviation: `ddof=0` (population) standard deviation for the rolling z-score.** The plan names
+no convention either way. `_rolling_zscore` treats the trailing `w`-week window as the entire
+population being described ("how far is this week from *this window's own* average"), not a
+sample estimating a larger one, which is the more natural reading here and is also what makes
+the constant-multiple fixture (§16 below) *exactly* `100.0` rather than merely close to it, once
+combined with the `std==0` guard.
+
+
+## 16. Fixture: constant multiple of the benchmark sits at exactly (100.0, 100.0) after warm-up
+
+Acceptance item 1, verbatim: "a symbol whose prices are a constant multiple of the benchmark
+sits at exactly (100, 100) for every week after warm-up."
+
+`benchmark[t] = 100 + t` (integers, 40 weeks), `price[t] = 2.0 * benchmark[t]`, `w = 14`.
+`rs[t] = 100 * price[t] / benchmark[t]`. By hand: `100 * (2*B) / B` should equal `200.0`
+algebraically for every `t`; **checked to actually be bit-for-bit exact** (not merely correct
+in exact arithmetic) by running it — with `B` restricted to integers and the multiplier a power
+of two, IEEE double division reconstructs `200.0` exactly at every `t`:
+
+```
+>>> B = [100.0 + i for i in range(40)]; P = [2.0*b for b in B]
+>>> rs = [100.0*p/b for p, b in zip(P, B)]
+>>> set(rs)
+{200.0}
+```
+
+(As a control: the same construction with a **non-integer** benchmark picks up ~1e-15 floating
+noise per element and `rs` is merely *approximately* constant, not bit-identical — confirming
+the fixture's choice of integer `B` and power-of-two multiplier is what makes exactness
+possible, not luck.) With `rs` bit-identical across all 40 weeks, `_rolling_zscore`'s window
+variance is exactly `0.0` at every valid position — not "small," literally `0.0` — so the
+`std == 0` guard (not floating-point coincidence) is what resolves `z` to exactly `0.0`, giving
+`rs_ratio_approx = 100.0` exactly from week 13 (0-indexed, the first `w`-full window) onward,
+and — since a constant `rs_ratio_approx` has an exactly-zero week-over-week diff — `rs_momentum
+_approx = 100.0` exactly from week 27 onward. Both confirmed by running `app.scan.rotation
+.rrg_approx` directly: every value after its own warm-up index is `== 100.0`
+(`tests/test_scan_rotation.py::test_rrg_approx_constant_multiple_of_benchmark_sits_at_exactly_
+100_100_after_warmup`, asserted with exact `==`, no tolerance).
+
+
+## 17. Fixture: piecewise-accelerating `rs` — a genuine leading-then-weakening sequence, and why a pure straight line cannot produce one
+
+Acceptance item 2, verbatim: "a symbol with linearly rising `rs` lands in the leading quadrant
+with positive momentum, then drifts toward weakening as the z-score saturates — the test
+asserts that sequence, not just the endpoint."
+
+**A single, unbroken straight line cannot produce this sequence under the stated formula —
+proved, not merely tested against.** For `x_t = a*t + b` and any window position `t` once the
+trailing `w`-window is full, the window's contents are `w` consecutive terms of the same
+arithmetic progression regardless of `t` (a pure translation of the same `w` numbers, never a
+reshaping): `mean = a*(t - (w-1)/2) + b`, so `x_t - mean = a*(w-1)/2`; `std = |a| *
+sqrt((w**2-1)/12)` (population std of `w` equally spaced points). Both are independent of `t`,
+so `z_t = sign(a) * sqrt(3*(w-1)/(w+1))` is a genuine **constant**, not merely close to one —
+the very first valid value already equals every later one. Feeding that constant
+`rs_ratio_approx` into the second rolling z-score hands it a week-over-week diff series that is
+identically `0.0` everywhere it is defined, which the `std==0` guard resolves to exactly
+`100.0` forever — never `> 100.0`, and never a transient decaying toward `100.0`, because there
+is no transient. This is confirmed directly: `test_rrg_approx_constant_multiple_of_benchmark
+_...` (§16) and a separate check with `rs` itself (not just `price/benchmark`) as a pure
+arithmetic progression both land on exactly `100.0`/`100.0` from first-valid-index onward, with
+no leading phase.
+
+**Fixture actually used (three-segment piecewise-linear `rs`, `w=14`, 80 weeks):**
+
+```
+rs[0] = 100.0
+rs[t] = rs[t-1] + 0.5   for 1 <= t <= 29   (rising)
+rs[t] = rs[t-1] + 3.0   for 30 <= t <= 49  (rising faster — acceleration)
+rs[t] = rs[t-1] + 0.3   for 50 <= t <= 79  (rising slower — deceleration)
+```
+
+Independently re-derived with a plain Python loop (population mean/std, `std==0 -> 0.0` guard,
+no pandas/numpy calls, no reference to `app.scan.rotation` at all):
+
+```
+week 13 (first valid rs_ratio_approx):    101.612452
+week 27 (first valid rs_momentum_approx): 100.000000
+week 30: rs_ratio_approx=102.346462  rs_momentum_approx=103.605551   <- LEADING (both > 100)
+week 31: rs_ratio_approx=102.528089  rs_momentum_approx=100.607827
+week 32: rs_ratio_approx=102.465165  rs_momentum_approx=99.359791    <- momentum crosses below 100
+week 33: rs_ratio_approx=102.335859  rs_momentum_approx=99.091090    <- WEAKENING (ratio>100, momentum<100)
+```
+
+`app.scan.rotation.rrg_approx`, run directly on this fixture, reproduces every one of these six
+numbers to better than `1e-5`. The **sequence** — week 30 lands in the leading quadrant
+(`rs_ratio_approx > 100` and `rs_momentum_approx > 100`), week 33 lands in the weakening
+quadrant (`rs_ratio_approx` still `> 100`, `rs_momentum_approx` now `< 100`) — is asserted
+directly, not just the two endpoints, in `tests/test_scan_rotation
+.py::test_rrg_approx_piecewise_rising_rs_shows_leading_then_weakening_sequence`. Mechanically:
+at week 30 the momentum window is still mostly the slower `+0.5`/week segment, so the *new*
+`+3.0`/week diffs read as unusually high relative to that trailing average (positive z); by
+week 33 enough `+3.0` diffs have entered the window that the trailing average has caught up to
+the current diff (still `+3.0`, unchanged) — "the z-score saturates," per the plan's own
+phrase, and momentum falls back through 100 even though `rs` itself is still rising every week.
+
+
+## 18. Fixture: `relative_returns` — 3-symbol hand-built fixture to `1e-9`, and the `NaN`-not-`None` convention
+
+Acceptance item 3, verbatim: "relative returns on a hand-built 3-symbol fixture match to
+1e-9."
+
+```
+A     = [100, 102, 101, 105, 110, 108, 115, 120, 118, 125]
+BENCH = [ 50,  50,  51,  50,  52,  53,  54,  53,  55,  56]
+C     = [NaN, NaN, NaN, NaN, NaN, NaN, 200, 202, 205, 210]     (added to the universe partway through)
+relative_returns(prices, "BENCH", windows=(2, 5))
+```
+
+Independently re-derived with a plain Python loop reading `(a_t/a_{t-n})/(b_t/b_{t-n}) - 1`
+directly off the array (0-indexed, last row = index 9):
+
+```
+return_2:  A=-0.014136904761904656   BENCH(self)=0.0   C=-0.016089108910890992
+return_5:  A=0.05519480519480524     BENCH(self)=0.0   C=NaN   (C[9-5]=C[4] does not exist)
+```
+
+`app.scan.rotation.relative_returns`, run directly on this fixture, matches all four numeric
+values to `1e-9` and reports `NaN` for `C`'s `return_5` — confirmed in
+`tests/test_scan_rotation.py::test_relative_returns_hand_built_3_symbol_fixture_matches_1e9`.
+
+**Note the fixture's own `C` returns `NaN`, not `None`**, even though this is the same
+"insufficient history" case `SectorBreadth`'s fields report as `None`. This is a deliberate,
+documented distinction (`app.scan.rotation._last_finite_pair`'s own docstring): `relative
+_returns` returns a `pd.DataFrame`, and this module's (and `app.scan.indicators`'s) convention
+at that level is `NaN`; only a frozen dataclass (`SectorBreadth`) translates to `None` at its
+own object boundary, matching how `app.scan.trend.TrendComponents` already treats a `NaN`
+indicator reading as `None` only once it crosses into a dataclass field.
+
+**Bug found and fixed while building this fixture:** `Series.astype(float)` raises
+`TypeError: float() argument must be a string or a real number, not 'NAType'` on a column
+`app.storage.bars_repository.read_universe_closes` fills entirely with the scalar
+`pandas.NA` (its own documented convention for "this symbol has zero bars in range") — this
+pandas version's `astype(float)` does not coerce `pandas.NA` to `NaN` the way every other
+`app.scan` module's `.astype(float)` calls on genuine (never-`pandas.NA`) `bars` columns had
+led this implementation to assume. First caught by `tests/test_scan_api.py
+::test_get_rotation_returns_full_shape_for_seeded_and_unseeded_symbols`'s unseeded `XLF`
+column, not by any unit test in `test_scan_rotation.py` (whose fixtures all use `np.nan`
+directly, never `pandas.NA`) — a reminder that this task's own "one bad symbol should not
+poison the whole request" scenario is also where this specific pandas behavior actually bites.
+Fixed by replacing every `.astype(float)` call in `app.scan.rotation` that touches a
+caller-supplied wide frame with a small `_to_float` helper (`pandas.to_numeric(...,
+errors="coerce")`), which does coerce `pandas.NA` (and anything else non-numeric) to `NaN`; see
+that helper's own docstring in `app/scan/rotation.py`.
+
+
+## 19. Fixture: `sector_breadth` — exactly 4 of 11 sectors above their 20-day average
+
+Acceptance item 4, verbatim: "breadth counts on a fixture where exactly 4 of 11 sectors are
+above their 20-day average returns 4."
+
+Eleven synthetic sector symbols, each 19 flat bars at `100.0` then one final bar: `101.0` for
+four of them, `99.0` for the other seven. By hand: `SMA20 = (19*100 + 101)/20 = 100.05 < 101`
+("above"); `SMA20 = (19*100 + 99)/20 = 99.95 > 99` ("below") — both exact, no floating
+tolerance needed. `app.scan.rotation.sector_breadth`, run directly on this fixture, returns
+`above_20d=4`, `evaluated_20d=11` — confirmed in `tests/test_scan_rotation
+.py::test_sector_breadth_exactly_4_of_11_above_20d_average`. A companion fixture
+(`test_sector_breadth_missing_symbol_excluded_not_counted_against`) removes one sector from
+`prices` entirely and confirms it is excluded from **both** the numerator and the denominator
+(`evaluated_20d` drops to match), never silently counted as "below" — the same "absence is not
+a negative reading" rule `app.scan.trend.TrendComponents` already applies to a missing
+indicator, extended here to a missing *symbol*.
+
+The `RSP`/`SPY` equal-weight leadership reading was checked separately: `RSP = [100..120]`
+(21 integer steps), `SPY` flat at `100.0`. By hand: `ratio_t = 120/100 = 1.2`; `ratio_{t-20} =
+100/100 = 1.0`; `change_20d = 1.2/1.0 - 1 = 0.2` exactly — both reproduced exactly by
+`sector_breadth` (`test_sector_breadth_equal_weight_ratio_and_20d_change`).
+
+
+## 20. Live measurement: `GET /api/scan/rotation` timing (T50 acceptance item 8)
+
+Against the live Docker Postgres (`docker compose restart backend` picked up this task's new
+route — the same restart-required lesson T45's validation doc already names, re-confirmed
+here), the same 47-symbol, ~58,893-row database T43/T45 measured against, three consecutive
+requests per query via `curl -w '%{time_total}'`:
+
+| Query | Run 1 | Run 2 | Run 3 |
+|---|---|---|---|
+| `?group=sectors&benchmark=SPY&weeks=10` (defaults) | 0.201 s | 0.071 s | 0.060 s |
+| `?group=industries&weeks=10` | 0.121 s | — | — |
+| `?group=assets&benchmark=RSP&weeks=10` | 0.076 s | — | — |
+| `?group=nope` (422, no DB touched) | 0.005 s | — | — |
+
+All well under a second — this route is one `read_universe_closes` call (a single indexed
+`SELECT ... WHERE symbol IN (...)` covering the union of the requested group, the 11 sector
+ETFs, and both benchmark symbols — roughly 25-35 distinct symbols depending on group overlap)
+plus in-memory pandas work, none of it approaching `/trend`'s `_lookup_iv30` cost (§13 above)
+since this route never touches Parquet or option chains at all. The first run's higher figure
+(`0.201s`) is consistent with one cold connection-pool acquisition right after the container
+restart; every subsequent run across all three groups lands under `0.13s`. No explicit latency
+budget is stated in the plan for `/rotation` (mirroring `/trend`'s own situation, §13), so this
+section exists to give a future reader the real number rather than an implicit target.
+
+Sample values from the live response (`group=sectors`, `benchmark=SPY`, capture date
+2026-09-09): `XLK` (top mover) `rs_ratio_approx=100.52`, `rs_momentum_approx=101.16`,
+`return_5=+2.2%`; sector-level breadth `equal_weight_ratio≈0.28` (RSP trades at roughly a
+quarter of SPY's per-share price — a plausible real reading, not a red flag),
+`above_20d=2/11`, `above_50d=5/11`.
+
+
+## 21. Acceptance checklist cross-reference (T50)
+
+| Plan / task acceptance item | Where it is pinned |
+|---|---|
+| Constant multiple of benchmark -> exactly (100, 100) after warm-up | §16 above; `test_rrg_approx_constant_multiple_of_benchmark_sits_at_exactly_100_100_after_warmup` |
+| Linearly-rising `rs` -> leading then weakening, sequence asserted | §17 above; `test_rrg_approx_piecewise_rising_rs_shows_leading_then_weakening_sequence` (uses a piecewise-accelerating fixture, not a pure straight line -- see §17 for the closed-form proof of why a pure straight line cannot show this sequence under this formula) |
+| Relative returns match a hand-built 3-symbol fixture to `1e-9` | §18 above; `test_relative_returns_hand_built_3_symbol_fixture_matches_1e9` |
+| Breadth: exactly 4 of 11 sectors above 20-day average -> 4 | §19 above; `test_sector_breadth_exactly_4_of_11_above_20d_average` |
+| API rejects an unknown group with 422 | `test_get_rotation_rejects_unknown_group_422` (offline); confirmed live, §20 above (`?group=nope` -> 422 in 0.005s) |
+| `uv run pytest` passes | 684 passed (664 pre-existing + 20 new: 15 in `test_scan_rotation.py`, 5 in `test_scan_api.py`) |
+| `ruff check .` passes | 0 errors |
+| `GET /api/scan/rotation` measured against the live database | §20 above -- 0.06-0.20s, no stated budget to compare against |
+| Naming honestly signals "approximation, not the real JdK indicator" | §15 above; `note` field in the API response, `rs_ratio_approx`/`rs_momentum_approx` field names throughout, module docstrings in `app/scan/rotation.py` and `app/api/scan.py` |
+| Cross-symbol date alignment | `app.scan.rotation`'s own module docstring's "cross-symbol alignment hazard" section; `test_weekly_closes_a_week_with_no_bar_at_all_is_nan_not_forward_filled`, `test_rrg_approx_benchmark_reindexed_onto_prices_index` |

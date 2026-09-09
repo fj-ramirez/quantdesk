@@ -1,5 +1,6 @@
-"""Breakout ledger and trend/chop scorer read API (T43, plans/continuation/01-breakout-
-ledger.md; T45, plans/continuation/02-trend-chop-scorer.md adds the `/trend` routes).
+"""Breakout ledger, trend/chop scorer and sector-rotation read API (T43, plans/continuation/01-
+breakout-ledger.md; T45, plans/continuation/02-trend-chop-scorer.md adds the `/trend` routes;
+T50, plans/continuation/04-sector-rotation.md adds `/rotation`).
 
 Routes, all computing on request from `daily_bars` -- no new table, per the plan and
 CLAUDE.md invariant 5's spirit (Postgres holds computed results plus an index; this is cheap
@@ -22,6 +23,16 @@ enough to just compute every time for a single-user app, so nothing is persisted
 * `GET /api/scan/trend/{symbol}` -- one symbol's current components plus their rolling
   126-bar history, for the detail panel's sparklines. Same "no bars at all is a clean empty
   result, not a 404" contract as `/breakouts/{symbol}`.
+* `GET /api/scan/rotation?group=&benchmark=&weeks=` -- one RRG-approximation trail
+  (`rs_ratio_approx`/`rs_momentum_approx` per week) plus 1/4/13-week relative return per symbol
+  in the chosen `app.scan.groups.GROUPS` group, plus one sector-level breadth reading (T50).
+  Unlike every other route in this module, `group` has a fixed 422-rejected menu (`sectors`,
+  `industries`, `assets` -- `app.scan.groups.GROUPS`'s own keys) rather than an open string,
+  because there is no sensible "compute it anyway" fallback for a group name this module does
+  not know the membership of, unlike `n`/`k`/`lookback`'s open-but-restricted-by-convention
+  numeric ranges. See this route's own docstring below for the daily-bars lookback window it
+  fetches and why, and `app.scan.rotation`'s module docstring for the cross-symbol alignment
+  discipline every division in this route's pipeline depends on.
 
 **T45's IV lookup lives here, not in `app.scan.trend`** (that module's purity contract:
 CLAUDE.md invariant 1, and the same caller/pure split T43 already used for its own calendar
@@ -95,7 +106,9 @@ from __future__ import annotations
 import datetime as dt
 from pathlib import Path
 from typing import Annotated
+from zoneinfo import ZoneInfo
 
+import numpy as np
 import pandas as pd
 from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel
@@ -119,6 +132,7 @@ from app.scan.breakouts import (
     detect_events,
     summarize,
 )
+from app.scan.groups import BENCHMARKS, DEFAULT_BENCHMARK, GROUPS, SECTORS
 from app.scan.indicators import (
     ADX_PERIOD,
     CHOP_PERIOD,
@@ -129,6 +143,15 @@ from app.scan.indicators import (
     efficiency_ratio,
     realized_vol,
 )
+from app.scan.rotation import (
+    RELATIVE_RETURN_WINDOWS,
+    RRG_ZSCORE_WINDOW,
+    SectorBreadth,
+    relative_returns,
+    rrg_approx,
+    sector_breadth,
+    weekly_closes,
+)
 from app.scan.trend import (
     TREND_LOOKBACK,
     TrendComponents,
@@ -136,7 +159,7 @@ from app.scan.trend import (
     rank_universe,
     score_symbol,
 )
-from app.storage.bars_repository import get_session_factory, read_bars
+from app.storage.bars_repository import get_session_factory, read_bars, read_universe_closes
 from app.storage.parquet import read_snapshot, resolve_snapshot_path
 
 __all__ = ["router"]
@@ -637,4 +660,231 @@ def get_symbol_trend(symbol: str) -> SymbolTrendResponse:
         symbol=canonical,
         current=TrendComponentsOut.from_components(components),
         history=history,
+    )
+
+
+# --------------------------------------------------------------------------------------------
+# T50: sector-rotation routes (plans/continuation/04-sector-rotation.md)
+# --------------------------------------------------------------------------------------------
+
+#: The plan's "the common open approximation ... never claiming parity" disclaimer, carried
+#: into the API response as both a documented `note` field and the `_approx`-suffixed field
+#: names below -- CLAUDE.md's/this task's correctness-of-claims requirement, verbatim in the
+#: response a page's info tooltip (T51/07-ui.md) reads from, not only in this module's or
+#: `app.scan.rotation`'s own docstring.
+_RRG_APPROXIMATION_NOTE = (
+    "rs_ratio_approx / rs_momentum_approx are the common open approximation of JdK RS-Ratio / "
+    "RS-Momentum (rolling z-scores of price/benchmark and its own week-over-week change). "
+    "JdK RS-Ratio and RS-Momentum are a proprietary, patented construction; this is not that "
+    "indicator and does not claim to match it."
+)
+
+#: How many calendar days of *daily* closes this route fetches before resampling to weekly and
+#: running `app.scan.rotation.rrg_approx`. Sized for the largest `weeks` this route accepts
+#: (`_MAX_ROTATION_WEEKS`) plus `2 * RRG_ZSCORE_WINDOW` weeks of z-score warm-up (the first
+#: rolling z-score needs `RRG_ZSCORE_WINDOW` weeks to seed `rs_ratio_approx`, and the second
+#: needs another `RRG_ZSCORE_WINDOW` on top of that to seed `rs_momentum_approx` -- see
+#: `app.scan.rotation.rrg_approx`'s own docstring), converted to calendar days at roughly 7
+#: days/week and doubled again as a margin for weekends/holidays that thin out a week's own
+#: bin without changing how many *weeks* of history exist: `(26 + 28) * 7 * 2` rounds up to
+#: 730 (two years) -- comfortably inside the ~5 years of history T42's backfill actually holds
+#: (see this route's own live measurement below) and this route's own test fixtures build much
+#: shorter series directly, so this constant is exercised for real only against the live
+#: database, never by a unit test.
+_ROTATION_LOOKBACK_DAYS = 730
+
+#: `weeks=` query menu: plan default 10 (the "standard reading" 10-week RRG trail); capped at
+#: 26 (half a year of weekly points) so a request can never ask for more trail than
+#: `_ROTATION_LOOKBACK_DAYS` was sized to comfortably support.
+_DEFAULT_ROTATION_WEEKS = 10
+_MAX_ROTATION_WEEKS = 26
+
+#: Same rationale as `app.api.health`'s own `_TZ`: "today" for a daily-bars lookback window
+#: must be the exchange-local (NY) calendar date, not whatever date UTC happens to be at the
+#: moment of the request (the two disagree for several hours every trading day).
+_TZ = ZoneInfo(settings.TZ)
+
+
+def _today() -> dt.date:
+    return dt.datetime.now(dt.UTC).astimezone(_TZ).date()
+
+
+def _validate_group(group: str) -> str:
+    if group not in GROUPS:
+        raise HTTPException(
+            status_code=422,
+            detail=f"group must be one of {sorted(GROUPS)}, got {group!r}",
+        )
+    return group
+
+
+def _validate_benchmark(benchmark: str) -> str:
+    if benchmark not in BENCHMARKS:
+        raise HTTPException(
+            status_code=422,
+            detail=f"benchmark must be one of {BENCHMARKS}, got {benchmark!r}",
+        )
+    return benchmark
+
+
+class RotationPointOut(BaseModel):
+    """One week of one symbol's RRG-approximation trail. `rs_ratio_approx`/`rs_momentum_approx`
+    are `None` during the z-score's own warm-up (see `app.scan.rotation.rrg_approx`'s
+    docstring for exactly how long that is) -- never a partially-windowed number.
+    """
+
+    date: dt.date
+    rs_ratio_approx: float | None
+    rs_momentum_approx: float | None
+
+
+class RotationSymbolOut(BaseModel):
+    """One symbol's full RRG trail (oldest to newest, already trimmed to the requested `weeks`)
+    plus its 1/4/13-week relative return versus the chosen benchmark. `return_*` fields mirror
+    `app.scan.rotation.relative_returns`'s own `f"return_{n}"` columns, named out here rather
+    than left as a dict so the response schema is self-documenting.
+    """
+
+    symbol: str
+    trail: list[RotationPointOut]
+    return_5: float | None
+    return_20: float | None
+    return_65: float | None
+
+
+class SectorBreadthOut(BaseModel):
+    """Mirrors `app.scan.rotation.SectorBreadth` -- see that dataclass's docstring for exactly
+    when each field is `None`/excluded rather than a fabricated reading. `label` is the plan's
+    own required wording ("sector-level breadth") carried onto the wire so a frontend need not
+    hard-code the disclaimer itself.
+    """
+
+    label: str = "sector-level breadth"
+    equal_weight_ratio: float | None
+    equal_weight_ratio_change_20d: float | None
+    above_20d: int
+    evaluated_20d: int
+    above_50d: int
+    evaluated_50d: int
+
+    @classmethod
+    def from_breadth(cls, breadth: SectorBreadth) -> SectorBreadthOut:
+        return cls(**breadth.to_dict())
+
+
+class RotationResponse(BaseModel):
+    group: str
+    benchmark: str
+    weeks: int
+    w: int
+    symbols: list[RotationSymbolOut]
+    breadth: SectorBreadthOut
+    note: str
+
+
+def _clean_float(value: float) -> float | None:
+    """`NaN`/`inf` -> `None`, everything else passed through as a plain `float`. Pydantic (and
+    the `json` module underneath it) would otherwise serialize a bare `float('nan')` as the
+    bare token `NaN`, which is not valid JSON -- every numeric field this route returns must be
+    run through this (or already be a Python `None`) before it reaches a response model.
+    """
+    return None if pd.isna(value) or not np.isfinite(value) else float(value)
+
+
+@router.get("/rotation", response_model=RotationResponse)
+def get_rotation(
+    group: Annotated[
+        str, Query(description=f"One of {sorted(GROUPS)}.")
+    ] = "sectors",
+    benchmark: Annotated[
+        str, Query(description=f"One of {BENCHMARKS}.")
+    ] = DEFAULT_BENCHMARK,
+    weeks: Annotated[
+        int,
+        Query(gt=0, le=_MAX_ROTATION_WEEKS, description="RRG trail length, in weeks."),
+    ] = _DEFAULT_ROTATION_WEEKS,
+) -> RotationResponse:
+    """RRG-approximation trails, relative returns and sector-level breadth for one rotation
+    group (T50, plans/continuation/04-sector-rotation.md).
+
+    Fetches `_ROTATION_LOOKBACK_DAYS` of *daily* closes in one `read_universe_closes` call for
+    the union of the requested group's symbols, `app.scan.groups.SECTORS` (breadth needs these
+    regardless of which group was requested -- the plan's breadth block sits next to every
+    group tab, not only the "sectors" one) and both benchmark symbols (`SPY`, `RSP` -- breadth
+    always reads both regardless of which one is this request's own `benchmark`). Fetching
+    everything in **one** wide frame, rather than one `read_bars` call per symbol, is what
+    makes every division below a same-`DataFrame`-column divide instead of a positional one --
+    see `app.scan.rotation`'s module docstring for why that specific discipline is this route's
+    single most important property.
+
+    `app.scan.rotation.weekly_closes` resamples that one daily frame **once**, so the group's
+    symbols and the chosen benchmark share the exact same weekly index before
+    `app.scan.rotation.rrg_approx` ever divides one by the other -- never two separate resample
+    calls that could disagree on a bin boundary.
+
+    Measured against the live Docker Postgres (2026-09-09, 47-symbol universe, full T42
+    backfill): see the module docstring's "Live measurement" note added alongside `/breakouts`
+    and `/trend` above -- this route's own timing is recorded in `docs/validation-scan.md`
+    rather than repeated inline here, since (unlike those two) there is no query-parameter-free
+    "default" call this route can point to without also picking a `group`.
+    """
+    _validate_group(group)
+    _validate_benchmark(benchmark)
+
+    group_symbols = list(GROUPS[group])
+    universe = sorted(set(group_symbols) | set(SECTORS) | set(BENCHMARKS))
+
+    end = _today()
+    start = end - dt.timedelta(days=_ROTATION_LOOKBACK_DAYS)
+
+    session_factory = get_session_factory()
+    daily = read_universe_closes(universe, start, end, session_factory=session_factory)
+
+    weekly = weekly_closes(daily)
+    rrg = rrg_approx(weekly[group_symbols], weekly[benchmark], w=RRG_ZSCORE_WINDOW)
+
+    rel_ret = relative_returns(
+        daily[list(dict.fromkeys(group_symbols + [benchmark]))],
+        benchmark,
+        windows=RELATIVE_RETURN_WINDOWS,
+    )
+
+    breadth = sector_breadth(daily, sectors=SECTORS)
+
+    symbols_out: list[RotationSymbolOut] = []
+    for symbol in group_symbols:
+        symbol_rows = rrg[rrg["symbol"] == symbol].tail(weeks)
+        trail = [
+            RotationPointOut(
+                date=row.date.date() if hasattr(row.date, "date") else row.date,
+                rs_ratio_approx=_clean_float(row.rs_ratio_approx),
+                rs_momentum_approx=_clean_float(row.rs_momentum_approx),
+            )
+            for row in symbol_rows.itertuples(index=False)
+        ]
+        ret_row = rel_ret.loc[symbol] if symbol in rel_ret.index else None
+        symbols_out.append(
+            RotationSymbolOut(
+                symbol=symbol,
+                trail=trail,
+                # `_clean_float` is applied even though `relative_returns` already returns
+                # plain `None`/`float`, never `NaN`/`inf` -- `pd.DataFrame.from_dict` can
+                # up-cast a column mixing `None` and `float` to `float64` with `NaN` standing
+                # in for `None` (a pandas construction detail, not a contract `relative_returns`
+                # itself breaks), so this route re-cleans defensively rather than assuming the
+                # dict-like `.get()` below handed back the exact Python object that was put in.
+                return_5=None if ret_row is None else _clean_float(ret_row.get("return_5")),
+                return_20=None if ret_row is None else _clean_float(ret_row.get("return_20")),
+                return_65=None if ret_row is None else _clean_float(ret_row.get("return_65")),
+            )
+        )
+
+    return RotationResponse(
+        group=group,
+        benchmark=benchmark,
+        weeks=weeks,
+        w=RRG_ZSCORE_WINDOW,
+        symbols=symbols_out,
+        breadth=SectorBreadthOut.from_breadth(breadth),
+        note=_RRG_APPROXIMATION_NOTE,
     )
