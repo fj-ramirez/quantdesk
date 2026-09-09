@@ -1,6 +1,7 @@
-"""Breakout ledger read API (T43, plans/continuation/01-breakout-ledger.md).
+"""Breakout ledger and trend/chop scorer read API (T43, plans/continuation/01-breakout-
+ledger.md; T45, plans/continuation/02-trend-chop-scorer.md adds the `/trend` routes).
 
-Two routes, both computing on request from `daily_bars` -- no new table, per the plan and
+Routes, all computing on request from `daily_bars` -- no new table, per the plan and
 CLAUDE.md invariant 5's spirit (Postgres holds computed results plus an index; this is cheap
 enough to just compute every time for a single-user app, so nothing is persisted at all):
 
@@ -13,6 +14,26 @@ enough to just compute every time for a single-user app, so nothing is persisted
   typo, or one newly added to `SCAN_UNIVERSE` before its first bars job run) returns a clean
   empty `events` list, the same "clean empty state, not a synthetic error" contract
   `app.api.bars.get_bars` already uses for exactly this situation.
+* `GET /api/scan/trend` -- one `app.scan.trend.TrendRow` per `settings.scan_universe` symbol
+  (T45): the ADX/ER/CHOP/VR components, RV20/IV30/IV-RV hint, cross-sectional percentiles and
+  the composite. Never excludes a symbol the way `/breakouts` does for gappy history -- every
+  universe symbol gets a row, with `None` components wherever its history or chain does not
+  support them (see `_lookup_iv30` below and `app.scan.trend.score_symbol`'s own docstring).
+* `GET /api/scan/trend/{symbol}` -- one symbol's current components plus their rolling
+  126-bar history, for the detail panel's sparklines. Same "no bars at all is a clean empty
+  result, not a 404" contract as `/breakouts/{symbol}`.
+
+**T45's IV lookup lives here, not in `app.scan.trend`** (that module's purity contract:
+CLAUDE.md invariant 1, and the same caller/pure split T43 already used for its own calendar
+dependency). `_lookup_iv30` mirrors `app.api.report._build`'s read path -- one `select` for the
+latest `Snapshot` row, `resolve_snapshot_path` + `read_snapshot` + `to_frame`, then
+`app.gex.report.iv_regime` -- trimmed to the single `atm_iv` number `score_symbol` needs;
+running the *full* `compute_all`/`build_report` pipeline here (walls, net GEX, max pain) would
+be wasted work this route never reads. A symbol that fails at any step of that lookup --
+not one of the 28 option-covered `Underlying` members at all, never captured, or indexed with a
+Parquet file that has since gone missing -- degrades to `iv30=None` rather than failing the
+whole universe scan: most of `SCAN_UNIVERSE` (19 of 47 symbols) has no chain at all, and that
+is the ordinary case this route runs against on every request, not an error condition.
 
 Response models are defined locally rather than in `app/api/schemas.py`: T43's edit list does
 not include that file (a parallel T47 agent is working elsewhere in the API package at the same
@@ -48,19 +69,46 @@ scenario specifies. `read_bars` is one indexed `SELECT ... WHERE symbol = ?` per
 `app.storage.bars_repository`), so this scales linearly in symbol count; no caching layer was
 added, matching the single-user "not a scaling problem worth the complexity" reasoning
 `app.api.gex`'s own module docstring already gives for the same trade-off.
+
+**T45's `GET /api/scan/trend` measured timing (2026-09-09, same live database, full universe,
+no query params):** four consecutive requests via `curl -w '%{time_total}'` measured **3.51s,
+3.61s, 3.72s, 3.79s** end to end. Unlike `/breakouts`, this is dominated by `_lookup_iv30`, not
+by bars I/O: measured directly (a plain in-process timer, no HTTP) against the same database,
+`read_bars` for all 47 symbols is only **0.57s**, while `_lookup_iv30` for the same 47 symbols
+(most of them a fast `None` -- see below -- but 28 of them a real Parquet read) is **3.09s**.
+That is not a caching gap this route failed to add; it is the honest cost of flattening 28
+real option chains (`to_frame`, same flatten `app.api.report` names as "the expensive step") on
+every single request, one of which (SPX) alone carries on the order of 25,000+ contract rows.
+No caching layer was added for the same single-user reasoning `/breakouts` already gives, and
+there is no plan-stated latency budget for `/trend` the way T43's plan names one for
+`/breakouts` (2s) -- this paragraph exists so a reader has the real number and its breakdown
+rather than an unstated implicit target. `GET /api/scan/trend/{symbol}` (single symbol, `SPY`,
+which does have a chain) measured **0.26-0.33s** across three requests -- one `read_bars` call
+plus one `_lookup_iv30` call, not 47 of each. `GET /api/scan/trend/NOPEXYZ` (zero stored bars)
+measured **0.01s**, `200 OK`, empty `history`, all-`None` `current` -- confirming the same
+"clean empty result, not a 404 or 500" contract `/breakouts/{symbol}` already established,
+against the live server rather than only `tests/test_scan_api.py`'s offline equivalent.
 """
 
 from __future__ import annotations
 
 import datetime as dt
+from pathlib import Path
 from typing import Annotated
 
+import pandas as pd
 from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel
+from sqlalchemy import select
 from sqlalchemy.orm import sessionmaker
 
 from app.config import settings
+from app.gex.engine import to_frame
+from app.gex.report import iv_regime
 from app.jobs.calendar import is_trading_day
+from app.jobs.capture import get_session_factory as get_gex_session_factory
+from app.models.chain import Underlying
+from app.models.db import Snapshot
 from app.scan.breakouts import (
     DEFAULT_K,
     DEFAULT_LOOKBACK,
@@ -71,7 +119,25 @@ from app.scan.breakouts import (
     detect_events,
     summarize,
 )
+from app.scan.indicators import (
+    ADX_PERIOD,
+    CHOP_PERIOD,
+    ER_PERIOD,
+    RV_PERIOD,
+    adx,
+    choppiness,
+    efficiency_ratio,
+    realized_vol,
+)
+from app.scan.trend import (
+    TREND_LOOKBACK,
+    TrendComponents,
+    TrendRow,
+    rank_universe,
+    score_symbol,
+)
 from app.storage.bars_repository import get_session_factory, read_bars
+from app.storage.parquet import read_snapshot, resolve_snapshot_path
 
 __all__ = ["router"]
 
@@ -358,4 +424,217 @@ def get_symbol_breakouts(
         k=k,
         lookback=lookback,
         events=[BreakoutEventOut.from_event(e) for e in events],
+    )
+
+
+# --------------------------------------------------------------------------------------------
+# T45: trend/chop scorer routes (plans/continuation/02-trend-chop-scorer.md)
+# --------------------------------------------------------------------------------------------
+
+
+def _lookup_iv30(
+    symbol: str,
+    gex_session_factory: sessionmaker,
+    *,
+    data_dir: str | Path | None = None,
+) -> float | None:
+    """The ATM ~30-day implied vol off `symbol`'s most recently captured option-chain snapshot,
+    or `None` -- see this module's docstring for the three distinct reasons that can happen and
+    why none of them is an error worth failing the whole universe scan over.
+
+    Mirrors `app.api.report._build`'s read path (one `Snapshot` lookup, `resolve_snapshot_path`
+    + `read_snapshot` + `to_frame`, then `app.gex.report.iv_regime`) trimmed to the single
+    number `app.scan.trend.score_symbol` needs. `data_dir` defaults to `settings.DATA_DIR` (via
+    `resolve_snapshot_path`'s own default) so production code never passes it; tests inject a
+    `tmp_path` the same way `write_snapshot`/`resolve_snapshot_path` already support elsewhere.
+    """
+    try:
+        canonical = Underlying(symbol).value
+    except ValueError:
+        return None  # not one of the 28 option-covered underlyings at all
+
+    with gex_session_factory() as session:
+        stmt = (
+            select(Snapshot)
+            .where(Snapshot.underlying == canonical)
+            .order_by(Snapshot.captured_at.desc())
+            .limit(1)
+        )
+        row = session.execute(stmt).scalar_one_or_none()
+    if row is None:
+        return None  # a covered underlying, but never captured yet
+
+    try:
+        path = resolve_snapshot_path(row, data_dir=data_dir)
+        snapshot = read_snapshot(path)
+    except FileNotFoundError:
+        # Indexed but the Parquet file is missing. `app.api.report` 404s the whole request for
+        # this (it is the one thing the caller explicitly asked for); a universe scan instead
+        # degrades this one symbol's IV to `None` and keeps going, the same "one bad symbol
+        # does not poison the table" posture `/breakouts`'s `excluded` list embodies for a
+        # gappy bars history.
+        return None
+
+    frame = to_frame(snapshot)
+    regime = iv_regime(frame, snapshot.spot)
+    return regime.atm_iv
+
+
+class TrendComponentsOut(BaseModel):
+    """Mirrors `app.scan.trend.TrendComponents` -- see that dataclass's docstring for exactly
+    when each field is `None` versus a number.
+    """
+
+    adx14: float | None
+    er20: float | None
+    chop14: float | None
+    vr: float | None
+    vr_z: float | None
+    rv20: float | None
+    iv30: float | None
+    iv_rv_ratio: float | None
+
+    @classmethod
+    def from_components(cls, components: TrendComponents) -> TrendComponentsOut:
+        return cls(**components.to_dict())
+
+
+class TrendRowOut(TrendComponentsOut):
+    """One row of the `/scan?view=trend` table: `symbol` plus every `TrendComponentsOut` field
+    plus each component's cross-sectional percentile and the composite. Flat (not nested)
+    because the frontend table is one row per symbol with one cell per column -- there is no
+    natural place a nested `components` object would be unpacked to anyway.
+    """
+
+    symbol: str
+    adx_pct: float | None
+    er_pct: float | None
+    chop_pct: float | None
+    vr_pct: float | None
+    composite: float | None
+
+    @classmethod
+    def from_row(cls, row: TrendRow) -> TrendRowOut:
+        # `to_dict()` already merges `components` flat with `symbol`/`*_pct`/`composite` --
+        # reuse that one dict-building method rather than a second field-by-field mapping that
+        # could drift out of sync with it, the same reasoning `BreakoutEventOut.from_event`
+        # gives for doing the same thing with `BreakoutEvent.to_dict()`.
+        return cls(**row.to_dict())
+
+
+class TrendResponse(BaseModel):
+    rows: list[TrendRowOut]
+
+
+class TrendHistoryPointOut(BaseModel):
+    """One day of the detail panel's sparkline history. `vr`/`vr_z`/`iv30`/`iv_rv_ratio` are
+    deliberately absent here -- `app.scan.indicators.variance_ratio` is not a rolling `Series`
+    (see that module's docstring) so there is no per-day VR reading to plot, and no IV history
+    is ever persisted past the latest snapshot (`app.api.report.get_report`'s own docstring:
+    "Nothing in the schema persists past ATM implied vols"). Both are still returned once, as
+    the current single value, in `SymbolTrendResponse.current`.
+    """
+
+    date: dt.date
+    adx14: float | None
+    er20: float | None
+    chop14: float | None
+    rv20: float | None
+
+
+class SymbolTrendResponse(BaseModel):
+    symbol: str
+    current: TrendComponentsOut
+    history: list[TrendHistoryPointOut]
+
+
+def _symbol_components(
+    symbol: str,
+    bars_session_factory: sessionmaker,
+    gex_session_factory: sessionmaker,
+    *,
+    data_dir: str | Path | None = None,
+) -> tuple[TrendComponents, pd.DataFrame]:
+    """Fetch `symbol`'s bars, look up its `iv30`, and score it -- the one sequence both trend
+    routes need, factored out so the universe route and the single-symbol route can never
+    silently diverge on how a row is built. Returns `(components, bars)` because the detail
+    route also needs `bars` itself to build the sparkline history; the universe route discards
+    the second element.
+    """
+    bars = read_bars(symbol, session_factory=bars_session_factory)
+    iv30 = _lookup_iv30(symbol, gex_session_factory, data_dir=data_dir)
+    return score_symbol(bars, iv30), bars
+
+
+@router.get("/trend", response_model=TrendResponse)
+def get_trend() -> TrendResponse:
+    """Trend/chop components, percentiles and composite for every symbol in `SCAN_UNIVERSE`.
+
+    Unlike `/breakouts`, no symbol is ever excluded for a gappy history -- `app.scan.indicators`
+    already reports `None` per-component for whatever it cannot compute (this route does not
+    duplicate that decision with a second, coarser gap check), and a `None` component just
+    narrows that one symbol's contribution to the cross-sectional percentiles rather than
+    invalidating the whole row (see `app.scan.trend.rank_universe`'s docstring).
+
+    Rows are sorted by `composite` descending (most "trending" first), symbols with no
+    composite at all (nothing finite to average) sorted last, ties broken by symbol -- the
+    same "quoted values first, `None` last, deterministic" ordering `/breakouts` already uses
+    for `rate`.
+    """
+    bars_session_factory = get_session_factory()
+    gex_session_factory = get_gex_session_factory()
+
+    components_by_symbol: dict[str, TrendComponents] = {}
+    for symbol in settings.scan_universe:
+        components, _bars = _symbol_components(symbol, bars_session_factory, gex_session_factory)
+        components_by_symbol[symbol] = components
+
+    rows = rank_universe(components_by_symbol)
+    rows.sort(
+        key=lambda r: (r.composite is None, -(r.composite or 0.0), r.symbol)
+    )
+
+    return TrendResponse(rows=[TrendRowOut.from_row(r) for r in rows])
+
+
+@router.get("/trend/{symbol}", response_model=SymbolTrendResponse)
+def get_symbol_trend(symbol: str) -> SymbolTrendResponse:
+    """One symbol's current trend/chop components plus their rolling `TREND_LOOKBACK`-bar
+    history, for the detail panel's sparklines.
+
+    `symbol` is normalized the same way `app.api.bars.get_bars` and `get_symbol_breakouts`
+    normalize it (`.strip().upper()`). A symbol with no stored bars at all returns a clean
+    `current` full of `None`s and an empty `history` -- not a 404 or a 500 -- the same
+    "never captured yet, a typo, or newly added to `SCAN_UNIVERSE`" contract those two routes
+    already use.
+    """
+    canonical = symbol.strip().upper()
+    bars_session_factory = get_session_factory()
+    gex_session_factory = get_gex_session_factory()
+
+    components, bars = _symbol_components(canonical, bars_session_factory, gex_session_factory)
+
+    history: list[TrendHistoryPointOut] = []
+    if not bars.empty:
+        adx_series = adx(bars, ADX_PERIOD)
+        er_series = efficiency_ratio(bars, ER_PERIOD)
+        chop_series = choppiness(bars, CHOP_PERIOD)
+        rv_series = realized_vol(bars, RV_PERIOD)
+
+        window = bars.tail(TREND_LOOKBACK)
+        for i in window.index:
+            history.append(
+                TrendHistoryPointOut(
+                    date=bars.loc[i, "date"],
+                    adx14=None if pd.isna(adx_series.loc[i]) else float(adx_series.loc[i]),
+                    er20=None if pd.isna(er_series.loc[i]) else float(er_series.loc[i]),
+                    chop14=None if pd.isna(chop_series.loc[i]) else float(chop_series.loc[i]),
+                    rv20=None if pd.isna(rv_series.loc[i]) else float(rv_series.loc[i]),
+                )
+            )
+
+    return SymbolTrendResponse(
+        symbol=canonical,
+        current=TrendComponentsOut.from_components(components),
+        history=history,
     )

@@ -8,16 +8,25 @@ offline" (T43 task brief).
 
 from __future__ import annotations
 
+import asyncio
 import datetime as dt
+from pathlib import Path
 
+import httpx
 import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 from app.api.scan import router
 from app.models.bars import DailyBar as DailyBarIn
+from app.models.chain import ChainSnapshot
 from app.models.db import Base, get_engine, get_sessionmaker
+from app.providers.cboe import CboeProvider
 from app.storage.bars_repository import upsert_bars
+from app.storage.parquet import write_snapshot
+from app.storage.repository import SnapshotRepository
+
+FIXTURES_DIR = Path(__file__).parent / "fixtures" / "cboe"
 
 
 @pytest.fixture
@@ -35,6 +44,54 @@ def session_factory(tmp_path, monkeypatch):
     monkeypatch.setattr("app.api.scan.get_session_factory", lambda: factory)
     yield factory
     engine.dispose()
+
+
+@pytest.fixture
+def gex_session_factory(session_factory, monkeypatch):
+    """T45's IV lookup uses a separate cached session factory (`app.jobs.capture
+    .get_session_factory`, imported into `app.api.scan` as `get_gex_session_factory`) from the
+    one `app.storage.bars_repository` uses for bars -- both point at the same underlying
+    engine in production, and in tests both are monkeypatched onto the *same* SQLite engine
+    `session_factory` already created (`Base.metadata.create_all` already made every table,
+    `snapshots` included), so a `Snapshot` row written through this fixture and a bars row
+    written through `session_factory` are visible to the same in-memory database.
+    """
+    monkeypatch.setattr("app.api.scan.get_gex_session_factory", lambda: session_factory)
+    return session_factory
+
+
+def _fixture_snapshot(symbol: str, filename: str) -> ChainSnapshot:
+    """Replays a committed Cboe JSON fixture through the real `CboeProvider` -- the same
+    pattern `test_report_api.py` uses -- to get a genuine `ChainSnapshot` with real IV values,
+    without any network access.
+    """
+    payload = (FIXTURES_DIR / filename).read_bytes()
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, content=payload)
+
+    async def fetch() -> ChainSnapshot:
+        transport_client = httpx.AsyncClient(transport=httpx.MockTransport(handler))
+        try:
+            return await CboeProvider(client=transport_client).fetch_chain(symbol)
+        finally:
+            await transport_client.aclose()
+
+    return asyncio.run(fetch())
+
+
+def _index_snapshot(tmp_path, gex_session_factory, snapshot: ChainSnapshot) -> int:
+    """Write `snapshot` to a `tmp_path` Parquet file and index it -- same pattern
+    `test_report_api.py`'s `indexed_gld` fixture uses. No `DATA_DIR` monkeypatching needed:
+    `write_snapshot(..., data_dir=tmp_path)` returns an absolute path outside
+    `settings.DATA_DIR`, `SnapshotRepository.add` stores it as-is (`to_data_dir_relative_path`'s
+    documented fallback for a path that isn't under the given base), and
+    `resolve_snapshot_path` resolves an absolute stored path directly -- see that function's
+    own docstring for why this round-trips correctly without touching global settings.
+    """
+    path = write_snapshot(snapshot, data_dir=tmp_path)
+    with gex_session_factory() as session:
+        return SnapshotRepository(session).add(snapshot, path, is_eod=True).id
 
 
 def _universe(monkeypatch, symbols: list[str]) -> None:
@@ -265,3 +322,132 @@ def test_get_symbol_breakouts_not_excluded_for_gaps_unlike_universe_route(client
     response = client.get("/api/scan/breakouts/GAPPY", params={"lookback": 10})
     assert response.status_code == 200
     assert response.json()["symbol"] == "GAPPY"
+
+
+# --- GET /api/scan/trend (T45) -----------------------------------------------------------------
+
+
+@pytest.fixture(scope="module")
+def spy_snapshot() -> ChainSnapshot:
+    return _fixture_snapshot("SPY", "spy.json")
+
+
+def test_get_trend_returns_iv30_none_for_no_chain_and_a_number_for_spy(
+    client, session_factory, gex_session_factory, tmp_path, monkeypatch, spy_snapshot
+):
+    """Plan's own acceptance criterion, verbatim: "`GET /api/scan/trend` returns `iv30=None`
+    for a symbol without a chain and a number for SPY"."""
+    _seed_monotone(session_factory, "SPY", 150)
+    _seed_monotone(session_factory, "NOCHAIN", 150)
+    _universe(monkeypatch, ["SPY", "NOCHAIN"])
+    _index_snapshot(tmp_path, gex_session_factory, spy_snapshot)
+
+    response = client.get("/api/scan/trend")
+    assert response.status_code == 200
+    body = response.json()
+    rows = {row["symbol"]: row for row in body["rows"]}
+    assert set(rows) == {"SPY", "NOCHAIN"}
+
+    assert rows["NOCHAIN"]["iv30"] is None
+    assert rows["NOCHAIN"]["iv_rv_ratio"] is None
+
+    assert isinstance(rows["SPY"]["iv30"], float)
+    assert rows["SPY"]["iv30"] > 0.0
+    assert rows["SPY"]["iv_rv_ratio"] is not None
+
+
+def test_get_trend_returns_iv30_none_for_a_covered_underlying_never_captured(
+    client, session_factory, gex_session_factory, monkeypatch
+):
+    """`QQQ` is one of the 28 `Underlying`-covered symbols but has no indexed `Snapshot` row in
+    this test's database -- a different reason for `iv30=None` than "not option-covered at
+    all," and `_lookup_iv30` must degrade the same way for both.
+    """
+    _seed_monotone(session_factory, "QQQ", 150)
+    _universe(monkeypatch, ["QQQ"])
+
+    response = client.get("/api/scan/trend")
+    assert response.status_code == 200
+    row = response.json()["rows"][0]
+    assert row["symbol"] == "QQQ"
+    assert row["iv30"] is None
+
+
+def test_get_trend_includes_symbol_with_insufficient_history_as_none_row(
+    client, session_factory, gex_session_factory, monkeypatch
+):
+    """Acceptance item 4 applied at the API layer: a symbol with too little history is still a
+    row (not excluded the way `/breakouts` excludes a gappy symbol), with `None` components.
+    """
+    bars = [
+        _bar("NEWSYM", dt.date(2026, 1, 5) + dt.timedelta(days=i), 100.0 + i) for i in range(5)
+    ]
+    upsert_bars(bars, session_factory=session_factory)
+    _universe(monkeypatch, ["NEWSYM"])
+
+    response = client.get("/api/scan/trend")
+    assert response.status_code == 200
+    body = response.json()
+    assert len(body["rows"]) == 1
+    row = body["rows"][0]
+    assert row["symbol"] == "NEWSYM"
+    assert row["adx14"] is None
+    assert row["er20"] is None
+    assert row["chop14"] is None
+    assert row["composite"] is None
+
+
+def test_get_trend_rows_carry_percentiles_and_composite_across_universe(
+    client, session_factory, gex_session_factory, monkeypatch
+):
+    _seed_monotone(session_factory, "TRENDY", 150)  # strictly increasing -> high composite
+    n = 150
+    cum = [100.0]
+    for i in range(1, n):
+        cum.append(cum[-1] + (1.0 if i % 2 == 0 else -1.0))
+    choppy_bars = [
+        _bar("CHOPPY", dt.date(2026, 1, 5) + dt.timedelta(days=i), cum[i], high=cum[i] + 0.1, low=cum[i] - 0.1)
+        for i in range(n)
+    ]
+    upsert_bars(choppy_bars, session_factory=session_factory)
+    _universe(monkeypatch, ["TRENDY", "CHOPPY"])
+
+    response = client.get("/api/scan/trend")
+    assert response.status_code == 200
+    rows = {row["symbol"]: row for row in response.json()["rows"]}
+
+    assert rows["TRENDY"]["composite"] > rows["CHOPPY"]["composite"]
+    assert rows["TRENDY"]["adx_pct"] == 1.0
+    assert rows["CHOPPY"]["adx_pct"] == 0.0
+
+
+# --- GET /api/scan/trend/{symbol} (T45) -------------------------------------------------------
+
+
+def test_get_symbol_trend_returns_current_and_history(client, session_factory, gex_session_factory):
+    _seed_monotone(session_factory, "SPY", 150)
+    response = client.get("/api/scan/trend/SPY")
+    assert response.status_code == 200
+    body = response.json()
+    assert body["symbol"] == "SPY"
+    assert body["current"]["adx14"] is not None
+    assert body["current"]["iv30"] is None  # no indexed snapshot in this test
+    assert len(body["history"]) == 126  # TREND_LOOKBACK
+    for point in body["history"]:
+        assert set(point) == {"date", "adx14", "er20", "chop14", "rv20"}
+
+
+def test_get_symbol_trend_no_bars_returns_clean_empty_result(client, session_factory, gex_session_factory):
+    response = client.get("/api/scan/trend/NOPE")
+    assert response.status_code == 200
+    body = response.json()
+    assert body["symbol"] == "NOPE"
+    assert body["history"] == []
+    assert all(v is None for v in body["current"].values())
+
+
+def test_get_symbol_trend_is_case_insensitive(client, session_factory, gex_session_factory):
+    _seed_monotone(session_factory, "SPY", 150)
+    response = client.get("/api/scan/trend/spy")
+    assert response.status_code == 200
+    assert response.json()["symbol"] == "SPY"
