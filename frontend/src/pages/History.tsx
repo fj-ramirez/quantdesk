@@ -1,5 +1,6 @@
 import { useLevelsHistory } from '../api/queries';
 import { useDashboardParams } from '../state/urlState';
+import { ErrorState } from '../components/ErrorState';
 
 /**
  * `/history` shell. The table + line chart of flip/call wall/put wall vs. close over time
@@ -12,7 +13,7 @@ export function History() {
   const { data, isLoading, isError } = useLevelsHistory(symbol, filter);
 
   if (isLoading) return <p>Loading {symbol} level history…</p>;
-  if (isError) return <p role="alert">Failed to load {symbol} level history.</p>;
+  if (isError) return <ErrorState message={`Failed to load ${symbol} level history.`} />;
 
   return (
     <div>

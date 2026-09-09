@@ -4,13 +4,20 @@
  * a parsed, typed response or a thrown `ApiError`.
  */
 import type {
+  Bar,
+  BreakoutsResponse,
+  CaptureHealth,
   ChainResponse,
   ExpiryFilter,
   GexResult,
   LevelHistoryRow,
   Report,
   SnapshotSummary,
+  SymbolBreakoutsResponse,
+  SymbolTrendResponse,
+  TrendResponse,
   Underlying,
+  UniverseResponse,
 } from './types';
 
 // The backend runs on 8001 (not FastAPI's default 8000 — see TASKS.md/README). Always read
@@ -159,5 +166,52 @@ export const apiClient = {
    * two seconds against the live Cboe endpoint. */
   captureSnapshot(underlying: Underlying): Promise<unknown> {
     return apiPost(`/api/snapshots/capture`, { underlying });
+  },
+
+  // -------------------------------------------------------------------------------------
+  // T55: scan (T43 breakouts, T45 trend), bars (T42) and capture-health's `bars` block.
+  //
+  // Every symbol path segment below goes through `encodeURIComponent` -- `SCAN_UNIVERSE`
+  // includes `^VIX`, and a bare `^` is a likely first-contact failure the plan calls out by
+  // name (works in some browsers, breaks under `fetch`/Node's URL parser and in tests).
+  // -------------------------------------------------------------------------------------
+
+  breakouts(opts: { n?: number; k?: number; lookback?: number } = {}): Promise<BreakoutsResponse> {
+    return apiFetch<BreakoutsResponse>('/api/scan/breakouts', {
+      n: opts.n,
+      k: opts.k,
+      lookback: opts.lookback,
+    });
+  },
+
+  symbolBreakouts(
+    symbol: string,
+    opts: { n?: number; k?: number; lookback?: number } = {},
+  ): Promise<SymbolBreakoutsResponse> {
+    return apiFetch<SymbolBreakoutsResponse>(`/api/scan/breakouts/${encodeURIComponent(symbol)}`, {
+      n: opts.n,
+      k: opts.k,
+      lookback: opts.lookback,
+    });
+  },
+
+  trend(): Promise<TrendResponse> {
+    return apiFetch<TrendResponse>('/api/scan/trend');
+  },
+
+  symbolTrend(symbol: string): Promise<SymbolTrendResponse> {
+    return apiFetch<SymbolTrendResponse>(`/api/scan/trend/${encodeURIComponent(symbol)}`);
+  },
+
+  bars(symbol: string, opts: { start?: string; end?: string } = {}): Promise<Bar[]> {
+    return apiFetch<Bar[]>(`/api/bars/${encodeURIComponent(symbol)}`, { start: opts.start, end: opts.end });
+  },
+
+  universe(): Promise<UniverseResponse> {
+    return apiFetch<UniverseResponse>('/api/universe');
+  },
+
+  captureHealth(): Promise<CaptureHealth> {
+    return apiFetch<CaptureHealth>('/api/health/capture');
   },
 };

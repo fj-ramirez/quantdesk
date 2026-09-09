@@ -116,3 +116,40 @@ describe('App', () => {
     expect(screen.getByRole('button', { name: 'SPY' })).toBeDisabled();
   });
 });
+
+// T55: the nav gains five scan-family links, each landing on a one-line "not built yet"
+// EmptyState today (07-ui.md: "the nav does not change shape task by task").
+describe('T55 scan-family nav and stub routes', () => {
+  it('the nav has one link for each scan-family route, alongside the existing four', async () => {
+    renderApp('/');
+    await waitFor(() => expect(screen.getByRole('heading', { name: 'SPX key levels' })).toBeInTheDocument());
+
+    for (const name of ['Dashboard', 'Report', 'History', 'Scan', 'Regime', 'Rotation', 'Flows', 'Settings', 'Overview']) {
+      expect(screen.getByRole('link', { name })).toBeInTheDocument();
+    }
+  });
+
+  it.each([
+    ['/scan', 'Scan'],
+    ['/regime', 'Regime'],
+    ['/rotation', 'Rotation'],
+    ['/flows', 'Flows'],
+    ['/overview', 'Overview'],
+  ])('%s renders a one-line "not built yet" empty state, not a crash', async (path, label) => {
+    renderApp(path);
+    expect(await screen.findByRole('region', { name: `${label} is not built yet` })).toBeInTheDocument();
+  });
+
+  it('the TopBar drops the symbol switcher on /scan and shows it again after navigating back to /', async () => {
+    renderApp('/');
+    await waitFor(() => expect(screen.getByRole('heading', { name: 'SPX key levels' })).toBeInTheDocument());
+    expect(screen.getByRole('group', { name: 'Symbol' })).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('link', { name: 'Scan' }));
+    await screen.findByRole('region', { name: 'Scan is not built yet' });
+    expect(screen.queryByRole('group', { name: 'Symbol' })).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('link', { name: 'Dashboard' }));
+    await waitFor(() => expect(screen.getByRole('group', { name: 'Symbol' })).toBeInTheDocument());
+  });
+});

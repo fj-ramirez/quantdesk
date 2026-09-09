@@ -291,6 +291,205 @@ export interface SnapshotSummary {
 }
 
 // ---------------------------------------------------------------------------------------
+// Scan (T43 breakouts, T45 trend), bars (T42), universe (T42) and the `bars` capture-health
+// block (T42/T47) -- T55.
+//
+// Hand-written, mirrored field-for-field from the backend's own Pydantic response models
+// rather than generated (project convention -- see the notice at the top of this file):
+// `backend/app/api/scan.py` (`BreakoutsResponse`, `SymbolEventsResponse`, `TrendResponse`,
+// `SymbolTrendResponse`), `backend/app/api/bars.py` (`BarOut`, `UniverseResponse`), and
+// `backend/app/api/health.py`'s `CaptureHealthResponse` (its `bars` block, plus the existing
+// `SymbolCaptureHealth` shape reused for `extended`). Verified against the live backend on
+// 2026-09-09 -- see `mocks/fixtures/scan/README.md` for the exact curl commands and what was
+// hand-edited versus recorded as-is. Every response key here matched `07-ui.md`'s "Verified
+// facts" list; the one addition not spelled out there is `bars.stale_count` sitting alongside
+// `bars.symbols[]`, which is consistent with (not a contradiction of) that list.
+// ---------------------------------------------------------------------------------------
+
+export type BreakoutDirection = 'up' | 'down';
+export type BreakoutOutcome = 'continued' | 'failed' | 'pending';
+
+/** One breakout/breakdown event -- mirrors `app.scan.breakouts.BreakoutEvent`. `resolved_at`
+ * and every `*_atr` field are null exactly while `outcome` is `'pending'` (the event hasn't
+ * reached `k` bars yet) -- see that dataclass's own docstring for the full state machine. */
+export interface BreakoutEvent {
+  date: string;
+  direction: BreakoutDirection;
+  level: number;
+  close: number;
+  outcome: BreakoutOutcome;
+  resolved_at: string | null;
+  bars_elapsed: number;
+  follow_through_atr: number | null;
+  excursion_atr: number | null;
+  mfe_atr: number | null;
+  mae_atr: number | null;
+}
+
+/** One row of the breakouts summary table. `rate` is `null` below the five-event floor --
+ * the common case at short lookbacks (46 of 47 universe symbols at `lookback=40`), not an
+ * edge case. `status` is a plain read of `last_event.outcome` (`null` for a symbol with zero
+ * events in the window), never a separately computed value. */
+export interface SymbolBreakoutSummary {
+  symbol: string;
+  events: number;
+  continued: number;
+  failed: number;
+  pending: number;
+  rate: number | null;
+  mean_follow_through_atr: number | null;
+  last_event: BreakoutEvent | null;
+  status: BreakoutOutcome | null;
+}
+
+/** One row of the "Open breakouts" panel -- a still-`pending` event from any universe
+ * symbol. */
+export interface OpenBreakout {
+  symbol: string;
+  direction: BreakoutDirection;
+  level: number;
+  date: string;
+  bars_elapsed: number;
+  excursion_atr: number | null;
+}
+
+/** A symbol dropped from the universe scan for having too gappy a bars history to trust --
+ * see `app/api/scan.py`'s `_MAX_MISSING_BAR_FRACTION`. */
+export interface ExcludedSymbol {
+  symbol: string;
+  reason: string;
+}
+
+/** `GET /api/scan/breakouts?n=&k=&lookback=` response. */
+export interface BreakoutsResponse {
+  n: number;
+  k: number;
+  lookback: number;
+  summaries: SymbolBreakoutSummary[];
+  open_breakouts: OpenBreakout[];
+  excluded: ExcludedSymbol[];
+}
+
+/** `GET /api/scan/breakouts/{symbol}?n=&k=&lookback=` response. Never 404s -- a symbol with
+ * no stored bars at all (a typo, or one newly added to `SCAN_UNIVERSE` before its first bars
+ * job run) returns a clean empty `events` list. */
+export interface SymbolBreakoutsResponse {
+  symbol: string;
+  n: number;
+  k: number;
+  lookback: number;
+  events: BreakoutEvent[];
+}
+
+/** Mirrors `app.scan.trend.TrendComponents`. `iv30`/`iv_rv_ratio` are `null` for the 19 of 47
+ * `SCAN_UNIVERSE` symbols with no option chain at all (see `CORE_UNDERLYINGS` /
+ * `EXTENDED_UNDERLYINGS`) -- a real, permanent answer for those symbols, not a loading
+ * state. */
+export interface TrendComponents {
+  adx14: number | null;
+  er20: number | null;
+  chop14: number | null;
+  vr: number | null;
+  vr_z: number | null;
+  rv20: number | null;
+  iv30: number | null;
+  iv_rv_ratio: number | null;
+}
+
+/** One row of `GET /api/scan/trend`: every `TrendComponents` field plus each component's
+ * cross-sectional percentile and the composite (the mean of the four rank percentiles;
+ * IV/RV is shown but not part of it). Flat, not nested -- mirrors `TrendRowOut`, which merges
+ * `TrendComponents` in beside `symbol`/`*_pct`/`composite` for exactly this reason. */
+export interface TrendRow extends TrendComponents {
+  symbol: string;
+  adx_pct: number | null;
+  er_pct: number | null;
+  chop_pct: number | null;
+  vr_pct: number | null;
+  composite: number | null;
+}
+
+export interface TrendResponse {
+  rows: TrendRow[];
+}
+
+/** One day of the detail panel's sparkline history. `vr`/`vr_z`/`iv30`/`iv_rv_ratio` are
+ * deliberately absent -- `app.scan.indicators.variance_ratio` has no rolling per-day reading
+ * to plot, and no IV history is ever persisted past the latest snapshot. Both still appear
+ * once, as the current value, in `SymbolTrendResponse.current`. */
+export interface TrendHistoryPoint {
+  date: string;
+  adx14: number | null;
+  er20: number | null;
+  chop14: number | null;
+  rv20: number | null;
+}
+
+/** `GET /api/scan/trend/{symbol}` response. Same "never 404s, a clean empty/`null` result
+ * for a symbol with no stored bars" contract as `SymbolBreakoutsResponse`. */
+export interface SymbolTrendResponse {
+  symbol: string;
+  current: TrendComponents;
+  history: TrendHistoryPoint[];
+}
+
+/** `GET /api/bars/{symbol}` row -- mirrors `app.models.bars.DailyBar`. `volume` distinguishes
+ * a genuine `0` from `null` (unknown), the same open-interest discipline `ContractDto`
+ * already applies. */
+export interface Bar {
+  date: string;
+  open: number;
+  high: number;
+  low: number;
+  close: number;
+  volume: number | null;
+  source: string;
+}
+
+/** `GET /api/universe` response -- the configured `SCAN_UNIVERSE`, in order. Typed as
+ * `string[]`, not `Underlying[]`: most of this universe (19 of 47 symbols) has no option
+ * chain at all, so narrowing here would silently hide that gap rather than surface it (same
+ * reasoning `SymbolsResponse` above already gives for its own `core`/`extended` fields). */
+export interface UniverseResponse {
+  symbols: string[];
+}
+
+/** One symbol's row in the `bars` block of `GET /api/health/capture` (T42) -- keyed on a
+ * `SCAN_UNIVERSE` ticker, which may not have an option chain, unlike `SymbolCaptureHealth`
+ * below which is keyed on an `Underlying`. */
+export interface SymbolBarsHealth {
+  symbol: string;
+  last_bar_date: string | null;
+  stale: boolean;
+}
+
+/** T42 addition to `CaptureHealthResponse` -- a bars-job outage must be visible the same way
+ * a broken option capture already is. */
+export interface BarsHealthBlock {
+  symbols: SymbolBarsHealth[];
+  stale_count: number;
+}
+
+/** One underlying's row in `GET /api/health/capture`'s `symbols` (the core five, T29) and
+ * `extended` (T47's sector/industry ETFs) blocks. */
+export interface SymbolCaptureHealth {
+  underlying: string;
+  last_capture_at: string | null;
+  last_eod_capture_at: string | null;
+  eod_captured_today: boolean;
+  stale: boolean;
+}
+
+/** `GET /api/health/capture` response. `bars` (T42) and `extended` (T47) are additive to the
+ * original `generated_at`/`symbols` shape (T29); nothing here narrows or removes a field. */
+export interface CaptureHealth {
+  generated_at: string;
+  symbols: SymbolCaptureHealth[];
+  bars: BarsHealthBlock;
+  extended: SymbolCaptureHealth[];
+}
+
+// ---------------------------------------------------------------------------------------
 // Report (T39/T40) -- `GET /api/report/{underlying}?filter=`
 //
 // GENERATED, not hand-written. Every interface below was emitted by a script from the live

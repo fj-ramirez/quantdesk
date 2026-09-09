@@ -5,6 +5,7 @@ import { useDashboardParams } from '../state/urlState';
 import { KeyLevels } from '../components/KeyLevels';
 import { GexByStrike } from '../components/charts/GexByStrike';
 import { GammaProfile } from '../components/GammaProfile';
+import { ErrorState } from '../components/ErrorState';
 
 /**
  * Cycles the URL-state symbol with `[` / `]` (previous/next in `UNDERLYINGS` order, wrapping).
@@ -65,9 +66,9 @@ export function Dashboard() {
 
       {primary.isLoading && <p aria-live="polite">Loading {symbol} GEX…</p>}
       {primary.isError && (
-        <p role="alert">
-          Failed to load {symbol} GEX: {primary.error instanceof Error ? primary.error.message : 'unknown error'}
-        </p>
+        <ErrorState
+          message={`Failed to load ${symbol} GEX: ${primary.error instanceof Error ? primary.error.message : 'unknown error'}`}
+        />
       )}
 
       {primary.data && (
@@ -87,7 +88,7 @@ export function Dashboard() {
             {allProfile.isLoading || exZeroDteProfile.isLoading ? (
               <p aria-live="polite">Loading gamma profile…</p>
             ) : allProfile.isError || exZeroDteProfile.isError ? (
-              <p role="alert">Failed to load gamma profile.</p>
+              <ErrorState message="Failed to load gamma profile." />
             ) : allProfile.data && exZeroDteProfile.data ? (
               <GammaProfile
                 allProfile={allProfile.data.profile}

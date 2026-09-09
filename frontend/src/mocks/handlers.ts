@@ -11,8 +11,11 @@
  * correct.
  */
 import { http, HttpResponse } from 'msw';
-import { CFD_INSTRUMENTS } from '../api/types';
+import { CFD_INSTRUMENTS, CORE_UNDERLYINGS, EXTENDED_UNDERLYINGS } from '../api/types';
 import type {
+  Bar,
+  BreakoutsResponse,
+  CaptureHealth,
   CfdLevel,
   CfdPlaybookEntry,
   CfdPremiumCandidate,
@@ -23,7 +26,11 @@ import type {
   LevelHistoryRow,
   Report,
   SnapshotSummary,
+  SymbolBreakoutsResponse,
+  SymbolTrendResponse,
+  TrendResponse,
   Underlying,
+  UniverseResponse,
 } from '../api/types';
 import gexSpxFixture from './fixtures/gex-spx.json';
 import gexSpyFixture from './fixtures/gex-spy.json';
@@ -48,6 +55,13 @@ import reportSpyZeroDteFixture from './fixtures/report-spy-zero-dte.json';
 import reportQqqZeroDteFixture from './fixtures/report-qqq-zero-dte.json';
 import reportGldZeroDteFixture from './fixtures/report-gld-zero-dte.json';
 import reportDiaZeroDteFixture from './fixtures/report-dia-zero-dte.json';
+import breakoutsFixture from './fixtures/scan/breakouts.json';
+import breakoutsSpyFixture from './fixtures/scan/breakouts_SPY.json';
+import trendFixture from './fixtures/scan/trend.json';
+import trendSpyFixture from './fixtures/scan/trend_SPY.json';
+import barsSpyFixture from './fixtures/scan/bars_SPY.json';
+import universeFixture from './fixtures/scan/universe.json';
+import healthCaptureFixture from './fixtures/scan/health_capture.json';
 
 // T47 added 23 more `Underlying` members (sector/industry ETFs), none of which has a mock
 // fixture -- these handlers were built and are tested against exactly the original five, and
@@ -378,4 +392,80 @@ export const handlers = [
     }
     return HttpResponse.json(rows.slice(0, limit));
   }),
+
+  // ---------------------------------------------------------------------------------------
+  // T55: scan (T43 breakouts, T45 trend), bars (T42), universe (T42), capture health's `bars`
+  // block, and `/api/symbols`. `breakouts.json`/`trend.json` are the live, unedited universe
+  // response (47 symbols) -- see `fixtures/scan/README.md` for exactly what was hand-edited
+  // and why. Only `SPY` has a dedicated per-symbol fixture; every other symbol gets the same
+  // clean-empty-result contract the real backend gives a symbol with no stored bars (never a
+  // 404), which also exercises `^VIX`'s percent-encoding round trip without needing a VIX-
+  // shaped fixture.
+  // ---------------------------------------------------------------------------------------
+
+  http.get('*/api/scan/breakouts', ({ request }) => {
+    const url = new URL(request.url);
+    const base = breakoutsFixture as BreakoutsResponse;
+    const n = Number(url.searchParams.get('n') ?? base.n);
+    const k = Number(url.searchParams.get('k') ?? base.k);
+    const lookback = Number(url.searchParams.get('lookback') ?? base.lookback);
+    return HttpResponse.json({ ...base, n, k, lookback });
+  }),
+
+  http.get('*/api/scan/breakouts/:symbol', ({ params, request }) => {
+    const symbol = decodeURIComponent(String(params.symbol)).trim().toUpperCase();
+    const url = new URL(request.url);
+    const spyBase = breakoutsSpyFixture as SymbolBreakoutsResponse;
+    const n = Number(url.searchParams.get('n') ?? spyBase.n);
+    const k = Number(url.searchParams.get('k') ?? spyBase.k);
+    const lookback = Number(url.searchParams.get('lookback') ?? spyBase.lookback);
+    if (symbol === 'SPY') {
+      return HttpResponse.json({ ...spyBase, n, k, lookback });
+    }
+    // Mirrors `app/api/scan.py`'s "never 404s" contract: a symbol with no stored bars
+    // returns a clean, empty events list.
+    return HttpResponse.json({ symbol, n, k, lookback, events: [] } satisfies SymbolBreakoutsResponse);
+  }),
+
+  http.get('*/api/scan/trend', () => HttpResponse.json(trendFixture as TrendResponse)),
+
+  http.get('*/api/scan/trend/:symbol', ({ params }) => {
+    const symbol = decodeURIComponent(String(params.symbol)).trim().toUpperCase();
+    if (symbol === 'SPY') {
+      return HttpResponse.json(trendSpyFixture as SymbolTrendResponse);
+    }
+    return HttpResponse.json({
+      symbol,
+      current: {
+        adx14: null,
+        er20: null,
+        chop14: null,
+        vr: null,
+        vr_z: null,
+        rv20: null,
+        iv30: null,
+        iv_rv_ratio: null,
+      },
+      history: [],
+    } satisfies SymbolTrendResponse);
+  }),
+
+  http.get('*/api/bars/:symbol', ({ params }) => {
+    // `params.symbol` arrives already percent-decoded (MSW/path-to-regexp decode a route
+    // param before handing it to the handler) -- `^VIX` and `%5EVIX` both land here as the
+    // same string, mirroring `app.api.bars.get_bars`'s own normalization.
+    const symbol = decodeURIComponent(String(params.symbol)).trim().toUpperCase();
+    if (symbol === 'SPY') {
+      return HttpResponse.json(barsSpyFixture as Bar[]);
+    }
+    return HttpResponse.json([] satisfies Bar[]);
+  }),
+
+  http.get('*/api/universe', () => HttpResponse.json(universeFixture as UniverseResponse)),
+
+  http.get('*/api/health/capture', () => HttpResponse.json(healthCaptureFixture as CaptureHealth)),
+
+  http.get('*/api/symbols', () =>
+    HttpResponse.json({ core: [...CORE_UNDERLYINGS], extended: [...EXTENDED_UNDERLYINGS] }),
+  ),
 ];

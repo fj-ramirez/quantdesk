@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { formatFreshness } from './time';
+import { formatBarsThrough, formatFreshness } from './time';
 
 /**
  * T34: `formatFreshness` is the one place the "As of ..." / "At <day>'s close ..." wording
@@ -63,5 +63,19 @@ describe('formatFreshness', () => {
       delayed_minutes: 15,
     });
     expect(text).not.toMatch(/^As of/);
+  });
+});
+
+// T55: `BarsFreshness`'s date formatter.
+describe('formatBarsThrough', () => {
+  it('formats a plain calendar date as "<weekday short> <day> <month short>"', () => {
+    expect(formatBarsThrough('2026-09-08')).toBe('Tue 8 Sep');
+  });
+
+  it('does not shift the date under a non-UTC local timezone', () => {
+    // The likeliest failure mode: parsing the bare date as UTC midnight, then formatting in
+    // the *local* zone, rolls it back to the previous calendar day west of UTC. Both the
+    // parse and the format are pinned to UTC, so this must read Jan 1, not Dec 31.
+    expect(formatBarsThrough('2026-01-01')).toBe('Thu 1 Jan');
   });
 });

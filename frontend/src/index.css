@@ -315,3 +315,164 @@ code {
   border-radius: 3px;
   padding: 0 4px;
 }
+
+/*
+ * T55 shared kit (EmptyState, ErrorState, ScanTable, PercentileBar, StatusChip, SymbolCell,
+ * BarsFreshness) plus the TopBar's route-aware scan toolbar. Every colour below is a CSS
+ * custom-property token (`--text`, `--text-h`, `--bg`, `--border`, `--accent*`, `--mono`);
+ * per-series/data colours (percentile fill, status-chip dot) are set inline from
+ * `vizPaletteFor` at the component, not here, per `theme/vizPalette.ts`'s own rule.
+ */
+
+.empty-state {
+  max-width: 560px;
+  padding: 16px;
+}
+
+.empty-state__heading {
+  margin: 0 0 8px;
+  font-size: 16px;
+  color: var(--text-h);
+}
+
+.empty-state__description {
+  margin: 0 0 12px;
+  font-size: 14px;
+  color: var(--text);
+}
+
+.empty-state__error {
+  margin: 8px 0 0;
+  font-size: 13px;
+}
+
+.error-state {
+  margin: 0;
+}
+
+.topbar--scan {
+  justify-content: space-between;
+}
+
+.scan-table-container {
+  overflow-x: auto;
+  max-width: 100%;
+}
+
+.scan-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+
+.scan-table caption {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
+
+.scan-table th,
+.scan-table td {
+  padding: 6px 10px;
+  border-bottom: 1px solid var(--border);
+  white-space: nowrap;
+}
+
+.scan-table thead th {
+  position: sticky;
+  top: 0;
+  background: var(--bg);
+  z-index: 1;
+  font-weight: 600;
+  color: var(--text-h);
+}
+
+.scan-table__sort-btn {
+  font: inherit;
+  color: inherit;
+  background: none;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+}
+
+.scan-table__row[tabindex] {
+  cursor: pointer;
+}
+
+.scan-table__row[tabindex]:hover,
+.scan-table__row[tabindex]:focus-visible {
+  background: var(--accent-bg);
+}
+
+.scan-table__row--selected {
+  background: var(--accent-bg);
+}
+
+.percentile-bar {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-variant-numeric: tabular-nums;
+}
+
+.percentile-bar__track {
+  display: inline-block;
+  width: 64px;
+  height: 6px;
+  border-radius: 3px;
+  border: 1px solid;
+  overflow: hidden;
+}
+
+.percentile-bar__fill {
+  display: block;
+  height: 100%;
+}
+
+.status-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border: 1px solid;
+  border-radius: 999px;
+  padding: 2px 10px;
+  font-size: 12px;
+}
+
+.status-chip__dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+}
+
+.symbol-cell--plain {
+  color: var(--text);
+  cursor: help;
+}
+
+.symbol-cell--link {
+  color: var(--accent);
+}
+
+.bars-freshness {
+  font-size: 13px;
+  color: var(--text);
+}
+
+.bars-freshness__stale {
+  color: var(--accent);
+  font-weight: 500;
+}
+
+.sparkline {
+  display: inline-block;
+  width: 100%;
+}
+
+.sparkline--empty {
+  color: var(--text);
+}

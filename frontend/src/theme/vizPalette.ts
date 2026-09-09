@@ -87,3 +87,36 @@ export const VIZ_PALETTE_DARK: VizPalette = {
 export function vizPaletteFor(theme: 'light' | 'dark'): VizPalette {
   return theme === 'dark' ? VIZ_PALETTE_DARK : VIZ_PALETTE_LIGHT;
 }
+
+/**
+ * T55 — `StatusChip`'s fixed status -> palette-colour map, covering the breakout ledger's
+ * per-event outcomes (`continued`/`failed`/`pending`), the regime board's verdicts
+ * (`continuation`/`mixed`/`fade`/`noise-dominated`), and the shared `n/a` fallback. Kept here,
+ * not inline in the component, per this file's own rule: a chart or chip's colour comes from
+ * one named place, never an inline hex at the call site.
+ *
+ * Reuses existing semantic slots rather than minting new colours: `continued`/`continuation`
+ * share `levelSupport` (green, "this is working"), `failed`/`fade` share `levelResistance`
+ * (red, "this broke down") — same red/green pair `Report.tsx`'s `LevelChip` already uses, with
+ * the same caveat (border/dot only, never text colour — see that file's docstring for the
+ * measured contrast numbers). `pending`/`mixed` (still resolving, not yet a verdict) use the
+ * `seriesExZeroDte` orange. `noise-dominated`/`n/a` (nothing to say) fall through to
+ * `textMuted`, a neutral, not a third hue.
+ */
+export function statusChipColor(status: string, palette: VizPalette): string {
+  switch (status) {
+    case 'continued':
+    case 'continuation':
+      return palette.levelSupport;
+    case 'failed':
+    case 'fade':
+      return palette.levelResistance;
+    case 'pending':
+    case 'mixed':
+      return palette.seriesExZeroDte;
+    case 'noise-dominated':
+    case 'n/a':
+    default:
+      return palette.textMuted;
+  }
+}

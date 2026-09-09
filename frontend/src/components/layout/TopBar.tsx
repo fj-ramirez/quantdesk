@@ -2,7 +2,15 @@
  * Top bar: symbol switcher, expiry filter, snapshot selector, theme toggle — the T12
  * deliverable list, verbatim. All three data controls read/write URL state
  * (`useDashboardParams`) so nothing here holds its own copy of "what's selected".
+ *
+ * T55: route-aware. The symbol switcher, expiry filter, snapshot selector and freshness
+ * badge only make sense for a *symbol* page (`/`, `/report`, `/history`) — the scan family
+ * (`/scan`, `/regime`, `/rotation`, `/flows`, `/overview`) are universe pages with no single
+ * symbol/expiry/snapshot selection to show, so on those routes this renders a different,
+ * much smaller toolbar (bars freshness + theme toggle) instead. Nothing else about the
+ * component changes: the dashboard controls below are otherwise untouched from before T55.
  */
+import { useLocation } from 'react-router-dom';
 import {
   CORE_UNDERLYINGS,
   EXPIRY_FILTERS,
@@ -14,6 +22,12 @@ import { useGexResult, useSnapshots } from '../../api/queries';
 import { useDashboardParams } from '../../state/urlState';
 import { formatFreshness, formatNyDateTime } from '../../lib/time';
 import { ThemeToggle } from './ThemeToggle';
+import { BarsFreshness } from '../scan/BarsFreshness';
+
+/** The scan family, per 07-ui.md's "Information architecture" -- kept as one list here so a
+ * future scan-family route only needs adding in one place (this set, and `AppShell`'s nav)
+ * rather than being independently taught to both. */
+const SCAN_FAMILY_PATHS: ReadonlySet<string> = new Set(['/scan', '/regime', '/rotation', '/flows', '/overview']);
 
 function SymbolGroup({
   label,
@@ -134,7 +148,19 @@ function DataFreshnessBadge({ symbol, filter, snapshotId }: { symbol: Underlying
 }
 
 export function TopBar() {
+  const location = useLocation();
   const { symbol, filter, snapshotId, setSymbol, setFilter, setSnapshotId } = useDashboardParams();
+
+  if (SCAN_FAMILY_PATHS.has(location.pathname)) {
+    return (
+      <header className="topbar topbar--scan">
+        <BarsFreshness />
+        <div className="topbar-meta">
+          <ThemeToggle />
+        </div>
+      </header>
+    );
+  }
 
   return (
     <header className="topbar">

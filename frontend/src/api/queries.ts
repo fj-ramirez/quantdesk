@@ -114,3 +114,82 @@ export function useCaptureSnapshot(underlying: Underlying) {
     },
   });
 }
+
+// ---------------------------------------------------------------------------------------
+// T55: scan (T43 breakouts, T45 trend), bars (T42), universe (T42) and capture health's
+// `bars` block -- one hook per `app/api/scan.py` / `app/api/bars.py` / `app/api/health.py`
+// route, same "components call hooks, never `apiClient` directly" rule as above.
+//
+// No caching tricks beyond TanStack Query's own defaults: `GET /api/scan/trend` genuinely
+// takes 3.5-5s (it re-flattens 28 option chains per request, see that route's own module
+// docstring) -- that is a backend problem with its own future task, not something
+// `useTrend` should paper over with a longer `staleTime` or similar.
+// ---------------------------------------------------------------------------------------
+
+export const scanQueryKeys = {
+  breakouts: (n?: number, k?: number, lookback?: number) =>
+    ['scan-breakouts', n ?? null, k ?? null, lookback ?? null] as const,
+  symbolBreakouts: (symbol: string, n?: number, k?: number, lookback?: number) =>
+    ['scan-breakouts', symbol, n ?? null, k ?? null, lookback ?? null] as const,
+  trend: () => ['scan-trend'] as const,
+  symbolTrend: (symbol: string) => ['scan-trend', symbol] as const,
+  bars: (symbol: string, start?: string, end?: string) => ['bars', symbol, start ?? null, end ?? null] as const,
+  universe: () => ['universe'] as const,
+  captureHealth: () => ['capture-health'] as const,
+};
+
+export function useBreakouts(params: { n?: number; k?: number; lookback?: number } = {}) {
+  return useQuery({
+    queryKey: scanQueryKeys.breakouts(params.n, params.k, params.lookback),
+    queryFn: () => apiClient.breakouts(params),
+  });
+}
+
+/** `symbol` is any `SCAN_UNIVERSE` ticker, including `^VIX` -- `apiClient.symbolBreakouts`
+ * percent-encodes it. `enabled` guards the empty-string transition some callers pass through
+ * while a symbol is still being resolved from the URL. */
+export function useSymbolBreakouts(symbol: string, params: { n?: number; k?: number; lookback?: number } = {}) {
+  return useQuery({
+    queryKey: scanQueryKeys.symbolBreakouts(symbol, params.n, params.k, params.lookback),
+    queryFn: () => apiClient.symbolBreakouts(symbol, params),
+    enabled: symbol.length > 0,
+  });
+}
+
+export function useTrend() {
+  return useQuery({
+    queryKey: scanQueryKeys.trend(),
+    queryFn: () => apiClient.trend(),
+  });
+}
+
+export function useSymbolTrend(symbol: string) {
+  return useQuery({
+    queryKey: scanQueryKeys.symbolTrend(symbol),
+    queryFn: () => apiClient.symbolTrend(symbol),
+    enabled: symbol.length > 0,
+  });
+}
+
+export function useBars(symbol: string, opts: { start?: string; end?: string } = {}) {
+  return useQuery({
+    queryKey: scanQueryKeys.bars(symbol, opts.start, opts.end),
+    queryFn: () => apiClient.bars(symbol, opts),
+    enabled: symbol.length > 0,
+  });
+}
+
+export function useUniverse() {
+  return useQuery({
+    queryKey: scanQueryKeys.universe(),
+    queryFn: () => apiClient.universe(),
+  });
+}
+
+/** Backs `BarsFreshness` (and the TopBar's scan-family toolbar). */
+export function useCaptureHealth() {
+  return useQuery({
+    queryKey: scanQueryKeys.captureHealth(),
+    queryFn: () => apiClient.captureHealth(),
+  });
+}

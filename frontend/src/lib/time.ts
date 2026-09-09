@@ -71,3 +71,29 @@ export function formatFreshness(snapshot: { captured_at: string; effective_at: s
   const weekday = weekdayFormatter.format(new Date(effective_at));
   return `At ${weekday}'s close (${formatNyTime(effective_at)})`;
 }
+
+// `timeZone: 'UTC'` on all three is deliberate and load-bearing, not a default worth
+// dropping -- see `formatBarsThrough` below for why.
+const barsWeekdayFormatter = new Intl.DateTimeFormat('en-US', { weekday: 'short', timeZone: 'UTC' });
+const barsDayFormatter = new Intl.DateTimeFormat('en-US', { day: 'numeric', timeZone: 'UTC' });
+const barsMonthFormatter = new Intl.DateTimeFormat('en-US', { month: 'short', timeZone: 'UTC' });
+
+/**
+ * T55: `"2026-09-08"` -> `"Tue 8 Sep"`, for `BarsFreshness`'s "Bars through ..." summary.
+ *
+ * `last_bar_date` (`app/api/health.py`'s `SymbolBarsHealth`) is a plain calendar date, not a
+ * UTC instant like `captured_at` elsewhere in this app -- there is no time-of-day component
+ * to convert to New York time, and treating it as one anyway (`new Date(iso)` parses a bare
+ * date as UTC midnight, then a *local*-zone formatter renders it) risks rendering the
+ * *previous* calendar day in a timezone west of UTC. The date is built with `Date.UTC` from
+ * the parsed y/m/d fields and every formatter below is pinned to `timeZone: 'UTC'` to match,
+ * so the calendar date displayed is exactly the one the API sent. Day and month are formatted
+ * separately and joined in a fixed order rather than as one combined `{day, month}`
+ * formatter, because `en-US`'s combined ordering is "Sep 8" (month first) -- not the "8 Sep"
+ * 07-ui.md's own example ("Bars through Mon 8 Sep · 47 symbols") specifies.
+ */
+export function formatBarsThrough(dateIso: string): string {
+  const [year, month, day] = dateIso.split('-').map(Number);
+  const date = new Date(Date.UTC(year, month - 1, day));
+  return `${barsWeekdayFormatter.format(date)} ${barsDayFormatter.format(date)} ${barsMonthFormatter.format(date)}`;
+}

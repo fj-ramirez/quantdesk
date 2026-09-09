@@ -23,8 +23,27 @@ function NavBar() {
       <NavLink to={{ pathname: '/history', search: location.search }} className={linkClassName}>
         History
       </NavLink>
+      {/* T55: the scan family (07-ui.md). Each of these lands on a one-line "not built yet"
+          EmptyState today (see App.tsx) and gets replaced by its real page in a later task
+          (T44/T49/T51/T53) -- the nav's shape doesn't change task by task. */}
+      <NavLink to={{ pathname: '/scan', search: location.search }} className={linkClassName}>
+        Scan
+      </NavLink>
+      <NavLink to={{ pathname: '/regime', search: location.search }} className={linkClassName}>
+        Regime
+      </NavLink>
+      <NavLink to={{ pathname: '/rotation', search: location.search }} className={linkClassName}>
+        Rotation
+      </NavLink>
+      <NavLink to={{ pathname: '/flows', search: location.search }} className={linkClassName}>
+        Flows
+      </NavLink>
       <NavLink to={{ pathname: '/settings', search: location.search }} className={linkClassName}>
         Settings
+      </NavLink>
+      {/* T56: last tab until the plan says this becomes the nav's default landing page. */}
+      <NavLink to={{ pathname: '/overview', search: location.search }} className={linkClassName}>
+        Overview
       </NavLink>
     </nav>
   );

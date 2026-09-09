@@ -1,0 +1,47 @@
+# Scan fixtures (T55)
+
+Recorded 2026-09-09 against the live backend (`docker compose up`, `http://localhost:8001`)
+with the exact curl commands from `plans/continuation/07-ui.md`'s T55 task:
+
+```
+curl -s http://localhost:8001/api/scan/breakouts            > breakouts.json
+curl -s http://localhost:8001/api/scan/breakouts/SPY        > breakouts_SPY.json
+curl -s http://localhost:8001/api/scan/trend                > trend.json
+curl -s http://localhost:8001/api/scan/trend/SPY            > trend_SPY.json
+curl -s "http://localhost:8001/api/bars/SPY?start=2026-03-01" > bars_SPY.json
+curl -s http://localhost:8001/api/universe                  > universe.json
+curl -s http://localhost:8001/api/health/capture            > health_capture.json
+```
+
+All seven are the live response, byte-for-byte (only re-indented — no field was added, removed
+or renamed). Response shapes matched `07-ui.md`'s "Verified facts" list exactly; see the T55
+report for the one wording nuance worth flagging (`bars.stale_count` exists alongside
+`bars.symbols[]`, which the plan's prose didn't spell out but is consistent with it).
+
+## Hand-edited variants
+
+The live universe happened to already contain two of the four required `null`/empty cases, so
+only two fixtures needed a hand edit:
+
+- **`breakouts.json`** (unedited) already carries a `rate: null` row — `XLP`, 4 events, below
+  the 5-event floor the plan describes — and `trend.json` (unedited) already carries `iv30:
+  null` rows — 19 of the 47 universe symbols, e.g. `DBA`. Both are the naturally-occurring
+  common case the plan calls out, not something to fabricate.
+- **`breakouts_open_empty.json`** — a copy of `breakouts.json` with `open_breakouts` forced to
+  `[]`. The live snapshot has 18 open breakouts, so this variant exists purely to exercise the
+  "no range breaks are inside their window" `EmptyState` the plan specifies for that panel.
+- **`breakouts_excluded.json`** — a copy of `breakouts.json` with one synthetic row added to
+  `excluded`: `{"symbol": "DBA", "reason": "4.2% of expected trading days missing bars in the
+  last 126 bars (max 2%)"}`. The live universe has zero exclusions today (0.90-1.03s response,
+  47/47 symbols admitted), so this is fabricated to exercise the "N symbols excluded for gaps"
+  disclosure — the reason string's wording matches the format `app/api/scan.py`'s
+  `_MAX_MISSING_BAR_FRACTION` check actually produces, just with numbers picked to demonstrate
+  the case rather than measured.
+- **`health_capture_stale.json`** — a copy of `health_capture.json` with the first
+  `bars.symbols[]` entry's `stale` flipped to `true` and `bars.stale_count` set to `1` (the live
+  capture is fully fresh, `stale_count: 0` everywhere). Exists to exercise `BarsFreshness`'s
+  "stale count in the accent colour when non-zero" rule, which the live data can't currently
+  demonstrate.
+
+No other fixture was edited. `bars_SPY.json`, `breakouts_SPY.json`, `trend_SPY.json` and
+`universe.json` are all the unmodified live response.

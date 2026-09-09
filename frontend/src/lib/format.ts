@@ -75,3 +75,31 @@ export function formatCount(value: number | null | undefined): string {
   if (value == null || !Number.isFinite(value)) return DASH;
   return value.toLocaleString("en-US");
 }
+
+// ---------------------------------------------------------------------------------------
+// T55 additions -- the scan family's own three formatters (continuation rate, ATR-relative
+// follow-through, IV/RV and similar ratios). Same null-tolerance discipline as the rest of
+// this file: `rate=null` is the common case at short lookbacks (46 of 47 symbols at
+// `lookback=40`), not an edge case, so every one of these renders a dash rather than a zero.
+// ---------------------------------------------------------------------------------------
+
+/** Fraction to a whole-percent figure: 0.667 -> "67%". Used for continuation rate and the
+ * cross-sectional percentiles (`adx_pct`, `er_pct`, ...) that feed `PercentileBar`. */
+export function formatPct(value: number | null | undefined): string {
+  if (value == null || !Number.isFinite(value)) return DASH;
+  return `${Math.round(value * 100)}%`;
+}
+
+/** Signed ATR multiple: 1.04 -> "+1.04 ATR", -0.5 -> "-0.50 ATR". Used for follow-through
+ * and excursion figures in the breakout ledger, which are always relative to a bar's ATR. */
+export function formatAtr(value: number | null | undefined): string {
+  if (value == null || !Number.isFinite(value)) return DASH;
+  return `${value >= 0 ? "+" : ""}${value.toFixed(2)} ATR`;
+}
+
+/** Ratio with a trailing multiplication sign: 1.72 -> "1.72×". Used for IV/RV and similar
+ * dimensionless ratios in the trend/chop table. */
+export function formatRatio(value: number | null | undefined): string {
+  if (value == null || !Number.isFinite(value)) return DASH;
+  return `${value.toFixed(2)}×`;
+}

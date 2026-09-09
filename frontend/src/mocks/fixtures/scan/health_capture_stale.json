@@ -1,0 +1,443 @@
+{
+  "generated_at": "2026-09-09T20:38:39.749042Z",
+  "symbols": [
+    {
+      "underlying": "SPX",
+      "last_capture_at": "2026-09-09T20:19:39Z",
+      "last_eod_capture_at": "2026-09-09T20:19:39Z",
+      "eod_captured_today": true,
+      "stale": false
+    },
+    {
+      "underlying": "SPY",
+      "last_capture_at": "2026-09-09T20:19:27Z",
+      "last_eod_capture_at": "2026-09-09T20:19:27Z",
+      "eod_captured_today": true,
+      "stale": false
+    },
+    {
+      "underlying": "QQQ",
+      "last_capture_at": "2026-09-09T20:19:25Z",
+      "last_eod_capture_at": "2026-09-09T20:19:25Z",
+      "eod_captured_today": true,
+      "stale": false
+    },
+    {
+      "underlying": "GLD",
+      "last_capture_at": "2026-09-09T20:19:28Z",
+      "last_eod_capture_at": "2026-09-09T20:19:28Z",
+      "eod_captured_today": true,
+      "stale": false
+    },
+    {
+      "underlying": "DIA",
+      "last_capture_at": "2026-09-09T20:09:39Z",
+      "last_eod_capture_at": "2026-09-09T20:09:39Z",
+      "eod_captured_today": true,
+      "stale": false
+    }
+  ],
+  "bars": {
+    "symbols": [
+      {
+        "symbol": "SPY",
+        "last_bar_date": "2026-09-08",
+        "stale": true
+      },
+      {
+        "symbol": "QQQ",
+        "last_bar_date": "2026-09-08",
+        "stale": false
+      },
+      {
+        "symbol": "DIA",
+        "last_bar_date": "2026-09-08",
+        "stale": false
+      },
+      {
+        "symbol": "IWM",
+        "last_bar_date": "2026-09-08",
+        "stale": false
+      },
+      {
+        "symbol": "RSP",
+        "last_bar_date": "2026-09-08",
+        "stale": false
+      },
+      {
+        "symbol": "XLK",
+        "last_bar_date": "2026-09-08",
+        "stale": false
+      },
+      {
+        "symbol": "XLF",
+        "last_bar_date": "2026-09-08",
+        "stale": false
+      },
+      {
+        "symbol": "XLE",
+        "last_bar_date": "2026-09-08",
+        "stale": false
+      },
+      {
+        "symbol": "XLV",
+        "last_bar_date": "2026-09-08",
+        "stale": false
+      },
+      {
+        "symbol": "XLI",
+        "last_bar_date": "2026-09-08",
+        "stale": false
+      },
+      {
+        "symbol": "XLY",
+        "last_bar_date": "2026-09-08",
+        "stale": false
+      },
+      {
+        "symbol": "XLP",
+        "last_bar_date": "2026-09-08",
+        "stale": false
+      },
+      {
+        "symbol": "XLU",
+        "last_bar_date": "2026-09-08",
+        "stale": false
+      },
+      {
+        "symbol": "XLB",
+        "last_bar_date": "2026-09-08",
+        "stale": false
+      },
+      {
+        "symbol": "XLRE",
+        "last_bar_date": "2026-09-08",
+        "stale": false
+      },
+      {
+        "symbol": "XLC",
+        "last_bar_date": "2026-09-08",
+        "stale": false
+      },
+      {
+        "symbol": "SMH",
+        "last_bar_date": "2026-09-08",
+        "stale": false
+      },
+      {
+        "symbol": "XBI",
+        "last_bar_date": "2026-09-08",
+        "stale": false
+      },
+      {
+        "symbol": "KRE",
+        "last_bar_date": "2026-09-08",
+        "stale": false
+      },
+      {
+        "symbol": "XOP",
+        "last_bar_date": "2026-09-08",
+        "stale": false
+      },
+      {
+        "symbol": "ITB",
+        "last_bar_date": "2026-09-08",
+        "stale": false
+      },
+      {
+        "symbol": "XHB",
+        "last_bar_date": "2026-09-08",
+        "stale": false
+      },
+      {
+        "symbol": "XRT",
+        "last_bar_date": "2026-09-08",
+        "stale": false
+      },
+      {
+        "symbol": "IGV",
+        "last_bar_date": "2026-09-08",
+        "stale": false
+      },
+      {
+        "symbol": "ARKK",
+        "last_bar_date": "2026-09-08",
+        "stale": false
+      },
+      {
+        "symbol": "JETS",
+        "last_bar_date": "2026-09-08",
+        "stale": false
+      },
+      {
+        "symbol": "GLD",
+        "last_bar_date": "2026-09-08",
+        "stale": false
+      },
+      {
+        "symbol": "SLV",
+        "last_bar_date": "2026-09-08",
+        "stale": false
+      },
+      {
+        "symbol": "USO",
+        "last_bar_date": "2026-09-08",
+        "stale": false
+      },
+      {
+        "symbol": "UNG",
+        "last_bar_date": "2026-09-08",
+        "stale": false
+      },
+      {
+        "symbol": "DBA",
+        "last_bar_date": "2026-09-08",
+        "stale": false
+      },
+      {
+        "symbol": "GDX",
+        "last_bar_date": "2026-09-08",
+        "stale": false
+      },
+      {
+        "symbol": "COPX",
+        "last_bar_date": "2026-09-08",
+        "stale": false
+      },
+      {
+        "symbol": "TLT",
+        "last_bar_date": "2026-09-08",
+        "stale": false
+      },
+      {
+        "symbol": "IEF",
+        "last_bar_date": "2026-09-08",
+        "stale": false
+      },
+      {
+        "symbol": "HYG",
+        "last_bar_date": "2026-09-08",
+        "stale": false
+      },
+      {
+        "symbol": "UUP",
+        "last_bar_date": "2026-09-08",
+        "stale": false
+      },
+      {
+        "symbol": "FXE",
+        "last_bar_date": "2026-09-08",
+        "stale": false
+      },
+      {
+        "symbol": "FXY",
+        "last_bar_date": "2026-09-08",
+        "stale": false
+      },
+      {
+        "symbol": "EEM",
+        "last_bar_date": "2026-09-08",
+        "stale": false
+      },
+      {
+        "symbol": "EFA",
+        "last_bar_date": "2026-09-08",
+        "stale": false
+      },
+      {
+        "symbol": "FXI",
+        "last_bar_date": "2026-09-08",
+        "stale": false
+      },
+      {
+        "symbol": "EWJ",
+        "last_bar_date": "2026-09-08",
+        "stale": false
+      },
+      {
+        "symbol": "EWZ",
+        "last_bar_date": "2026-09-08",
+        "stale": false
+      },
+      {
+        "symbol": "EWG",
+        "last_bar_date": "2026-09-08",
+        "stale": false
+      },
+      {
+        "symbol": "SPX",
+        "last_bar_date": "2026-09-08",
+        "stale": false
+      },
+      {
+        "symbol": "^VIX",
+        "last_bar_date": "2026-09-08",
+        "stale": false
+      }
+    ],
+    "stale_count": 1
+  },
+  "extended": [
+    {
+      "underlying": "XLK",
+      "last_capture_at": "2026-09-09T15:00:47Z",
+      "last_eod_capture_at": null,
+      "eod_captured_today": false,
+      "stale": true
+    },
+    {
+      "underlying": "XLF",
+      "last_capture_at": "2026-09-09T19:21:18Z",
+      "last_eod_capture_at": null,
+      "eod_captured_today": false,
+      "stale": true
+    },
+    {
+      "underlying": "XLE",
+      "last_capture_at": "2026-09-09T19:21:23Z",
+      "last_eod_capture_at": null,
+      "eod_captured_today": false,
+      "stale": true
+    },
+    {
+      "underlying": "XLV",
+      "last_capture_at": "2026-09-09T18:35:19Z",
+      "last_eod_capture_at": null,
+      "eod_captured_today": false,
+      "stale": true
+    },
+    {
+      "underlying": "XLI",
+      "last_capture_at": "2026-09-09T18:49:10Z",
+      "last_eod_capture_at": null,
+      "eod_captured_today": false,
+      "stale": true
+    },
+    {
+      "underlying": "XLY",
+      "last_capture_at": "2026-09-09T17:36:26Z",
+      "last_eod_capture_at": null,
+      "eod_captured_today": false,
+      "stale": true
+    },
+    {
+      "underlying": "XLP",
+      "last_capture_at": "2026-09-09T15:00:52Z",
+      "last_eod_capture_at": null,
+      "eod_captured_today": false,
+      "stale": true
+    },
+    {
+      "underlying": "XLU",
+      "last_capture_at": "2026-09-09T18:35:29Z",
+      "last_eod_capture_at": null,
+      "eod_captured_today": false,
+      "stale": true
+    },
+    {
+      "underlying": "XLB",
+      "last_capture_at": "2026-09-09T15:00:22Z",
+      "last_eod_capture_at": null,
+      "eod_captured_today": false,
+      "stale": true
+    },
+    {
+      "underlying": "XLRE",
+      "last_capture_at": "2026-09-09T17:35:25Z",
+      "last_eod_capture_at": null,
+      "eod_captured_today": false,
+      "stale": true
+    },
+    {
+      "underlying": "XLC",
+      "last_capture_at": "2026-09-09T17:33:25Z",
+      "last_eod_capture_at": null,
+      "eod_captured_today": false,
+      "stale": true
+    },
+    {
+      "underlying": "IWM",
+      "last_capture_at": "2026-09-09T19:21:16Z",
+      "last_eod_capture_at": null,
+      "eod_captured_today": false,
+      "stale": true
+    },
+    {
+      "underlying": "SMH",
+      "last_capture_at": "2026-09-09T19:21:17Z",
+      "last_eod_capture_at": null,
+      "eod_captured_today": false,
+      "stale": true
+    },
+    {
+      "underlying": "XBI",
+      "last_capture_at": "2026-09-09T15:39:34Z",
+      "last_eod_capture_at": null,
+      "eod_captured_today": false,
+      "stale": true
+    },
+    {
+      "underlying": "KRE",
+      "last_capture_at": "2026-09-09T18:35:49Z",
+      "last_eod_capture_at": null,
+      "eod_captured_today": false,
+      "stale": true
+    },
+    {
+      "underlying": "XOP",
+      "last_capture_at": "2026-09-09T15:30:13Z",
+      "last_eod_capture_at": null,
+      "eod_captured_today": false,
+      "stale": true
+    },
+    {
+      "underlying": "TLT",
+      "last_capture_at": "2026-09-09T19:21:16Z",
+      "last_eod_capture_at": null,
+      "eod_captured_today": false,
+      "stale": true
+    },
+    {
+      "underlying": "HYG",
+      "last_capture_at": "2026-09-09T19:21:26Z",
+      "last_eod_capture_at": null,
+      "eod_captured_today": false,
+      "stale": true
+    },
+    {
+      "underlying": "EEM",
+      "last_capture_at": "2026-09-09T19:21:17Z",
+      "last_eod_capture_at": null,
+      "eod_captured_today": false,
+      "stale": true
+    },
+    {
+      "underlying": "FXI",
+      "last_capture_at": "2026-09-09T19:21:22Z",
+      "last_eod_capture_at": null,
+      "eod_captured_today": false,
+      "stale": true
+    },
+    {
+      "underlying": "SLV",
+      "last_capture_at": "2026-09-09T19:21:26Z",
+      "last_eod_capture_at": null,
+      "eod_captured_today": false,
+      "stale": true
+    },
+    {
+      "underlying": "USO",
+      "last_capture_at": "2026-09-09T19:21:22Z",
+      "last_eod_capture_at": null,
+      "eod_captured_today": false,
+      "stale": true
+    },
+    {
+      "underlying": "GDX",
+      "last_capture_at": "2026-09-09T19:10:31Z",
+      "last_eod_capture_at": null,
+      "eod_captured_today": false,
+      "stale": true
+    }
+  ]
+}
