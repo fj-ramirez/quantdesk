@@ -32,7 +32,31 @@ T47 extend option capture to sector/industry ETFs (Sonnet, independent of T42)
 
 ## Dispatch order
 
-One Opus at a time; Sonnets may run alongside.
+**Corrected 2026-09-09 after T42 shipped.** The original table below the correction had
+T43, T45 and T52 running in parallel on the grounds that "all three read only T42's public
+interface". They do — but reading the same interface is not the constraint; *writing* the same
+files is. All three write `backend/app/api/scan.py`, T43 and T45 both write
+`backend/app/scan/indicators.py` (T45's spec says "extend"), and T47 and T52 both write
+`backend/app/jobs/scheduler.py` and add an Alembic migration off the same `down_revision`.
+Check the `Paths:` line of every task in a proposed wave against every other before dispatching
+concurrently; the dependency graph does not capture write collisions.
+
+| Wave | Tasks (all Sonnet unless noted) | Note |
+|---|---|---|
+| 1 | T42 | Shipped 2026-09-09. Yahoo replaced Stooq; see that plan's verification section. |
+| 2 | T43, T47 | Disjoint: T43 owns `app/scan/` + `app/api/scan.py`; T47 owns `models/chain.py`, `jobs/capture.py`, `jobs/scheduler.py`, `config.py`, `frontend/src/api/types.ts`. Both make a one-line additive mount edit in `app/main.py`. |
+| 3 | T45 | Extends `app/scan/indicators.py` and `app/api/scan.py`, so it needs T43 merged first. Not parallelizable with anything that writes either file. |
+| 4 | T52 | Writes `app/api/scan.py`, `jobs/scheduler.py`, `models/db.py` and a migration; run alone, after T45. |
+| 5 | T48, T44 | T48 needs T42, T45 and T47. T44 needs T43 and T16, and writes only frontend files, so it can run alongside T48. |
+| 6 | T50, T46, T54 | T46 needs T45 merged. T54 adds a bars provider — a `BAR_PROVIDER_GROUPS` config change plus a new module, per T42's registry design. |
+| 7 | T49, T53, T51 | Page tasks; check for shared frontend route/nav files before running together. |
+
+Model note: the user asked on 2026-09-09 to use Sonnet wherever possible. T42 was specced for
+Opus and built by Sonnet without trouble, supervised by Opus. The `Model` column in TASKS.md
+is a suggestion, not a requirement.
+
+<details>
+<summary>Original wave table, superseded</summary>
 
 | Wave | Opus | Sonnet (parallel) | Note |
 |---|---|---|---|
@@ -42,12 +66,19 @@ One Opus at a time; Sonnets may run alongside.
 | 4 | T50 | T49, T53 | |
 | 5 | | T51 | |
 
+</details>
+
 ## Open decision for the user
 
-**Universe.** The default universe in T42 is ETFs only (index, 11 sectors, ~10 industries,
-commodities, rates, FX, international). Continuation is more likely in single names and in
-the broker's full CFD list. The universe is a config string, so widening it later is free, but
-Stooq's daily request budget (unknown until T42 verifies it) is the constraint on size.
+**Universe.** The default `SCAN_UNIVERSE` T42 shipped is 47 tickers: ETFs only (index, 11
+sectors, ~10 industries, commodities, rates, FX, international), plus `SPX` and `^VIX`.
+Continuation is more likely in single names and in the broker's full CFD list.
+
+Widening is a config string change and costs nothing structurally. On the request budget:
+the full 47-symbol, 5-year backfill ran on 2026-09-09 against Yahoo in a few minutes with a
+0.5 s sleep between symbols and **zero failures or throttling**, so Yahoo's budget is not the
+binding constraint Stooq's was assumed to be. The real limits are the daily 17:30 job's
+runtime and how many symbols the scan pages can render usefully.
 
 ## Where results go
 
