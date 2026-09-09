@@ -3,8 +3,13 @@
 ## How work is organized
 
 `PLAN.md` holds the architecture and the six-phase roadmap. `TASKS.md` breaks it into
-numbered, self-contained tasks (`T00`–`T37` so far) in `ID · Model · Depends on` form. Most
+numbered, self-contained tasks (`T00`–`T54` so far) in `ID · Model · Depends on` form. Most
 of the build has been executed by delegating those blocks to agents.
+
+Initiatives too big for one block get a folder under `plans/` (see `plans/README.md`): one
+file per tool, each carrying its tasks in the same block shape, verified facts, and likely
+first-contact failures. `TASKS.md` keeps a one-line pointer per task so IDs never collide.
+The first such initiative is `plans/continuation/` (T42–T54, 2026-09-09).
 
 Current position: Phases 0–3 are built (ingestion, engine, read API, dashboard). Phase 4
 (15-minute intraday polling + SSE) is next. Phase 5 (real-time) is blocked on a Tradier

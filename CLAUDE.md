@@ -71,3 +71,4 @@ Reference documents (long, load deliberately):
 | [docs/validation.md](docs/validation.md) | engine validated against public vendor GEX figures; every difference attributed |
 | [docs/supervision-report.md](docs/supervision-report.md) | retrospective on the agent-delegated build |
 | [docs/state-review-2026-09-05.md](docs/state-review-2026-09-05.md) | current known gaps and the prioritized fix list |
+| [plans/README.md](plans/README.md) | per-tool design plans for multi-task initiatives; `plans/continuation/` holds T42–T54 |
