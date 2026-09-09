@@ -129,8 +129,9 @@ describe('T55 scan-family nav and stub routes', () => {
     }
   });
 
+  // T44 replaced /scan with the real page, so it is no longer in this list. The remaining
+  // four stay stubs until T49/T51/T53/T56 land.
   it.each([
-    ['/scan', 'Scan'],
     ['/regime', 'Regime'],
     ['/rotation', 'Rotation'],
     ['/flows', 'Flows'],
@@ -140,13 +141,21 @@ describe('T55 scan-family nav and stub routes', () => {
     expect(await screen.findByRole('region', { name: `${label} is not built yet` })).toBeInTheDocument();
   });
 
+  it('/scan renders the real scan page (T44), not a stub', async () => {
+    renderApp('/scan');
+    expect(await screen.findByRole('group', { name: 'View' })).toBeInTheDocument();
+    expect(screen.queryByRole('region', { name: 'Scan is not built yet' })).not.toBeInTheDocument();
+  });
+
   it('the TopBar drops the symbol switcher on /scan and shows it again after navigating back to /', async () => {
     renderApp('/');
     await waitFor(() => expect(screen.getByRole('heading', { name: 'SPX key levels' })).toBeInTheDocument());
     expect(screen.getByRole('group', { name: 'Symbol' })).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole('link', { name: 'Scan' }));
-    await screen.findByRole('region', { name: 'Scan is not built yet' });
+    // Keyed on the real page's own view toggle since T44 replaced the stub. The Symbol group
+    // is the dashboard control that must disappear; the View group is the scan page's.
+    await screen.findByRole('group', { name: 'View' });
     expect(screen.queryByRole('group', { name: 'Symbol' })).not.toBeInTheDocument();
 
     fireEvent.click(screen.getByRole('link', { name: 'Dashboard' }));

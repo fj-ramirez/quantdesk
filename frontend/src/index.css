@@ -476,3 +476,86 @@ code {
 .sparkline--empty {
   color: var(--text);
 }
+
+/* ---------------------------------------------------------------------------
+   T44 -- /scan page. Tokens only, no literal colours: the palette lives in
+   :root / [data-theme] above, and chart series pull from theme/vizPalette.ts.
+   --------------------------------------------------------------------------- */
+
+.scan-page { padding: 16px; display: flex; flex-direction: column; gap: 12px; }
+.scan-page__loading, .scan-detail__loading { color: var(--text); opacity: 0.7; margin: 8px 0; }
+
+.scan-toolbar { display: flex; flex-wrap: wrap; gap: 16px; align-items: center; }
+.scan-toolbar__group { display: flex; align-items: center; gap: 4px; }
+.scan-toolbar__label {
+  font-size: 11px; text-transform: uppercase; letter-spacing: 0.06em;
+  color: var(--text); opacity: 0.6; margin-right: 2px;
+}
+.scan-toolbar__btn {
+  font: inherit; font-family: var(--mono); font-size: 12px; cursor: pointer;
+  padding: 3px 9px; border: 1px solid var(--border); border-radius: 3px;
+  background: transparent; color: var(--text);
+}
+.scan-toolbar__btn:hover { border-color: var(--accent-border); }
+.scan-toolbar__btn--active {
+  background: var(--accent-bg); border-color: var(--accent-border); color: var(--text-h);
+}
+
+/* Two thirds table, one third panel; the panel drops below the table on narrow screens
+   (07-ui.md's stacking rule). The table scrolls inside its own container, never the page. */
+.scan-layout { display: grid; grid-template-columns: 2fr 1fr; gap: 16px; align-items: start; }
+@media (max-width: 900px) { .scan-layout { grid-template-columns: 1fr; } }
+.scan-layout__main { min-width: 0; }
+.scan-layout__side { min-width: 0; }
+.scan-layout__side-title, .scan-detail__title {
+  font-size: 12px; text-transform: uppercase; letter-spacing: 0.06em;
+  color: var(--text-h); margin: 0 0 8px;
+}
+
+.scan-legend { font-size: 12px; color: var(--text); opacity: 0.75; margin: 0 0 8px; max-width: 70ch; }
+.scan-cell--muted { color: var(--text); opacity: 0.55; font-family: var(--mono); }
+
+.open-breakouts { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
+.open-breakouts__item { border: 1px solid var(--border); border-radius: 3px; padding: 8px 10px; }
+.open-breakouts__head { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; }
+.open-breakouts__symbol {
+  font: inherit; font-family: var(--mono); font-weight: 600; cursor: pointer;
+  background: none; border: none; padding: 0; color: var(--text-h); text-decoration: underline;
+}
+.open-breakouts__dir { font-size: 11px; font-family: var(--mono); }
+.open-breakouts__dir--up { color: var(--accent); }
+.open-breakouts__dir--down { color: var(--text); opacity: 0.8; }
+.open-breakouts__meta {
+  display: grid; grid-template-columns: auto 1fr; gap: 1px 10px; margin: 6px 0 0;
+  font-size: 12px; font-family: var(--mono);
+}
+.open-breakouts__meta dt { color: var(--text); opacity: 0.6; }
+.open-breakouts__meta dd { margin: 0; text-align: right; }
+
+.scan-excluded { font-size: 12px; color: var(--text); opacity: 0.8; }
+.scan-excluded summary { cursor: pointer; }
+.scan-excluded ul { margin: 6px 0 0 16px; padding: 0; }
+
+.scan-detail {
+  border-top: 1px solid var(--border); margin-top: 8px; padding-top: 12px;
+  display: flex; flex-direction: column; gap: 10px;
+}
+.scan-detail__head { display: flex; justify-content: space-between; align-items: baseline; }
+.scan-detail__close {
+  font: inherit; font-size: 12px; cursor: pointer; background: none;
+  border: 1px solid var(--border); border-radius: 3px; padding: 2px 8px; color: var(--text);
+}
+.scan-detail__caption { text-align: left; font-size: 11px; color: var(--text); opacity: 0.6; padding: 4px 0; }
+.event-chart { width: 100%; }
+
+.trend-detail__sparks { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 12px; }
+.trend-detail__spark-label {
+  display: block; font-size: 11px; text-transform: uppercase; letter-spacing: 0.06em;
+  color: var(--text); opacity: 0.6; margin-bottom: 2px;
+}
+.trend-detail__current {
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 2px 12px; margin: 0; font-size: 12px; font-family: var(--mono);
+}
+.trend-detail__current dt { color: var(--text); opacity: 0.6; }
+.trend-detail__current dd { margin: 0 0 4px; color: var(--text-h); }

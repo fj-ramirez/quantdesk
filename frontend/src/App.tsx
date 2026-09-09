@@ -7,6 +7,7 @@ import { Report } from './pages/Report';
 import { Settings } from './pages/Settings';
 import { GammaProfileDemo } from './pages/demo/GammaProfileDemo';
 import { GexByStrikeDemo } from './pages/demo/GexByStrikeDemo';
+import { Scan } from './pages/Scan';
 
 /**
  * T55: a placeholder for a scan-family route whose real page hasn't landed yet (T44/T49/T51/
@@ -31,9 +32,10 @@ export function App() {
         <Route path="history" element={<History />} />
         <Route path="report" element={<Report />} />
         <Route path="settings" element={<Settings />} />
-        {/* T55: the scan family's stub routes -- see 07-ui.md's "Pages" section for each
-            page's real spec (T44 Scan, T49 Regime, T51 Rotation, T53 Flows, T56 Overview). */}
-        <Route path="scan" element={<NotBuiltYetPage page="Scan" />} />
+        {/* T44 replaced the Scan stub with the real page. The rest remain stubs -- see
+            07-ui.md's "Pages" section for each (T49 Regime, T51 Rotation, T53 Flows,
+            T56 Overview). */}
+        <Route path="scan" element={<Scan />} />
         <Route path="regime" element={<NotBuiltYetPage page="Regime" />} />
         <Route path="rotation" element={<NotBuiltYetPage page="Rotation" />} />
         <Route path="flows" element={<NotBuiltYetPage page="Flows" />} />
