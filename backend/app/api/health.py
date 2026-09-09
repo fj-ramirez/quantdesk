@@ -16,6 +16,7 @@ from zoneinfo import ZoneInfo
 
 from fastapi import APIRouter
 from pydantic import BaseModel
+from sqlalchemy.orm import Session, sessionmaker
 
 from app.config import settings
 from app.jobs.capture import get_session_factory
@@ -74,6 +75,12 @@ class CaptureHealthResponse(BaseModel):
     #: T42, additive: daily-bars freshness alongside option-capture freshness. Existing fields
     #: above are untouched -- see this task's "additive only" constraint on `app/api/health.py`.
     bars: BarsHealthBlock
+    #: T47, additive: sector/industry ETF capture freshness, kept in its own field rather than
+    #: merged into `symbols` -- the plan's instruction is "extended symbols appear in capture
+    #: freshness, labelled", and a reader that cannot tell `symbols` from `extended` apart
+    #: cannot distinguish "the P0 16:20 job is broken" from "one sector ETF's 16:45 job had a
+    #: thin day", which is exactly the ambiguity this split exists to avoid.
+    extended: list[SymbolCaptureHealth]
 
 
 def _is_stale(last_eod_date: dt.date | None, completed: dt.date) -> bool:
@@ -111,6 +118,38 @@ def _bars_health(completed: dt.date) -> BarsHealthBlock:
     return BarsHealthBlock(symbols=symbols_out, stale_count=stale_count)
 
 
+def _symbol_capture_health(
+    underlying: str,
+    repo: SnapshotRepository,
+    session_factory: sessionmaker[Session],
+    today: dt.date,
+    completed: dt.date,
+) -> SymbolCaptureHealth:
+    """One underlying's row, shared by the core (`symbols`) and T47's `extended` blocks below
+    so the two loops in `capture_health` cannot drift into computing staleness differently.
+    """
+    latest = repo.latest(underlying)
+    eod_rows = repo.list(underlying, eod_only=True)
+    last_eod = eod_rows[-1] if eod_rows else None
+    last_eod_date = last_eod.captured_at.astimezone(_TZ).date() if last_eod is not None else None
+    eod_today = has_eod_snapshot_today(underlying, session_factory, today)
+    stale = _is_stale(last_eod_date, completed)
+    if stale:
+        logger.error(
+            "health.capture: %s EOD capture is stale (last=%s, expected up to=%s)",
+            underlying,
+            last_eod_date.isoformat() if last_eod_date else None,
+            completed.isoformat(),
+        )
+    return SymbolCaptureHealth(
+        underlying=underlying,
+        last_capture_at=latest.captured_at if latest is not None else None,
+        last_eod_capture_at=last_eod.captured_at if last_eod is not None else None,
+        eod_captured_today=eod_today,
+        stale=stale,
+    )
+
+
 @router.get("/capture", response_model=CaptureHealthResponse)
 def capture_health() -> CaptureHealthResponse:
     """Per-symbol capture freshness, computed fresh from the database on every call (no
@@ -123,33 +162,23 @@ def capture_health() -> CaptureHealthResponse:
 
     session_factory = get_session_factory()
     symbols_out: list[SymbolCaptureHealth] = []
+    extended_out: list[SymbolCaptureHealth] = []
     with session_factory() as session:
         repo = SnapshotRepository(session)
         for underlying in settings.symbols:
-            latest = repo.latest(underlying)
-            eod_rows = repo.list(underlying, eod_only=True)
-            last_eod = eod_rows[-1] if eod_rows else None
-            last_eod_date = (
-                last_eod.captured_at.astimezone(_TZ).date() if last_eod is not None else None
-            )
-            eod_today = has_eod_snapshot_today(underlying, session_factory, today)
-            stale = _is_stale(last_eod_date, completed)
-            if stale:
-                logger.error(
-                    "health.capture: %s EOD capture is stale (last=%s, expected up to=%s)",
-                    underlying,
-                    last_eod_date.isoformat() if last_eod_date else None,
-                    completed.isoformat(),
-                )
             symbols_out.append(
-                SymbolCaptureHealth(
-                    underlying=underlying,
-                    last_capture_at=latest.captured_at if latest is not None else None,
-                    last_eod_capture_at=last_eod.captured_at if last_eod is not None else None,
-                    eod_captured_today=eod_today,
-                    stale=stale,
-                )
+                _symbol_capture_health(underlying, repo, session_factory, today, completed)
+            )
+        # T47: same computation, same staleness rule, over `settings.extended_symbols` --
+        # kept as a second loop rather than concatenating the two symbol lists so a stale
+        # sector ETF never gets averaged into (or mistaken for) the P0 `symbols` block above.
+        for underlying in settings.extended_symbols:
+            extended_out.append(
+                _symbol_capture_health(underlying, repo, session_factory, today, completed)
             )
     return CaptureHealthResponse(
-        generated_at=now, symbols=symbols_out, bars=_bars_health(completed)
+        generated_at=now,
+        symbols=symbols_out,
+        bars=_bars_health(completed),
+        extended=extended_out,
     )

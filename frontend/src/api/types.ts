@@ -22,15 +22,49 @@
 // `erasableSyntaxOnly`, which rejects real enums (they emit runtime code).
 // ---------------------------------------------------------------------------------------
 
-export const UNDERLYINGS = ['SPX', 'SPY', 'QQQ', 'GLD', 'DIA'] as const;
+/** The five symbols the 16:20 EOD job (and its 20:00 safety net) captures -- read fact,
+ * mirrors `Settings.SYMBOLS` (`backend/app/config.py`). This list drives nothing the core
+ * capture doesn't already guarantee: it is the TopBar's first symbol-switcher group. */
+export const CORE_UNDERLYINGS = ['SPX', 'SPY', 'QQQ', 'GLD', 'DIA'] as const;
+
+/** T47's sector/industry ETFs, captured by the separate 16:45 ET job -- a UI-side mirror of
+ * `Settings.EXTENDED_SYMBOLS`'s default (`backend/app/config.py`), all 23 of which were
+ * verified live against Cboe on 2026-09-09 (see `app/models/chain.py`'s `Underlying` enum).
+ * `GET /api/symbols` returns the same split at runtime for any consumer that needs to read it
+ * off the server rather than this static copy (e.g. a future regime-board fetch); this array
+ * exists so the TopBar's second switcher group and the URL-state validator do not have to wait
+ * on a network round trip just to know their own symbol list. Keep the two in sync -- adding a
+ * symbol here without adding it to `EXTENDED_SYMBOLS` (or vice versa) makes `?symbol=` accept
+ * or reject a value the backend disagrees with. */
+export const EXTENDED_UNDERLYINGS = [
+  'XLK', 'XLF', 'XLE', 'XLV', 'XLI', 'XLY', 'XLP', 'XLU', 'XLB', 'XLRE', 'XLC',
+  'IWM', 'SMH', 'XBI', 'KRE', 'XOP', 'TLT', 'HYG', 'EEM', 'FXI', 'SLV', 'USO', 'GDX',
+] as const;
+
+export const UNDERLYINGS = [...CORE_UNDERLYINGS, ...EXTENDED_UNDERLYINGS] as const;
 export type Underlying = (typeof UNDERLYINGS)[number];
+
+/** `GET /api/symbols` response -- the core/extended split, read fresh from the server. Mirrors
+ * `backend/app/api/symbols.py`'s `SymbolsResponse`. Typed as `string[]`, not `Underlying[]`:
+ * this is the one place the backend's own symbol lists are the source of truth, so narrowing
+ * to the frontend's static `Underlying` union here would silently hide a drift between the
+ * two instead of surfacing it. */
+export interface SymbolsResponse {
+  core: string[];
+  extended: string[];
+}
 
 /** Underlying -> the CFD instrument the user actually trades (T41), for labelling the report
  * page's CFD-spot input. A UI-side mirror of the backend's own `CFD_INSTRUMENTS`
  * (`backend/app/gex/report.py`), which owns the canonical mapping and does the actual
  * conversion; this copy exists only so the field can be labelled before any report data has
- * loaded. Keep the two in sync -- adding an instrument is one line in each. */
-export const CFD_INSTRUMENTS: Record<Underlying, string> = {
+ * loaded. Keep the two in sync -- adding an instrument is one line in each.
+ *
+ * `Partial` since T47: no broker CFD instrument is configured for any sector/industry ETF
+ * today, and `app/api/report.py` degrades a `cfd_spot` request for one of those symbols to
+ * "no CFD mapping" (`cfd: null`) rather than raising -- a caller here must handle the `Record`
+ * legitimately not having every `Underlying` as a key, the same way the backend does. */
+export const CFD_INSTRUMENTS: Partial<Record<Underlying, string>> = {
   GLD: 'XAUUSD',
   DIA: 'US30',
   SPX: 'US500',

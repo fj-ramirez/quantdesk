@@ -706,4 +706,16 @@ Parallelizable groups once their dependency is done: {T02, T03, T04} after T01; 
 
 Sequencing note (2026-09-05): T38 adds GLD and DIA and is independent of everything in flight, so it can run alongside Phase 4 work. It does, however, raise T33's priority: DIA's net GEX is 0.9 % of its gross and the global carry parameter flips its sign, so DIA ships with a documented caveat until the carry is fitted from parity.
 
+TODO (T47, 2026-09-09): `catch_up_missed_eod` (`app/jobs/catchup.py`) still covers only
+`settings.symbols`. Extending it to `settings.extended_symbols` too is not the one-line change
+T47's brief allowed for -- the only caller that could wire it up is
+`capture_eod_safety_net_job` in `app/jobs/scheduler.py`, and that job is on T47's explicit
+do-not-modify list (P0 guardrail: nothing may risk delaying or altering the core EOD capture's
+safety net). A missed 16:45 extended capture today has no catch-up at all -- it is simply gone
+until the next trading day's 16:45 run, unlike the core five which get both the 20:00 safety
+net and the startup catch-up. Fixing this properly means either a second, extended-only safety
+net job (its own id, its own trigger, no shared code path with `capture_eod_safety_net_job`,
+same shape as `capture_extended_job` itself) or convincing whoever owns T47's guardrail that
+extending the existing safety net is safe. Left for a future task rather than guessed at here.
+
 Sequencing note (2026-09-04): T29 and T30 run before T11. A dashboard over a dataset with silent holes is worth less than a smaller dataset that can be trusted, and T30 is cheapest while nothing reads `parquet_path` yet. Do not run two Opus agents concurrently — it exhausts the session rate limit.

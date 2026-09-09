@@ -115,3 +115,47 @@ async def test_level_computation_failure_does_not_fail_an_already_durable_captur
             .all()
         )
     assert rows == []
+
+
+# --- T47: the same seam, for an extended (sector ETF) symbol -------------------------------
+
+
+def _make_xlk_snapshot() -> ChainSnapshot:
+    return ChainSnapshot(
+        underlying=Underlying.XLK,
+        spot=188.36,
+        captured_at=dt.datetime(2026, 9, 9, 20, 45, 0, tzinfo=dt.UTC),
+        source="stub",
+        delayed_minutes=15,
+        contracts=[
+            make_contract("XLK261218C00190000", open_interest=1000, iv=0.3, gamma=0.02),
+            make_contract("XLK261218P00185000", open_interest=800, iv=0.3, gamma=0.02),
+        ],
+    )
+
+
+async def test_extended_symbol_capture_persists_a_non_zero_snapshot_with_stored_levels(
+    tmp_path, session_factory
+):
+    """T47 acceptance: `POST /api/snapshots/capture?underlying=XLK` (exercised here at the
+    `capture_snapshot` level, which the route calls directly) must persist a snapshot with a
+    non-zero contract count and stored levels for every default filter -- the exact same
+    guarantee `test_successful_capture_writes_gex_levels_for_default_filters` pins for SPY,
+    now for a symbol T47 newly added to `Underlying`."""
+    result = await capture_snapshot(
+        "XLK",
+        is_eod=True,
+        provider=StubProvider(_make_xlk_snapshot()),
+        session_factory=session_factory,
+        data_dir=tmp_path,
+    )
+    assert result.ok is True
+    assert result.contract_count == 2
+
+    with session_factory() as session:
+        rows = (
+            session.execute(select(GexLevel).where(GexLevel.snapshot_id == result.snapshot_id))
+            .scalars()
+            .all()
+        )
+    assert {r.filter for r in rows} == {f.value for f in DEFAULT_FILTERS}

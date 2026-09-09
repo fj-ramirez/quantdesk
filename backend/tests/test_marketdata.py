@@ -158,10 +158,14 @@ async def test_spot_is_first_underlying_price():
 
 
 async def test_unsupported_symbol_raises_without_network():
-    """Validation happens before any request is built, so no client/transport is needed."""
+    """Validation happens before any request is built, so no client/transport is needed.
+
+    T47 note: this used to use "IWM" as the example unsupported symbol -- it was true when
+    written, but T47 added IWM as a real `Underlying` member, so it stopped exercising this
+    path. "ZZZZ" is not, and never will be, a symbol this application tracks."""
     provider = MarketDataProvider(token=_TOKEN)
     with pytest.raises(SymbolNotSupported):
-        await provider.fetch_chain("IWM")
+        await provider.fetch_chain("ZZZZ")
 
 
 async def test_missing_token_raises_before_any_network_call():

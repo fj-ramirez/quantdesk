@@ -733,22 +733,30 @@ export function Report() {
         </label>
         {/* T41: the CFD instrument the user actually trades. Optional and URL-backed
             (`?cfd=`), so `/report?symbol=GLD&cfd=4412.50` deep-links. Leaving it blank leaves
-            the report exactly as it is without T41 -- no converted block, no placeholder. */}
-        <label style={{ fontSize: 13 }}>
-          {cfdInstrument} spot{' '}
-          <input
-            type="text"
-            inputMode="decimal"
-            placeholder="e.g. 4412.50"
-            aria-label={`${cfdInstrument} spot`}
-            value={cfdSpotRaw ?? ''}
-            onChange={(event) => setCfdSpot(event.target.value.length > 0 ? event.target.value : null)}
-            style={{ width: 110 }}
-          />
-        </label>
+            the report exactly as it is without T41 -- no converted block, no placeholder.
+            T47: `cfdInstrument` is `undefined` for a symbol `CFD_INSTRUMENTS` does not cover
+            (every sector/industry ETF today) -- the input degrades to "no CFD mapping" by not
+            rendering at all, mirroring `app/api/report.py`'s degrade rather than showing a
+            broken "undefined spot" label or an input that would 422 if ever submitted. */}
+        {cfdInstrument ? (
+          <label style={{ fontSize: 13 }}>
+            {cfdInstrument} spot{' '}
+            <input
+              type="text"
+              inputMode="decimal"
+              placeholder="e.g. 4412.50"
+              aria-label={`${cfdInstrument} spot`}
+              value={cfdSpotRaw ?? ''}
+              onChange={(event) => setCfdSpot(event.target.value.length > 0 ? event.target.value : null)}
+              style={{ width: 110 }}
+            />
+          </label>
+        ) : (
+          <span style={{ fontSize: 13, color: palette.textMuted }}>No CFD mapping for {symbol}</span>
+        )}
       </div>
 
-      {cfdSpotInvalid && (
+      {cfdSpotInvalid && cfdInstrument && (
         <p role="alert" style={{ fontSize: 12, color: palette.textSecondary, marginTop: -6 }}>
           {cfdInstrument} spot must be a positive number — the CFD translation is off until this is fixed.
         </p>

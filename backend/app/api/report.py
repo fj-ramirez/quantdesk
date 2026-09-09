@@ -41,7 +41,7 @@ from sqlalchemy.orm import Session
 from app.api.gex import _canonical_underlying, _get_latest_row, _parse_filter, _snapshot_meta
 from app.api.schemas import ReportOut
 from app.gex.engine import ExpiryFilter, compute_all, to_frame
-from app.gex.report import build_report, render_text
+from app.gex.report import CFD_INSTRUMENTS, build_report, render_text
 from app.jobs.capture import get_session_factory
 from app.models.db import Snapshot
 from app.storage.parquet import read_snapshot, resolve_snapshot_path
@@ -75,6 +75,15 @@ def _build(
     `cfd_spot` (T41) is threaded straight through to `build_report`, which leaves
     `ReportResult.cfd` `None` when it is `None` -- the only state this parameter can be in
     given `?cfd_spot=` is optional, so an unconverted report is unaffected either way.
+
+    T47 note on `cfd_spot` for a symbol `CFD_INSTRUMENTS` does not cover (every sector/
+    industry ETF today -- no broker CFD mapping is configured for them): before this task,
+    that combination hit `translate_to_cfd`'s "no CFD instrument is configured" `ValueError`
+    and surfaced as a 422, turning an *optional* add-on into a hard failure for the whole
+    report. This degrades instead -- `cfd_spot` is silently dropped for an unmapped
+    underlying, so the response is exactly what an absent `?cfd_spot=` would have produced
+    (`cfd: null`), never an error. See `test_report_api.py`'s pin for the behaviour this
+    replaced and the one now guaranteed.
     """
     path = resolve_snapshot_path(row)
     try:
@@ -90,13 +99,17 @@ def _build(
     # itself, so both halves of the report describe one contract population.
     frame = to_frame(snapshot)
     result = compute_all(snapshot, filters, frame=frame)
+
+    effective_cfd_spot = cfd_spot if row.underlying in CFD_INSTRUMENTS else None
     try:
-        report = build_report(result, frame, filters, cfd_spot=cfd_spot)
+        report = build_report(result, frame, filters, cfd_spot=effective_cfd_spot)
     except ValueError as exc:
-        # `translate_to_cfd` raises on a non-positive/non-finite spot or an unmapped
-        # underlying. `gt=0` on the query parameter already rejects zero/negative before this
-        # is ever reached, but the pure module re-validates rather than trusting the caller --
-        # this is the belt to that braces, not dead code.
+        # `translate_to_cfd` still raises on a non-positive/non-finite spot -- `gt=0` on the
+        # query parameter already rejects zero/negative before this is ever reached, but the
+        # pure module re-validates rather than trusting the caller, so this remains the belt
+        # to that braces. The "unmapped underlying" branch of that same `ValueError` can no
+        # longer fire from here: `effective_cfd_spot` above is already `None` for exactly the
+        # underlyings that would have raised it.
         raise HTTPException(status_code=422, detail=str(exc)) from None
 
     payload = report.to_dict()

@@ -27,11 +27,13 @@ from app.jobs.catchup import catch_up_missed_eod
 __all__ = [
     "BARS_JOB_ID",
     "EOD_JOB_ID",
+    "EXTENDED_JOB_ID",
     "SAFETY_NET_JOB_ID",
     "bars_update_job",
     "build_scheduler",
     "capture_eod_job",
     "capture_eod_safety_net_job",
+    "capture_extended_job",
 ]
 
 logger = logging.getLogger("app.jobs.scheduler")
@@ -39,6 +41,7 @@ logger = logging.getLogger("app.jobs.scheduler")
 EOD_JOB_ID = "capture_eod"
 SAFETY_NET_JOB_ID = "capture_eod_safety_net"
 BARS_JOB_ID = "bars_update"
+EXTENDED_JOB_ID = "capture_extended"
 
 # `settings.TZ` (default "America/New_York") drives both the trigger's wall-clock time and
 # the weekday/holiday check inside the job -- if this were ever pointed at another zone, both
@@ -114,6 +117,45 @@ async def bars_update_job() -> None:
         logger.exception("bars_update_job: unexpected top-level failure")
 
 
+async def capture_extended_job() -> None:
+    """16:45 ET capture of `settings.extended_symbols` -- T47's sector/industry ETFs.
+
+    Structurally the same job as `capture_eod_job` above (same trading-day guard, same
+    `capture_all_symbols` call with `is_eod=True`, same top-level try/except), on a separate
+    job id and 25 minutes later, for one reason: **this job must be structurally incapable of
+    delaying or breaking the 16:20 EOD capture**, the P0 guardrail this task's brief states
+    explicitly. Sharing `capture_eod_job`'s code path (even by calling it with a different
+    symbol list) would put twenty-three extra sequential Cboe fetches between "the core five
+    are safe" and "the job returned"; a separate job with its own trigger means the core
+    capture is done and durably persisted for 25 minutes before this one even starts, and a
+    bug or a slow evening here (see the plan's "likely first-contact failures": twenty-three
+    captures might run long enough to approach the 17:30 bars job) cannot touch
+    `capture_eod`'s result either way -- APScheduler jobs on the same scheduler share only the
+    event loop, never each other's state.
+
+    Per-symbol failures are already isolated by `capture_all_symbols`/`capture_snapshot` (one
+    ETF's thin chain or a transient Cboe hiccup returns a `CaptureResult(ok=False)` for that
+    symbol only); the try/except below is the same last-line-of-defense belt-and-suspenders as
+    every other job in this module, not the primary isolation mechanism.
+    """
+    today = dt.datetime.now(_TZ).date()
+    if not is_trading_day(today):
+        logger.info(
+            json.dumps(
+                {
+                    "event": "capture_extended_skipped",
+                    "date": today.isoformat(),
+                    "reason": "not a trading day",
+                }
+            )
+        )
+        return
+    try:
+        await capture_all_symbols(settings.extended_symbols, is_eod=True)
+    except Exception:  # must never take the scheduler thread down with it
+        logger.exception("capture_extended_job: unexpected top-level failure")
+
+
 def build_scheduler() -> AsyncIOScheduler:
     """Construct (but do not start) the scheduler with `capture_eod` registered.
 
@@ -170,6 +212,22 @@ def build_scheduler() -> AsyncIOScheduler:
         trigger=CronTrigger(day_of_week="mon-fri", hour=17, minute=30, timezone=_TZ),
         id=BARS_JOB_ID,
         name="Daily bars update (SCAN_UNIVERSE)",
+        coalesce=True,
+        misfire_grace_time=None,
+        max_instances=1,
+        replace_existing=True,
+    )
+    # T47: extended (sector/industry ETF) option capture, additive and separate from the core
+    # 16:20/20:00 jobs above -- see `capture_extended_job`'s own docstring for why 16:45 (25
+    # minutes after the core capture, still an hour before the 17:30 bars job) and why it is a
+    # distinct job id rather than a parameter to `capture_eod_job`. Same misfire/coalesce
+    # policy as every other capture job here, for the identical reason: a run hours late still
+    # beats one that never happens on this free, history-less data source.
+    scheduler.add_job(
+        capture_extended_job,
+        trigger=CronTrigger(day_of_week="mon-fri", hour=16, minute=45, timezone=_TZ),
+        id=EXTENDED_JOB_ID,
+        name="Extended (sector/industry ETF) option chain capture",
         coalesce=True,
         misfire_grace_time=None,
         max_instances=1,

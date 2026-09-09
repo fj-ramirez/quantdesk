@@ -77,6 +77,14 @@ def dia_snapshot() -> ChainSnapshot:
     return _fixture_snapshot("DIA", "dia.json")
 
 
+@pytest.fixture(scope="module")
+def xlk_snapshot() -> ChainSnapshot:
+    """T47: a sector ETF with no `CFD_INSTRUMENTS` entry, for the CFD-degrade tests below.
+    Trimmed the same way gld.json/dia.json were (head+tail slice of the live 2026-09-09
+    capture) to keep the fixture small."""
+    return _fixture_snapshot("XLK", "xlk.json")
+
+
 @pytest.fixture
 def indexed_gld(tmp_path, session_factory, gld_snapshot):
     path = write_snapshot(gld_snapshot, data_dir=tmp_path)
@@ -89,6 +97,13 @@ def indexed_dia(tmp_path, session_factory, dia_snapshot):
     path = write_snapshot(dia_snapshot, data_dir=tmp_path)
     with session_factory() as session:
         return SnapshotRepository(session).add(dia_snapshot, path, is_eod=True).id
+
+
+@pytest.fixture
+def indexed_xlk(tmp_path, session_factory, xlk_snapshot):
+    path = write_snapshot(xlk_snapshot, data_dir=tmp_path)
+    with session_factory() as session:
+        return SnapshotRepository(session).add(xlk_snapshot, path, is_eod=True).id
 
 
 def _patch(monkeypatch, session_factory):
@@ -380,3 +395,43 @@ def test_bad_cfd_spot_is_rejected_with_422(
     _patch(monkeypatch, session_factory)
     response = client.get("/api/report/GLD", params={"cfd_spot": bad_value})
     assert response.status_code == 422
+
+
+# --------------------------------------------------------------------------------------
+# T47: CFD_INSTRUMENTS degrade for a symbol without an entry (every sector/industry ETF today)
+# --------------------------------------------------------------------------------------
+
+
+def test_cfd_spot_for_an_unmapped_underlying_degrades_to_no_cfd_mapping(
+    client, monkeypatch, session_factory, indexed_xlk
+):
+    """Pins the T47 behaviour change: before this task, `?cfd_spot=` on a symbol absent from
+    `CFD_INSTRUMENTS` (XLK has no broker CFD mapping configured) hit `translate_to_cfd`'s
+    "no CFD instrument is configured" `ValueError` and surfaced as a 422 -- turning an
+    *optional* add-on into a hard failure for the whole report. It must now degrade: the
+    request succeeds, `cfd` stays `null`, and every other field is unaffected."""
+    _patch(monkeypatch, session_factory)
+
+    response = client.get("/api/report/XLK", params={"cfd_spot": 250.0})
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["cfd"] is None
+
+    # Identical to the response with no `cfd_spot` at all, except the timestamp the pure
+    # module reads no clock for -- the degrade must be silent, not merely non-crashing.
+    without = client.get("/api/report/XLK").json()
+    body.pop("generated_at")
+    without.pop("generated_at")
+    assert body == without
+
+
+def test_cfd_spot_for_a_mapped_underlying_is_unaffected_by_the_degrade(
+    client, monkeypatch, session_factory, indexed_gld
+):
+    """The degrade in `_build` must not touch the five symbols `CFD_INSTRUMENTS` already
+    covers -- GLD's existing T41 conversion still fires exactly as before."""
+    _patch(monkeypatch, session_factory)
+    response = client.get("/api/report/GLD", params={"cfd_spot": 4412.50})
+    assert response.status_code == 200
+    assert response.json()["cfd"] is not None

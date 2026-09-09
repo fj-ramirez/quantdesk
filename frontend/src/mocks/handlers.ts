@@ -49,7 +49,16 @@ import reportQqqZeroDteFixture from './fixtures/report-qqq-zero-dte.json';
 import reportGldZeroDteFixture from './fixtures/report-gld-zero-dte.json';
 import reportDiaZeroDteFixture from './fixtures/report-dia-zero-dte.json';
 
-const GEX_BY_UNDERLYING: Record<Underlying, GexResult> = {
+// T47 added 23 more `Underlying` members (sector/industry ETFs), none of which has a mock
+// fixture -- these handlers were built and are tested against exactly the original five, and
+// growing 23 more fixture pairs is out of scope for a capture-pipeline task. `MockedUnderlying`
+// is the honest type for what these handlers actually serve; a request for an extended symbol
+// falls through `isUnderlying` below the same way a request for any other never-mocked value
+// would, and gets a 404. The real backend has no such gap once a symbol is captured -- this is
+// a mock-data limitation, not a product one.
+type MockedUnderlying = 'SPX' | 'SPY' | 'QQQ' | 'GLD' | 'DIA';
+
+const GEX_BY_UNDERLYING: Record<MockedUnderlying, GexResult> = {
   SPX: gexSpxFixture as GexResult,
   SPY: gexSpyFixture as GexResult,
   QQQ: gexQqqFixture as GexResult,
@@ -62,7 +71,7 @@ const GEX_BY_UNDERLYING: Record<Underlying, GexResult> = {
 // an edge case (see api/types.ts's `KeyLevels` docstring). The generic `scaled()` helper
 // below cannot produce this shape (it just multiplies numbers by a scale factor), so
 // ZERO_DTE gets its own dedicated fixture instead of going through that path.
-const GEX_ZERO_DTE_BY_UNDERLYING: Record<Underlying, GexResult> = {
+const GEX_ZERO_DTE_BY_UNDERLYING: Record<MockedUnderlying, GexResult> = {
   SPX: gexSpxZeroDteFixture as GexResult,
   SPY: gexSpyZeroDteFixture as GexResult,
   QQQ: gexQqqZeroDteFixture as GexResult,
@@ -78,7 +87,7 @@ const FILTER_SCALE: Record<ExpiryFilter, number> = {
   MONTHLY_ONLY: 0.6,
 };
 
-function isUnderlying(value: string): value is Underlying {
+function isUnderlying(value: string): value is MockedUnderlying {
   return value === 'SPX' || value === 'SPY' || value === 'QQQ' || value === 'GLD' || value === 'DIA';
 }
 
@@ -131,7 +140,7 @@ const notFound = (detail: string) => HttpResponse.json({ detail }, { status: 404
 // rewritten. Treat a filter-dependent number under any other filter as illustrative.
 // ---------------------------------------------------------------------------------------
 
-const REPORT_BY_UNDERLYING: Record<Underlying, Report> = {
+const REPORT_BY_UNDERLYING: Record<MockedUnderlying, Report> = {
   SPX: reportSpxFixture as unknown as Report,
   SPY: reportSpyFixture as unknown as Report,
   QQQ: reportQqqFixture as unknown as Report,
@@ -139,7 +148,7 @@ const REPORT_BY_UNDERLYING: Record<Underlying, Report> = {
   DIA: reportDiaFixture as unknown as Report,
 };
 
-const REPORT_ZERO_DTE_BY_UNDERLYING: Record<Underlying, Report> = {
+const REPORT_ZERO_DTE_BY_UNDERLYING: Record<MockedUnderlying, Report> = {
   SPX: reportSpxZeroDteFixture as unknown as Report,
   SPY: reportSpyZeroDteFixture as unknown as Report,
   QQQ: reportQqqZeroDteFixture as unknown as Report,
@@ -147,7 +156,7 @@ const REPORT_ZERO_DTE_BY_UNDERLYING: Record<Underlying, Report> = {
   DIA: reportDiaZeroDteFixture as unknown as Report,
 };
 
-function reportFor(underlying: Underlying, filter: ExpiryFilter): Report {
+function reportFor(underlying: MockedUnderlying, filter: ExpiryFilter): Report {
   const base = filter === 'ZERO_DTE' ? REPORT_ZERO_DTE_BY_UNDERLYING[underlying] : REPORT_BY_UNDERLYING[underlying];
   // None of the committed fixtures were captured with a CFD spot attached (T41 postdates
   // them), so the base fixture always carries `cfd: null` -- `translateToCfd` below is what
@@ -160,11 +169,14 @@ function reportFor(underlying: Underlying, filter: ExpiryFilter): Report {
  * `app/gex/report.py` is the source of truth; this only has to reproduce the same *shape* and
  * the same pure scaling (`level * ratio`, `distance_pct` passed through unchanged) so a test
  * asserting the percentage invariant against these mocks is asserting something real. Returns
- * `null` exactly when the real endpoint would leave `ReportOut.cfd` `null`: no spot, or a
- * non-positive/non-finite one. */
+ * `null` exactly when the real endpoint would leave `ReportOut.cfd` `null`: no spot, a
+ * non-positive/non-finite one, or (T47) an underlying `CFD_INSTRUMENTS` has no entry for --
+ * every sector/industry ETF today. That last case mirrors `app/api/report.py`'s degrade: no
+ * broker mapping means `cfd` stays `null`, not a block with an `undefined` instrument name. */
 function translateToCfd(report: Report, cfdSpot: number | null): CfdTranslation | null {
   if (cfdSpot == null || !Number.isFinite(cfdSpot) || cfdSpot <= 0) return null;
   const instrument = CFD_INSTRUMENTS[report.underlying];
+  if (instrument === undefined) return null;
   const ratio = cfdSpot / report.spot;
 
   function level(side: string, nativeStrike: number | null, distancePct: number | null = null): CfdLevel | null {

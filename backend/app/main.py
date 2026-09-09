@@ -11,7 +11,9 @@ from app.api.chains import router as chains_router
 from app.api.gex import router as gex_router
 from app.api.health import router as health_router
 from app.api.report import router as report_router
+from app.api.scan import router as scan_router
 from app.api.snapshots import router as snapshots_router
+from app.api.symbols import router as symbols_router
 from app.config import settings
 from app.jobs.catchup import startup_catchup_job
 from app.jobs.scheduler import build_scheduler
@@ -75,6 +77,8 @@ app.include_router(gex_router, prefix="/api")
 app.include_router(chains_router, prefix="/api")
 app.include_router(report_router, prefix="/api")
 app.include_router(bars_router, prefix="/api")
+app.include_router(scan_router, prefix="/api")
+app.include_router(symbols_router, prefix="/api")
 
 
 @app.get("/health")

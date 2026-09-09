@@ -162,6 +162,44 @@ class Underlying(StrEnum):
     #: for the carry-parameter caveat on this symbol's net GEX and flip point.
     DIA = "DIA"
 
+    # --- T47: sector and industry ETFs, captured by the separate 16:45 ET extended job ------
+    # (plans/continuation/03-regime-board.md). Every symbol below was verified live against
+    # `https://cdn.cboe.com/api/global/delayed_quotes/options/{symbol}.json` on 2026-09-09:
+    # single vendor root == ticker (no adjusted-option variant, unlike SPX/SPXW), P.M. settled
+    # like every other equity/ETF root, decimal-fraction per-contract IV (median under 1.0 on
+    # every symbol, confirming the same units as SPX/SPY/GLD/DIA), and zero missing-OI
+    # contracts on all 23 -- cleaner data than SPX's own chain. None failed verification, so
+    # `Settings.EXTENDED_SYMBOLS`'s default carries all 23. See docs/validation.md for the
+    # dividend-yield sensitivity measurement this task's plan calls for.
+    #
+    #: The 11 Select Sector SPDRs. Contract / expiry counts as observed 2026-09-09.
+    XLK = "XLK"  #: Technology. 2,336 contracts, 17 expiries.
+    XLF = "XLF"  #: Financials. 2,028 contracts, 28 expiries.
+    XLE = "XLE"  #: Energy. 2,070 contracts, 25 expiries.
+    XLV = "XLV"  #: Health Care. 1,464 contracts, 13 expiries.
+    XLI = "XLI"  #: Industrials. 1,934 contracts, 13 expiries.
+    XLY = "XLY"  #: Consumer Discretionary. 1,318 contracts, 12 expiries.
+    XLP = "XLP"  #: Consumer Staples. 1,078 contracts, 13 expiries.
+    XLU = "XLU"  #: Utilities. 1,004 contracts, 15 expiries.
+    XLB = "XLB"  #: Materials. 922 contracts, 12 expiries.
+    #: Real Estate -- the thinnest of the eleven, as the plan predicted. 222 contracts, 5
+    #: expiries. Still a real, tradeable chain; left in rather than dropped.
+    XLRE = "XLRE"
+    XLC = "XLC"  #: Communication Services. 964 contracts, 11 expiries.
+    #: Broad and single-industry ETFs beyond the sector SPDRs.
+    IWM = "IWM"  #: Russell 2000 (small caps). 4,840 contracts, 32 expiries.
+    SMH = "SMH"  #: Semiconductors. 6,386 contracts, 27 expiries.
+    XBI = "XBI"  #: Biotech. 2,088 contracts, 14 expiries.
+    KRE = "KRE"  #: Regional banks. 1,552 contracts, 20 expiries.
+    XOP = "XOP"  #: Oil & gas exploration. 2,020 contracts, 15 expiries.
+    TLT = "TLT"  #: 20+ year Treasury bond. 2,472 contracts, 30 expiries.
+    HYG = "HYG"  #: High-yield corporate bond. 1,294 contracts, 19 expiries.
+    EEM = "EEM"  #: Emerging markets. 2,024 contracts, 24 expiries.
+    FXI = "FXI"  #: China large-cap. 1,384 contracts, 22 expiries.
+    SLV = "SLV"  #: Silver bullion trust. 4,854 contracts, 27 expiries.
+    USO = "USO"  #: Crude oil. 4,628 contracts, 21 expiries.
+    GDX = "GDX"  #: Gold miners. 3,042 contracts, 17 expiries.
+
 
 #: Roots whose contracts are A.M.-settled. Everything else is P.M.-settled. See the module
 #: docstring: this is a root-based rule, not a date-based one.
@@ -177,6 +215,32 @@ _ROOT_TO_UNDERLYING: dict[str, Underlying] = {
     "QQQ": Underlying.QQQ,
     "GLD": Underlying.GLD,
     "DIA": Underlying.DIA,
+    # T47: every sector/industry ETF root equals its own Underlying value, verified live
+    # 2026-09-09 (see the Underlying enum above) -- none of the third-Friday AM/PM-dual-series
+    # complexity SPX/SPXW has, so this is a plain one-to-one map.
+    "XLK": Underlying.XLK,
+    "XLF": Underlying.XLF,
+    "XLE": Underlying.XLE,
+    "XLV": Underlying.XLV,
+    "XLI": Underlying.XLI,
+    "XLY": Underlying.XLY,
+    "XLP": Underlying.XLP,
+    "XLU": Underlying.XLU,
+    "XLB": Underlying.XLB,
+    "XLRE": Underlying.XLRE,
+    "XLC": Underlying.XLC,
+    "IWM": Underlying.IWM,
+    "SMH": Underlying.SMH,
+    "XBI": Underlying.XBI,
+    "KRE": Underlying.KRE,
+    "XOP": Underlying.XOP,
+    "TLT": Underlying.TLT,
+    "HYG": Underlying.HYG,
+    "EEM": Underlying.EEM,
+    "FXI": Underlying.FXI,
+    "SLV": Underlying.SLV,
+    "USO": Underlying.USO,
+    "GDX": Underlying.GDX,
 }
 
 

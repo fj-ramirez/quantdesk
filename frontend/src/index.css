@@ -155,9 +155,26 @@ code {
   border-bottom: 1px solid var(--border);
 }
 
+/* T47: the switcher's two `role="group"` regions (core five / extended sector-ETF set) sit
+ * side by side, each wrapping its own buttons independently -- the extended group is more than
+ * four times the size of the core one and would otherwise force the whole top bar wider than
+ * the viewport instead of wrapping onto new lines. */
+.symbol-switcher-groups {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 14px;
+}
+
 .symbol-switcher {
   display: flex;
+  flex-wrap: wrap;
   gap: 6px;
+}
+
+.symbol-switcher--extended {
+  padding-left: 12px;
+  border-left: 1px solid var(--border);
 }
 
 .symbol-switcher__button {

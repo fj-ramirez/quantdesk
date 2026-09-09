@@ -38,6 +38,17 @@ class Settings(BaseSettings):
     SYMBOLS: str = "SPX,SPY,QQQ,GLD,DIA"
     TZ: str = "America/New_York"
 
+    # --- T47: sector/industry ETF option capture (plans/continuation/03-regime-board.md) ------
+    # Deliberately NOT folded into `SYMBOLS`: the 16:20 EOD job reads `symbols` only, and this
+    # setting drives a separate 16:45 ET job (`capture_extended_job`,
+    # `app/jobs/scheduler.py`) so twenty-three extra HTTP calls can never sit in front of the
+    # P0 capture. Default is every symbol that passed live verification against Cboe on
+    # 2026-09-09 (see `app.models.chain.Underlying`) -- none failed, so nothing is held back.
+    EXTENDED_SYMBOLS: str = (
+        "XLK,XLF,XLE,XLV,XLI,XLY,XLP,XLU,XLB,XLRE,XLC,"
+        "IWM,SMH,XBI,KRE,XOP,TLT,HYG,EEM,FXI,SLV,USO,GDX"
+    )
+
     # --- T42: daily bars (plans/continuation/00-foundation-daily-bars.md) ----------------------
     # Default provider: the Yahoo Finance chart endpoint (free, keyless) -- see
     # app.providers.yahoo for the live-verified response shape and failure modes. Stooq was
@@ -62,6 +73,14 @@ class Settings(BaseSettings):
     @property
     def symbols(self) -> list[str]:
         return [s.strip() for s in self.SYMBOLS.split(",") if s.strip()]
+
+    @property
+    def extended_symbols(self) -> list[str]:
+        """T47's sector/industry ETF universe, captured separately from `symbols` at 16:45 ET.
+        Same parse-on-read pattern as `symbols` so both settings round-trip through `.env`
+        identically.
+        """
+        return [s.strip() for s in self.EXTENDED_SYMBOLS.split(",") if s.strip()]
 
     @property
     def scan_universe(self) -> list[str]:

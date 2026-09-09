@@ -200,6 +200,20 @@ describe('CFD level translation (T41)', () => {
     expect(screen.getByLabelText('US30 spot')).toBeInTheDocument();
   });
 
+  it('T47: a symbol with no CFD_INSTRUMENTS entry (an extended ETF) shows "No CFD mapping" instead of a broken "undefined spot" input', async () => {
+    renderReport('/report?symbol=XLK');
+    await awaitReportLoaded('XLK');
+
+    expect(screen.getByText('No CFD mapping for XLK')).toBeInTheDocument();
+    expect(screen.queryByLabelText(/spot$/)).not.toBeInTheDocument();
+
+    // Switching back to a mapped symbol restores the normal input -- the degrade is per
+    // symbol, not a permanently broken state.
+    fireEvent.change(screen.getByLabelText(/Symbol/), { target: { value: 'GLD' } });
+    await awaitReportLoaded('GLD');
+    expect(screen.getByLabelText('XAUUSD spot')).toBeInTheDocument();
+  });
+
   it('an absent ?cfd= leaves the report exactly as it is without T41 -- no converted block', async () => {
     renderReport('/report?symbol=GLD');
     await awaitReportLoaded('GLD');

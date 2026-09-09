@@ -16,11 +16,13 @@ from app.jobs import scheduler as scheduler_module
 from app.jobs.scheduler import (
     BARS_JOB_ID,
     EOD_JOB_ID,
+    EXTENDED_JOB_ID,
     SAFETY_NET_JOB_ID,
     bars_update_job,
     build_scheduler,
     capture_eod_job,
     capture_eod_safety_net_job,
+    capture_extended_job,
 )
 
 _NY = ZoneInfo("America/New_York")
@@ -206,6 +208,7 @@ def test_build_scheduler_still_registers_the_two_option_capture_jobs_unchanged()
         EOD_JOB_ID,
         SAFETY_NET_JOB_ID,
         BARS_JOB_ID,
+        EXTENDED_JOB_ID,
     }
 
 
@@ -235,5 +238,156 @@ async def test_bars_update_job_survives_an_unexpected_exception(monkeypatch, cap
 
     with caplog.at_level(logging.ERROR, logger="app.jobs.scheduler"):
         await bars_update_job()  # must not raise
+
+    assert any("unexpected top-level failure" in r.message for r in caplog.records)
+
+
+# --- T47: 16:45 NY extended (sector/industry ETF) capture job -- additive, P0 guardrail --------
+
+
+def test_build_scheduler_registers_extended_job():
+    scheduler = build_scheduler()
+    job = scheduler.get_job(EXTENDED_JOB_ID)
+    assert job is not None
+    assert job.max_instances == 1
+    assert job.misfire_grace_time is None
+    assert job.coalesce is True
+
+
+def test_build_scheduler_extended_job_trigger_is_mon_fri_1645_ny():
+    scheduler = build_scheduler()
+    job = scheduler.get_job(EXTENDED_JOB_ID)
+    trigger = job.trigger
+    field_strs = {f.name: str(f) for f in trigger.fields}
+    assert field_strs["hour"] == "16"
+    assert field_strs["minute"] == "45"
+    assert field_strs["day_of_week"] == "mon-fri"
+    assert str(trigger.timezone) == "America/New_York"
+
+
+def test_build_scheduler_adding_the_extended_job_leaves_the_other_three_untouched():
+    """P0 guardrail, the acceptance criterion verbatim: the core EOD job, its safety net, and
+    the bars job must be provably unchanged by this task -- same ids, same trigger fields, same
+    misfire policy -- not merely "still present"."""
+    scheduler = build_scheduler()
+
+    eod = scheduler.get_job(EOD_JOB_ID)
+    assert eod is not None
+    assert eod.name == "EOD option chain capture (SPX/SPY/QQQ/GLD/DIA)"
+    assert eod.max_instances == 1
+    assert eod.misfire_grace_time is None
+    assert eod.coalesce is True
+    eod_fields = {f.name: str(f) for f in eod.trigger.fields}
+    assert (eod_fields["hour"], eod_fields["minute"], eod_fields["day_of_week"]) == ("16", "20", "mon-fri")
+
+    safety_net = scheduler.get_job(SAFETY_NET_JOB_ID)
+    assert safety_net is not None
+    assert safety_net.max_instances == 1
+    assert safety_net.misfire_grace_time is None
+    assert safety_net.coalesce is True
+    safety_net_fields = {f.name: str(f) for f in safety_net.trigger.fields}
+    assert (safety_net_fields["hour"], safety_net_fields["minute"], safety_net_fields["day_of_week"]) == (
+        "20",
+        "0",
+        "mon-fri",
+    )
+
+    bars = scheduler.get_job(BARS_JOB_ID)
+    assert bars is not None
+    assert bars.max_instances == 1
+    assert bars.misfire_grace_time is None
+    assert bars.coalesce is True
+    bars_fields = {f.name: str(f) for f in bars.trigger.fields}
+    assert (bars_fields["hour"], bars_fields["minute"], bars_fields["day_of_week"]) == ("17", "30", "mon-fri")
+
+    assert {job.id for job in scheduler.get_jobs()} == {
+        EOD_JOB_ID,
+        SAFETY_NET_JOB_ID,
+        BARS_JOB_ID,
+        EXTENDED_JOB_ID,
+    }
+
+
+async def test_capture_extended_job_skips_on_a_holiday_without_calling_capture(monkeypatch, caplog):
+    monkeypatch.setattr(scheduler_module, "is_trading_day", lambda day: False)
+
+    called = False
+
+    async def fake_capture_all_symbols(*args, **kwargs):
+        nonlocal called
+        called = True
+        return []
+
+    monkeypatch.setattr(scheduler_module, "capture_all_symbols", fake_capture_all_symbols)
+
+    with caplog.at_level(logging.INFO, logger="app.jobs.scheduler"):
+        await capture_extended_job()
+
+    assert called is False
+    assert any("capture_extended_skipped" in r.message for r in caplog.records)
+
+
+async def test_capture_extended_job_calls_capture_all_symbols_with_extended_symbols(monkeypatch):
+    monkeypatch.setattr(scheduler_module, "is_trading_day", lambda day: True)
+
+    seen_symbols = None
+    seen_is_eod = None
+
+    async def fake_capture_all_symbols(symbols, *, is_eod, **kwargs):
+        nonlocal seen_symbols, seen_is_eod
+        seen_symbols = symbols
+        seen_is_eod = is_eod
+        return []
+
+    monkeypatch.setattr(scheduler_module, "capture_all_symbols", fake_capture_all_symbols)
+
+    await capture_extended_job()
+
+    # settings.extended_symbols, not settings.symbols -- the whole point of T47's separate
+    # job is that the two lists never mix.
+    assert seen_symbols == scheduler_module.settings.extended_symbols
+    assert "SPX" not in seen_symbols
+    assert "XLK" in seen_symbols
+    assert seen_is_eod is True
+
+
+async def test_capture_extended_job_one_symbol_failing_does_not_stop_the_others(monkeypatch):
+    """Mirrors the acceptance criterion: a mock provider where one extended symbol fails must
+    still leave every other symbol captured. `capture_all_symbols` already guarantees this
+    (see `test_capture.py`); this test pins that `capture_extended_job` actually delegates to
+    it rather than some other, less resilient call path."""
+    monkeypatch.setattr(scheduler_module, "is_trading_day", lambda day: True)
+
+    from app.jobs.capture import CaptureResult
+
+    async def fake_capture_all_symbols(symbols, *, is_eod, **kwargs):
+        return [
+            CaptureResult(underlying=sym, ok=(sym != symbols[0]))
+            for sym in symbols
+        ]
+
+    monkeypatch.setattr(scheduler_module, "capture_all_symbols", fake_capture_all_symbols)
+
+    # Must not raise, and must not short-circuit -- there is nothing here to assert the
+    # *results* of (capture_extended_job discards the return value, matching capture_eod_job),
+    # so this test's real assertion is simply that the call completes normally even though the
+    # fake provider reports one failure.
+    await capture_extended_job()
+
+
+async def test_capture_extended_job_survives_an_unexpected_exception(monkeypatch, caplog):
+    """Belt-and-suspenders, same as capture_eod_job's equivalent test: even if
+    capture_all_symbols itself somehow raised, the job function must not propagate -- a bug
+    here must be structurally incapable of taking the scheduler thread (and therefore the core
+    EOD job) down with it."""
+    monkeypatch.setattr(scheduler_module, "is_trading_day", lambda day: True)
+
+    async def boom(*args, **kwargs):
+        raise RuntimeError("cboe is unreachable for an extended symbol")
+
+    monkeypatch.setattr(scheduler_module, "capture_all_symbols", boom)
+
+    with caplog.at_level(logging.ERROR, logger="app.jobs.scheduler"):
+        await capture_extended_job()  # must not raise
 
     assert any("unexpected top-level failure" in r.message for r in caplog.records)

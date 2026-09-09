@@ -617,3 +617,106 @@ DIA's calls and puts. Concretely, this means:
 from parity for all five symbols at once, which is the right level to fix it at; a one-off
 `q` override for DIA alone would just trade one wrong global constant for one wrong
 symbol-specific constant, and would need to be undone the moment T33 lands.
+
+---
+
+## 10. Sector and industry ETFs (T47) — live verification, dividend sensitivity, storage
+
+T47 added 23 sector/industry ETFs as `Underlying` members and a second, 16:45 ET capture job
+(`capture_extended_job`) separate from the core five's 16:20 EOD job. Every symbol below was
+verified against the live Cboe endpoint
+(`https://cdn.cboe.com/api/global/delayed_quotes/options/{symbol}.json`) on **2026-09-09**, the
+way T38 verified GLD and DIA: fetch, confirm a 200 with a non-empty `options` array, confirm a
+single vendor root equal to the ticker (no adjusted-option variant), confirm decimal-fraction
+per-contract IV, and count missing open interest.
+
+| Symbol | Sector/theme | Contracts | Expiries | Spot | Median IV | Missing OI |
+|---|---|---:|---:|---:|---:|---:|
+| XLK | Technology SPDR | 2,336 | 17 | 188.36 | 0.301 | 0 |
+| XLF | Financials SPDR | 2,028 | 28 | 57.15 | 0.246 | 0 |
+| XLE | Energy SPDR | 2,070 | 25 | 65.40 | 0.287 | 0 |
+| XLV | Health Care SPDR | 1,464 | 13 | 166.77 | 0.196 | 0 |
+| XLI | Industrials SPDR | 1,934 | 13 | 172.15 | 0.234 | 0 |
+| XLY | Consumer Discretionary SPDR | 1,318 | 12 | 112.66 | 0.258 | 0 |
+| XLP | Consumer Staples SPDR | 1,078 | 13 | 83.15 | 0.180 | 0 |
+| XLU | Utilities SPDR | 1,004 | 15 | 43.04 | 0.194 | 0 |
+| XLB | Materials SPDR | 922 | 12 | 51.72 | 0.267 | 0 |
+| XLRE | Real Estate SPDR | 222 | 5 | 43.45 | 0.250 | 0 |
+| XLC | Communication Services SPDR | 964 | 11 | 110.82 | 0.231 | 0 |
+| IWM | Russell 2000 | 4,840 | 32 | 290.76 | 0.244 | 0 |
+| SMH | Semiconductors | 6,386 | 27 | 573.74 | 0.406 | 0 |
+| XBI | Biotech | 2,088 | 14 | 160.31 | 0.332 | 0 |
+| KRE | Regional banks | 1,552 | 20 | 73.37 | 0.272 | 0 |
+| XOP | Oil & gas E&P | 2,020 | 15 | 194.01 | 0.338 | 0 |
+| TLT | 20+yr Treasury | 2,472 | 30 | 81.71 | 0.147 | 0 |
+| HYG | High-yield corporate bond | 1,294 | 19 | 79.04 | 0.126 | 0 |
+| EEM | Emerging markets | 2,024 | 24 | 68.61 | 0.299 | 0 |
+| FXI | China large-cap | 1,384 | 22 | 34.62 | 0.252 | 0 |
+| SLV | Silver | 4,854 | 27 | 60.995 | 0.496 | 0 |
+| USO | Crude oil | 4,628 | 21 | 149.50 | 0.458 | 0 |
+| GDX | Gold miners | 3,042 | 17 | 99.70 | 0.470 | 0 |
+
+**All 23 passed verification; none failed and none was held back from the default
+`EXTENDED_SYMBOLS`.** Zero missing-open-interest contracts on every symbol — cleaner on this
+axis than SPX's own chain, which routinely has a handful. XLRE is, as the plan anticipated, the
+thinnest chain (222 contracts, 5 expiries), but it is a real, currently-listed chain, not a
+degenerate one, so it stays in rather than being dropped. Every median IV is comfortably under
+1.0, confirming the same decimal-fraction convention as SPX/SPY/GLD/DIA (docs/schema.md's smoke
+test) rather than a percent-like ETF-specific quirk.
+
+### Dividend-yield sensitivity: one low-yield, one high-yield sector
+
+Per this task's plan, the global `DIVIDEND_YIELD = 0.013` parameter (S&P-ish, T33's per-expiry
+carry fit not yet landed) is measured, not silently ignored, for one low-yield and one
+high-yield sector. XLK (Technology) and XLU (Utilities) were chosen as the two extremes of the
+eleven sector SPDRs: **XLK's trailing yield is roughly 0.6–0.8 %**, **XLU's is roughly
+2.8–3.2 %** (approximate, illustrative figures — this project's convention is a fixed
+parameter, never fetched from a yield feed, same as `RISK_FREE_RATE`). Measured against the
+**full, untrimmed live captures from 2026-09-09** (2,336 and 1,004 contracts respectively — not
+the trimmed test fixtures), recomputing `compute_all(..., filter=ALL)` at the current global
+default versus each symbol's approximate real yield:
+
+| Symbol | q | Net GEX | Abs GEX | \|net\|/abs | Call wall | Put wall | Flip |
+|---|---:|---:|---:|---:|---:|---:|---:|
+| XLK | 0.013 (current default) | −894,105 | 224,385,272 | 0.40 % | 200.0 | 175.0 | 188.461 |
+| XLK | 0.007 (approx. real yield) | −344,766 | 224,086,287 | 0.15 % | 200.0 | 175.0 | 188.399 |
+| XLU | 0.013 (current default) | −27,144,886 | 177,397,167 | 15.30 % | 44.0 | 40.0 | 43.608 |
+| XLU | 0.030 (approx. real yield) | −30,803,613 | 177,299,531 | 17.37 % | 44.0 | 40.0 | 43.683 |
+
+Two different pictures, and both are informative:
+
+- **XLK is DIA's case, not GLD's.** Its net GEX is 0.15–0.40 % of its gross absolute gamma on
+  this capture — an order of magnitude below the report page's noise-dominated floor either
+  way — so the ±61 % swing in the *net* number under the carry correction is a swing in a
+  quantity that was never trustworthy as a directional signal to begin with. The correct
+  reading of an XLK row is "noise-dominated," identically to DIA's §9 case, regardless of which
+  `q` produced the number. Report it that way; do not read a sign flip here as market-moving
+  when the underlying quantity was noise both times.
+- **XLU is a real signal, and it moves but does not flip.** At 15.3–17.4 % of gross, XLU's net
+  GEX is well clear of the noise floor under both yields, and the carry correction *increases*
+  the magnitude of an already-negative (short-gamma) reading rather than flipping its sign —
+  the opposite direction from DIA's flip in §9. A high-yield sector's dealer-positioning
+  reading is directionally trustworthy at the current global default, but the *magnitude*
+  (15.3 % vs 17.4 %) is sensitive enough that T33's per-expiry carry fit still matters for
+  anything that reads the number quantitatively rather than just its sign.
+- **Walls are unaffected on both symbols** (XLK 200/175, XLU 44/40, identical at both yields) —
+  the same `argmax`/`argmin`-over-a-discrete-grid robustness §9 documents for GLD/DIA, not a
+  new result specific to these two.
+
+**Do not special-case per-symbol dividend yields here**, for the identical reason §9 gives for
+DIA: T33's per-expiry carry fit from put-call parity is the right level to fix this at, for all
+28 symbols (five core plus 23 extended) at once. A regime-board verdict (T48) reading a sector
+ETF's positioning should gate on the same noise-dominated floor the report page already uses,
+which is exactly what makes XLK's case safe to report today even with the carry parameter
+still wrong for it.
+
+### Storage estimate
+
+Measured by writing the same two full 2026-09-09 captures (XLK: 2,336 contracts → 117,887
+bytes; XLU: 1,004 contracts → 55,895 bytes) through the real `write_snapshot` Parquet writer:
+**~50–56 bytes per contract**, consistent with the core five's own Parquet files. Summed across
+all 23 verified symbols' live contract counts (51,924 contracts total on 2026-09-09), one
+16:45 ET capture cycle writes approximately **51,924 × ~53 bytes ≈ 2.75 MB/day**, or
+**~693 MB/year** at 252 US trading days — on top of whatever the core five's 16:20 job already
+writes. Negligible against typical local disk budgets, and the free-tier constraint this
+project runs under (PLAN.md's <$50/mo target) is compute and API access, not storage.

@@ -179,3 +179,54 @@ def test_bars_health_reports_fresh_when_todays_bar_exists(client, session_factor
     assert bars_symbols["QQQ"]["last_bar_date"] is None
     assert bars_symbols["QQQ"]["stale"] is True
     assert body["bars"]["stale_count"] == 1
+
+
+# --- T47: additive `extended` block --------------------------------------------------------
+
+
+def test_capture_health_response_carries_an_extended_block(client, session_factory):
+    """Additive per the T47 brief: the existing `symbols` shape (the core five, the P0
+    capture) is untouched -- covered by every test above -- and a new `extended` key appears
+    alongside it, one row per `settings.extended_symbols`."""
+    from app import config
+
+    response = client.get("/api/health/capture")
+    assert response.status_code == 200
+    body = response.json()
+    assert "extended" in body
+    assert {s["underlying"] for s in body["extended"]} == set(config.settings.extended_symbols)
+    # The core block must be exactly the five it always was -- an extended symbol appearing
+    # there (or a core one leaking into `extended`) would defeat the whole point of the split.
+    assert {s["underlying"] for s in body["symbols"]} == {"SPX", "SPY", "QQQ", "GLD", "DIA"}
+
+
+def test_capture_health_extended_symbols_report_stale_on_an_empty_db(client, session_factory):
+    response = client.get("/api/health/capture")
+    body = response.json()
+    for entry in body["extended"]:
+        assert entry["last_capture_at"] is None
+        assert entry["last_eod_capture_at"] is None
+        assert entry["eod_captured_today"] is False
+        assert entry["stale"] is True
+
+
+def test_capture_health_extended_symbol_reports_healthy_when_todays_eod_row_exists(
+    client, session_factory, monkeypatch
+):
+    _freeze_now(monkeypatch, dt.datetime(2026, 9, 4, 21, 45, tzinfo=dt.UTC))
+
+    captured_at = dt.datetime(2026, 9, 4, 20, 45, tzinfo=dt.UTC)
+    _add_snapshot(session_factory, "XLK", captured_at, is_eod=True)
+
+    response = client.get("/api/health/capture")
+
+    assert response.status_code == 200
+    body = response.json()
+    xlk = next(s for s in body["extended"] if s["underlying"] == "XLK")
+    assert xlk["eod_captured_today"] is True
+    assert xlk["last_eod_capture_at"] is not None
+    assert xlk["stale"] is False
+    # A fresh extended capture must not be conflated with the core block's staleness -- SPX
+    # (etc.) never got a snapshot in this test, so it stays stale.
+    spx = next(s for s in body["symbols"] if s["underlying"] == "SPX")
+    assert spx["stale"] is True

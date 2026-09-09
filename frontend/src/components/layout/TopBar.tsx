@@ -3,16 +3,34 @@
  * deliverable list, verbatim. All three data controls read/write URL state
  * (`useDashboardParams`) so nothing here holds its own copy of "what's selected".
  */
-import { EXPIRY_FILTERS, EXPIRY_FILTER_LABELS, UNDERLYINGS, type Underlying } from '../../api/types';
+import {
+  CORE_UNDERLYINGS,
+  EXPIRY_FILTERS,
+  EXPIRY_FILTER_LABELS,
+  EXTENDED_UNDERLYINGS,
+  type Underlying,
+} from '../../api/types';
 import { useGexResult, useSnapshots } from '../../api/queries';
 import { useDashboardParams } from '../../state/urlState';
 import { formatFreshness, formatNyDateTime } from '../../lib/time';
 import { ThemeToggle } from './ThemeToggle';
 
-function SymbolSwitcher({ symbol, onChange }: { symbol: Underlying; onChange: (s: Underlying) => void }) {
+function SymbolGroup({
+  label,
+  symbols,
+  symbol,
+  onChange,
+  className,
+}: {
+  label: string;
+  symbols: readonly Underlying[];
+  symbol: Underlying;
+  onChange: (s: Underlying) => void;
+  className?: string;
+}) {
   return (
-    <div role="group" aria-label="Symbol" className="symbol-switcher">
-      {UNDERLYINGS.map((sym) => (
+    <div role="group" aria-label={label} className={className ? `symbol-switcher ${className}` : 'symbol-switcher'}>
+      {symbols.map((sym) => (
         <button
           key={sym}
           type="button"
@@ -29,6 +47,26 @@ function SymbolSwitcher({ symbol, onChange }: { symbol: Underlying; onChange: (s
           {sym}
         </button>
       ))}
+    </div>
+  );
+}
+
+/** T47: the switcher gains a second group -- `CORE_UNDERLYINGS` (the 16:20 EOD five, unchanged
+ * from T12/T36) and `EXTENDED_UNDERLYINGS` (T47's sector/industry ETFs, captured separately at
+ * 16:45 ET). Two `role="group"` regions rather than one flat list of 28 buttons, so a screen
+ * reader (and a human) can tell "the P0 five" from "everything else" the same way
+ * `/api/health/capture`'s `symbols`/`extended` split does on the backend. */
+function SymbolSwitcher({ symbol, onChange }: { symbol: Underlying; onChange: (s: Underlying) => void }) {
+  return (
+    <div className="symbol-switcher-groups">
+      <SymbolGroup label="Symbol" symbols={CORE_UNDERLYINGS} symbol={symbol} onChange={onChange} />
+      <SymbolGroup
+        label="Symbol (extended)"
+        symbols={EXTENDED_UNDERLYINGS}
+        symbol={symbol}
+        onChange={onChange}
+        className="symbol-switcher--extended"
+      />
     </div>
   );
 }

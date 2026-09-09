@@ -90,12 +90,40 @@ _USER_AGENT = (
 # GLD and DIA (T38) are ETFs like SPY/QQQ -- verified live 2026-09-05 at the bare-ticker URL
 # (.../options/GLD.json, .../options/DIA.json). The underscore prefix is for index roots
 # only; do not add one for these.
+#
+# T47's 23 sector/industry ETFs are ETFs the same way -- bare ticker, no underscore -- and
+# every one of them was verified live 2026-09-09 at exactly this URL shape (200, non-empty
+# `data.options`, single root == ticker). See `app.models.chain.Underlying` for the per-symbol
+# contract/expiry counts recorded at verification time.
 _VENDOR_SYMBOL: dict[Underlying, str] = {
     Underlying.SPX: "_SPX",
     Underlying.SPY: "SPY",
     Underlying.QQQ: "QQQ",
     Underlying.GLD: "GLD",
     Underlying.DIA: "DIA",
+    Underlying.XLK: "XLK",
+    Underlying.XLF: "XLF",
+    Underlying.XLE: "XLE",
+    Underlying.XLV: "XLV",
+    Underlying.XLI: "XLI",
+    Underlying.XLY: "XLY",
+    Underlying.XLP: "XLP",
+    Underlying.XLU: "XLU",
+    Underlying.XLB: "XLB",
+    Underlying.XLRE: "XLRE",
+    Underlying.XLC: "XLC",
+    Underlying.IWM: "IWM",
+    Underlying.SMH: "SMH",
+    Underlying.XBI: "XBI",
+    Underlying.KRE: "KRE",
+    Underlying.XOP: "XOP",
+    Underlying.TLT: "TLT",
+    Underlying.HYG: "HYG",
+    Underlying.EEM: "EEM",
+    Underlying.FXI: "FXI",
+    Underlying.SLV: "SLV",
+    Underlying.USO: "USO",
+    Underlying.GDX: "GDX",
 }
 
 _NY = ZoneInfo("America/New_York")
@@ -338,6 +366,9 @@ if __name__ == "__main__":
     import sys
 
     if len(sys.argv) != 2:
-        print("usage: python -m app.providers.cboe SPX|SPY|QQQ|GLD|DIA", file=sys.stderr)
+        print(
+            "usage: python -m app.providers.cboe SPX|SPY|QQQ|GLD|DIA|<extended symbol>",
+            file=sys.stderr,
+        )
         raise SystemExit(2)
     asyncio.run(_run_cli(sys.argv[1]))

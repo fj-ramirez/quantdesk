@@ -61,6 +61,10 @@ async def _fetch(symbol: str, fixture: str, **kwargs: Any):
         # payload below.
         ("GLD", "gld.json", 154, 3),
         ("DIA", "dia.json", 146, 3),
+        # T47: one representative sector ETF from the 23 verified live 2026-09-09 (see
+        # `app/models/chain.py`'s `Underlying` enum for the full list and per-symbol counts).
+        # Same bare-ticker URL shape as GLD/DIA, single root == ticker.
+        ("XLK", "xlk.json", 154, 2),
     ],
 )
 async def test_fixture_contract_count(symbol, fixture, expected_count, expected_min_expiries):
@@ -127,6 +131,22 @@ async def test_dia_fixture_is_pm_settled_single_root():
     assert set(snapshot.roots) == {"DIA"}
     assert {c.settlement.value for c in snapshot.contracts} == {"PM"}
     assert all(c.underlying == Underlying.DIA for c in snapshot.contracts)
+
+
+async def test_xlk_fixture_is_pm_settled_single_root():
+    """T47: every sector/industry ETF is a single-root, P.M.-settled ETF, same as GLD/DIA --
+    verified live for all 23 on 2026-09-09; XLK stands in for the group here."""
+    snapshot = await _fetch("XLK", "xlk.json")
+    assert set(snapshot.roots) == {"XLK"}
+    assert {c.settlement.value for c in snapshot.contracts} == {"PM"}
+    assert all(c.underlying == Underlying.XLK for c in snapshot.contracts)
+    # Decimal-fraction IV, not percent -- the same "median IV under 1.0" smoke test
+    # `docs/schema.md` prescribes for SPX, now pinned for an extended symbol too. Not `all`:
+    # deep ITM/OTM inversion artifacts produce genuinely large individual IVs on XLK exactly
+    # as they do on SPX (docs/schema.md's "Extreme IVs are real" note) -- the trimmed fixture's
+    # tail slice (a far-dated expiry) includes some.
+    ivs = sorted(c.iv for c in snapshot.contracts if c.iv is not None)
+    assert ivs and ivs[len(ivs) // 2] < 1.0
 
 
 async def test_gld_known_contract_maps_fields_correctly():
@@ -202,10 +222,14 @@ async def test_spot_is_current_price():
 
 
 async def test_unsupported_symbol_raises_without_network():
-    """Validation happens before any request is built, so no client/transport is needed."""
+    """Validation happens before any request is built, so no client/transport is needed.
+
+    T47 note: this used to use "IWM" as the example unsupported symbol -- it was true when
+    written, but T47 added IWM as a real `Underlying` member, so it stopped exercising this
+    path. "ZZZZ" is not, and never will be, a symbol this application tracks."""
     provider = CboeProvider()
     with pytest.raises(SymbolNotSupported):
-        await provider.fetch_chain("IWM")
+        await provider.fetch_chain("ZZZZ")
 
 
 async def test_unknown_root_contract_is_skipped_not_fatal(caplog):
