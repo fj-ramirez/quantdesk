@@ -2,12 +2,23 @@
 
 MAINTENANCE — READ THIS BEFORE THE LIST RUNS OUT
 --------------------------------------------------
-``_HOLIDAYS_BY_YEAR`` below covers **2026 and 2027 only**. It must be extended with the
+``_HOLIDAYS_BY_YEAR`` below covers **2021 through 2027**. It must be extended with the
 following year's NYSE/Cboe holiday dates well before December 31, 2027 (nyse.com publishes
 each year's calendar more than a year in advance, so there is no reason to wait). This is a
 hardcoded list by design (T05's brief) rather than a `holidays`-style package dependency —
 simple, auditable, zero extra dependency — but that means it goes stale silently unless this
 module is deliberately loud about it.
+
+Why the table reaches backwards as well as forwards (2026-09-09)
+------------------------------------------------------------------
+It originally held 2026-2027 only, which was right when the sole caller was a scheduler
+deciding whether to capture *today*. The bars era (T42) made that assumption wrong in a way
+that bit three tasks running: `daily_bars` holds five years of history, and anything reasoning
+over a historical window asks this module about dates long before 2026. Under the old table
+those years resolved as "not a holiday" (the deliberate never-skip-on-ignorance default below)
+*and* logged at ERROR once per query — so T43's gap detector, asked to count expected trading
+days across a 126-bar lookback, both mis-counted and threatened a log flood. 2021 is the
+earliest date the T42 backfill stores, so the table now spans exactly the data that exists.
 
 Why "loud, and biased toward capturing" rather than "loud, and refuse to guess"
 --------------------------------------------------------------------------------
@@ -78,6 +89,88 @@ _TZ = ZoneInfo(settings.TZ)
 # the Easter date) — verify against nyse.com/markets/hours-calendars before trusting blindly in
 # a year not shown here.
 _HOLIDAYS_BY_YEAR: dict[int, frozenset[dt.date]] = {
+    # 2021-2025 added 2026-09-09 for the historical-window callers described in the module
+    # docstring. Derived from the same NYSE observance rules as the forward years and then
+    # checked against nyse.com's published calendars; the three places the mechanical rules
+    # and reality diverge are called out inline, because a future regeneration from rules
+    # alone would silently reintroduce them.
+    2021: frozenset(
+        {
+            dt.date(2021, 1, 1),  # New Year's Day
+            dt.date(2021, 1, 18),  # Martin Luther King, Jr. Day
+            dt.date(2021, 2, 15),  # Washington's Birthday
+            dt.date(2021, 4, 2),  # Good Friday
+            dt.date(2021, 5, 31),  # Memorial Day
+            # No Juneteenth: it became a federal holiday in June 2021, too late for the NYSE
+            # to observe it that year. First observed 2022.
+            dt.date(2021, 7, 5),  # Independence Day (observed; July 4 is a Sunday)
+            dt.date(2021, 9, 6),  # Labor Day
+            dt.date(2021, 11, 25),  # Thanksgiving Day
+            dt.date(2021, 12, 24),  # Christmas Day (observed; Dec 25 is a Saturday)
+        }
+    ),
+    2022: frozenset(
+        {
+            # No New Year's Day. Jan 1, 2022 fell on a Saturday, and the NYSE's
+            # Saturday-holidays-move-to-Friday rule has an explicit carve-out for New Year's:
+            # it does NOT close the preceding Dec 31. The market traded Dec 31, 2021.
+            dt.date(2022, 1, 17),  # Martin Luther King, Jr. Day
+            dt.date(2022, 2, 21),  # Washington's Birthday
+            dt.date(2022, 4, 15),  # Good Friday
+            dt.date(2022, 5, 30),  # Memorial Day
+            dt.date(2022, 6, 20),  # Juneteenth (observed; June 19 is a Sunday)
+            dt.date(2022, 7, 4),  # Independence Day
+            dt.date(2022, 9, 5),  # Labor Day
+            dt.date(2022, 11, 24),  # Thanksgiving Day
+            dt.date(2022, 12, 26),  # Christmas Day (observed; Dec 25 is a Sunday)
+        }
+    ),
+    2023: frozenset(
+        {
+            dt.date(2023, 1, 2),  # New Year's Day (observed; Jan 1 is a Sunday)
+            dt.date(2023, 1, 16),  # Martin Luther King, Jr. Day
+            dt.date(2023, 2, 20),  # Washington's Birthday
+            dt.date(2023, 4, 7),  # Good Friday
+            dt.date(2023, 5, 29),  # Memorial Day
+            dt.date(2023, 6, 19),  # Juneteenth National Independence Day
+            dt.date(2023, 7, 4),  # Independence Day
+            dt.date(2023, 9, 4),  # Labor Day
+            dt.date(2023, 11, 23),  # Thanksgiving Day
+            dt.date(2023, 12, 25),  # Christmas Day
+        }
+    ),
+    2024: frozenset(
+        {
+            dt.date(2024, 1, 1),  # New Year's Day
+            dt.date(2024, 1, 15),  # Martin Luther King, Jr. Day
+            dt.date(2024, 2, 19),  # Washington's Birthday
+            dt.date(2024, 3, 29),  # Good Friday
+            dt.date(2024, 5, 27),  # Memorial Day
+            dt.date(2024, 6, 19),  # Juneteenth National Independence Day
+            dt.date(2024, 7, 4),  # Independence Day
+            dt.date(2024, 9, 2),  # Labor Day
+            dt.date(2024, 11, 28),  # Thanksgiving Day
+            dt.date(2024, 12, 25),  # Christmas Day
+        }
+    ),
+    2025: frozenset(
+        {
+            dt.date(2025, 1, 1),  # New Year's Day
+            # Not derivable from any recurring rule: the NYSE closed for a National Day of
+            # Mourning for former President Jimmy Carter. Ad-hoc closures like this one (the
+            # 2018 Bush closure is the prior example) exist and must be added by hand.
+            dt.date(2025, 1, 9),  # National Day of Mourning (Jimmy Carter)
+            dt.date(2025, 1, 20),  # Martin Luther King, Jr. Day
+            dt.date(2025, 2, 17),  # Washington's Birthday
+            dt.date(2025, 4, 18),  # Good Friday
+            dt.date(2025, 5, 26),  # Memorial Day
+            dt.date(2025, 6, 19),  # Juneteenth National Independence Day
+            dt.date(2025, 7, 4),  # Independence Day
+            dt.date(2025, 9, 1),  # Labor Day
+            dt.date(2025, 11, 27),  # Thanksgiving Day
+            dt.date(2025, 12, 25),  # Christmas Day
+        }
+    ),
     2026: frozenset(
         {
             dt.date(2026, 1, 1),  # New Year's Day

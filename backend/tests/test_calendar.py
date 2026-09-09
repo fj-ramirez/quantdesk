@@ -160,3 +160,71 @@ def test_effective_data_time_never_mutates_input():
     before = captured_at
     effective_data_time(captured_at, 15)
     assert captured_at == before
+
+
+# --- Historical years (added 2026-09-09; see the module docstring's "reaches backwards" note)
+
+
+def test_table_covers_every_year_the_bars_backfill_reaches():
+    """`daily_bars` holds five years of history, and T43's gap detector asks this module about
+    every date in a lookback window. A year missing from the table resolves as "not a holiday"
+    and logs at ERROR once per query -- correct for a scheduler deciding about *today*, wrong
+    and noisy for a historical window. 2021 is the earliest date T42's backfill stores.
+    """
+    from app.jobs.calendar import _HOLIDAYS_BY_YEAR
+
+    assert set(_HOLIDAYS_BY_YEAR) == set(range(2021, 2028))
+
+
+def test_nyse_does_not_close_for_a_saturday_new_years_day():
+    """Jan 1, 2022 was a Saturday. The NYSE's move-Saturday-holidays-to-Friday rule carves out
+    New Year's Day specifically: the market traded Dec 31, 2021. Deriving the table from the
+    generic observance rule would wrongly close it, so this pins the exception.
+    """
+    assert is_trading_day(dt.date(2021, 12, 31)) is True
+    assert is_market_holiday(dt.date(2022, 1, 1)) is False  # a Saturday, not an observed day
+
+
+def test_ad_hoc_national_day_of_mourning_is_a_holiday():
+    """Not derivable from any recurring rule: the NYSE closed 2025-01-09 for Jimmy Carter's
+    National Day of Mourning. Ad-hoc closures must be hand-added, and a regeneration from
+    rules alone would drop this one.
+    """
+    assert is_market_holiday(dt.date(2025, 1, 9)) is True
+    assert is_trading_day(dt.date(2025, 1, 9)) is False
+
+
+@pytest.mark.parametrize(
+    ("day", "name"),
+    [
+        (dt.date(2021, 11, 25), "Thanksgiving 2021"),
+        (dt.date(2022, 6, 20), "Juneteenth observed 2022 (first NYSE observance)"),
+        (dt.date(2023, 1, 2), "New Year's observed 2023"),
+        (dt.date(2024, 3, 29), "Good Friday 2024"),
+        (dt.date(2025, 4, 18), "Good Friday 2025"),
+    ],
+)
+def test_sampled_historical_holidays(day, name):
+    assert is_market_holiday(day) is True, name
+
+
+def test_juneteenth_was_not_observed_in_2021():
+    """It became a federal holiday in June 2021, too late for the NYSE to observe it that
+    year; first observed in 2022. An off-by-one-year here would misalign every 2021 window.
+    """
+    assert is_market_holiday(dt.date(2021, 6, 18)) is False
+    assert is_market_holiday(dt.date(2021, 6, 19)) is False
+
+
+def test_historical_years_are_never_asked_about_without_data(caplog):
+    """The whole point of extending the table: a historical query must not log at ERROR.
+
+    T43's gap detector calls `is_trading_day` once per date across a lookback window, so a
+    year resolving through the stale-calendar path would emit one ERROR per date.
+    """
+    with caplog.at_level(logging.ERROR, logger="app.jobs.calendar"):
+        day = dt.date(2021, 9, 10)
+        while day <= dt.date(2026, 9, 8):
+            is_trading_day(day)
+            day += dt.timedelta(days=1)
+    assert caplog.records == []
