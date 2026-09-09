@@ -6,6 +6,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
+from app.api.bars import router as bars_router
 from app.api.chains import router as chains_router
 from app.api.gex import router as gex_router
 from app.api.health import router as health_router
@@ -73,6 +74,7 @@ app.include_router(health_router, prefix="/api")
 app.include_router(gex_router, prefix="/api")
 app.include_router(chains_router, prefix="/api")
 app.include_router(report_router, prefix="/api")
+app.include_router(bars_router, prefix="/api")
 
 
 @app.get("/health")

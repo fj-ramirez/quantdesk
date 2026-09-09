@@ -19,7 +19,9 @@ from __future__ import annotations
 import datetime as dt
 
 from sqlalchemy import (
+    BigInteger,
     Boolean,
+    Date,
     DateTime,
     Float,
     ForeignKey,
@@ -37,6 +39,7 @@ from app.config import settings
 
 __all__ = [
     "Base",
+    "DailyBar",
     "GexByStrike",
     "GexLevel",
     "Snapshot",
@@ -229,6 +232,64 @@ class GexByStrike(Base):
         return (
             f"<GexByStrike snapshot_id={self.snapshot_id} filter={self.filter!r} "
             f"strike={self.strike!r} net_gex={self.net_gex!r}>"
+        )
+
+
+class DailyBar(Base):
+    """One symbol's OHLCV summary for one exchange-local trading date (T42,
+    plans/continuation/00-foundation-daily-bars.md).
+
+    Unlike `Snapshot`/`GexLevel`/`GexByStrike`, this table's rows are not derived from anything
+    in Parquet -- CLAUDE.md invariant 5 ("per-contract rows live only in Parquet") is about
+    option contracts specifically; bars are a different, small dataset (roughly 80 symbols x 5
+    years, on the order of 100k rows) that every scan query filters and joins against, which is
+    exactly what Postgres is for, per the plan's own "Storage is Postgres" design note.
+
+    `date` is a plain SQLAlchemy `Date`, not `UTCDateTime` -- a daily bar has no instant, only
+    an exchange-local calendar date (see `app.models.bars.DailyBar`'s own docstring), so the
+    tz-aware-instant machinery `UTCDateTime` exists for does not apply here. `Date` round-trips
+    to a real `datetime.date` on both SQLite (tests) and Postgres (production) without a custom
+    `TypeDecorator` -- verified by `tests/test_bars_repository.py`, which asserts the type on
+    read rather than merely the value, per the plan's called-out Windows/SQLite hazard.
+
+    Unique on `(symbol, date)`: `upsert_bars` (`app.storage.bars_repository`) relies on this
+    constraint to decide insert-vs-update, and it is what makes a re-run of the bars job or the
+    backfill CLI idempotent rather than accumulating duplicate rows for a date already stored.
+    Indexed on `symbol` alone as well, since every read (`read_bars`, `last_bar_date`,
+    `read_universe_closes`) starts from "this symbol" before narrowing by date.
+    """
+
+    __tablename__ = "daily_bars"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    symbol: Mapped[str] = mapped_column(String(16), nullable=False)
+    date: Mapped[dt.date] = mapped_column(Date, nullable=False)
+    open: Mapped[float] = mapped_column(Float, nullable=False)
+    high: Mapped[float] = mapped_column(Float, nullable=False)
+    low: Mapped[float] = mapped_column(Float, nullable=False)
+    close: Mapped[float] = mapped_column(Float, nullable=False)
+    # None means "vendor did not report volume"; 0 means "reported, genuinely zero" (^VIX).
+    # Never collapse the two -- CLAUDE.md invariant 3, applied to volume instead of open
+    # interest. See app.models.bars.DailyBar's own docstring for the full rationale.
+    #
+    # BigInteger, not Integer: index volume overflows int4. ^GSPC (SPX) prints on the order of
+    # 4.97e9 shares a day against Postgres's int4 ceiling of 2_147_483_647, so `Integer` here
+    # raised `NumericValueOutOfRange` on the very first real SPX backfill. Nothing in the test
+    # suite caught it because SQLite's INTEGER is 64-bit and accepts the value silently -- the
+    # same SQLite-accepts-what-Postgres-rejects trap `UTCDateTime` above exists for. Any column
+    # holding a share/contract count for an *index* needs 64 bits.
+    volume: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
+    source: Mapped[str] = mapped_column(String(32), nullable=False)
+
+    __table_args__ = (
+        UniqueConstraint("symbol", "date", name="uq_daily_bars_symbol_date"),
+        Index("ix_daily_bars_symbol", "symbol"),
+    )
+
+    def __repr__(self) -> str:  # pragma: no cover - debugging aid only
+        return (
+            f"<DailyBar symbol={self.symbol!r} date={self.date.isoformat()!r} "
+            f"close={self.close!r} volume={self.volume!r}>"
         )
 
 

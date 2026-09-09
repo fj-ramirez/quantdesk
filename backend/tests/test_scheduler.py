@@ -14,8 +14,10 @@ from zoneinfo import ZoneInfo
 
 from app.jobs import scheduler as scheduler_module
 from app.jobs.scheduler import (
+    BARS_JOB_ID,
     EOD_JOB_ID,
     SAFETY_NET_JOB_ID,
+    bars_update_job,
     build_scheduler,
     capture_eod_job,
     capture_eod_safety_net_job,
@@ -168,5 +170,70 @@ async def test_capture_eod_safety_net_job_survives_an_unexpected_exception(monke
 
     with caplog.at_level(logging.ERROR, logger="app.jobs.scheduler"):
         await capture_eod_safety_net_job()  # must not raise
+
+    assert any("unexpected top-level failure" in r.message for r in caplog.records)
+
+
+# --- T42: 17:30 NY daily-bars job -- additive, must never affect the option capture -----------
+
+
+def test_build_scheduler_registers_bars_job():
+    scheduler = build_scheduler()
+    job = scheduler.get_job(BARS_JOB_ID)
+    assert job is not None
+    assert job.max_instances == 1
+    assert job.misfire_grace_time is None
+    assert job.coalesce is True
+
+
+def test_build_scheduler_bars_job_trigger_is_mon_fri_1730_ny():
+    scheduler = build_scheduler()
+    job = scheduler.get_job(BARS_JOB_ID)
+    trigger = job.trigger
+    field_strs = {f.name: str(f) for f in trigger.fields}
+    assert field_strs["hour"] == "17"
+    assert field_strs["minute"] == "30"
+    assert field_strs["day_of_week"] == "mon-fri"
+    assert str(trigger.timezone) == "America/New_York"
+
+
+def test_build_scheduler_still_registers_the_two_option_capture_jobs_unchanged():
+    """P0 guardrail: adding the bars job must not touch the existing EOD/safety-net jobs."""
+    scheduler = build_scheduler()
+    assert scheduler.get_job(EOD_JOB_ID) is not None
+    assert scheduler.get_job(SAFETY_NET_JOB_ID) is not None
+    assert {job.id for job in scheduler.get_jobs()} == {
+        EOD_JOB_ID,
+        SAFETY_NET_JOB_ID,
+        BARS_JOB_ID,
+    }
+
+
+async def test_bars_update_job_delegates_to_update_bars_job(monkeypatch):
+    called = False
+
+    async def fake_update_bars_job(*args, **kwargs):
+        nonlocal called
+        called = True
+        return []
+
+    monkeypatch.setattr(scheduler_module, "update_bars_job", fake_update_bars_job)
+
+    await bars_update_job()
+
+    assert called is True
+
+
+async def test_bars_update_job_survives_an_unexpected_exception(monkeypatch, caplog):
+    """P0 guardrail: a bug in the bars pipeline must not be capable of taking the scheduler
+    thread down with it, which would silently deregister the option-capture jobs too."""
+
+    async def boom(*args, **kwargs):
+        raise RuntimeError("yahoo is unreachable")
+
+    monkeypatch.setattr(scheduler_module, "update_bars_job", boom)
+
+    with caplog.at_level(logging.ERROR, logger="app.jobs.scheduler"):
+        await bars_update_job()  # must not raise
 
     assert any("unexpected top-level failure" in r.message for r in caplog.records)

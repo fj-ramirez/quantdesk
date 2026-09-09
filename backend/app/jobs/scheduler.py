@@ -19,13 +19,16 @@ from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.cron import CronTrigger
 
 from app.config import settings
+from app.jobs.bars import update_bars_job
 from app.jobs.calendar import is_trading_day
 from app.jobs.capture import capture_all_symbols
 from app.jobs.catchup import catch_up_missed_eod
 
 __all__ = [
+    "BARS_JOB_ID",
     "EOD_JOB_ID",
     "SAFETY_NET_JOB_ID",
+    "bars_update_job",
     "build_scheduler",
     "capture_eod_job",
     "capture_eod_safety_net_job",
@@ -35,6 +38,7 @@ logger = logging.getLogger("app.jobs.scheduler")
 
 EOD_JOB_ID = "capture_eod"
 SAFETY_NET_JOB_ID = "capture_eod_safety_net"
+BARS_JOB_ID = "bars_update"
 
 # `settings.TZ` (default "America/New_York") drives both the trigger's wall-clock time and
 # the weekday/holiday check inside the job -- if this were ever pointed at another zone, both
@@ -90,6 +94,26 @@ async def capture_eod_safety_net_job() -> None:
         logger.exception("capture_eod_safety_net_job: unexpected top-level failure")
 
 
+async def bars_update_job() -> None:
+    """17:30 ET daily-bars update (T42), scheduled well after the 16:20 EOD capture and its
+    20:00 safety net so the two data pipelines never compete for a slow evening connection.
+
+    **P0 guardrail (T42 brief): a bars failure must be structurally incapable of affecting the
+    option capture.** `update_bars_job` already turns every provider failure into a logged
+    `BarUpdateResult` per symbol rather than raising (see its own docstring), but this wrapper
+    exists for the same belt-and-suspenders reason `capture_eod_job` wraps
+    `capture_all_symbols`: a future bug in this job must not be able to crash the scheduler
+    thread and silently deregister *every* job on it, `capture_eod`/`capture_eod_safety_net`
+    included. No trading-day guard is applied here (unlike `capture_eod_job`) -- Yahoo serves
+    bars for weekends and holidays too (simply repeating the prior close), so there is no
+    "closed today" case worth special-casing the way there is for a live options chain.
+    """
+    try:
+        await update_bars_job()
+    except Exception:  # must never take the scheduler thread down with it
+        logger.exception("bars_update_job: unexpected top-level failure")
+
+
 def build_scheduler() -> AsyncIOScheduler:
     """Construct (but do not start) the scheduler with `capture_eod` registered.
 
@@ -131,6 +155,21 @@ def build_scheduler() -> AsyncIOScheduler:
         trigger=CronTrigger(day_of_week="mon-fri", hour=20, minute=0, timezone=_TZ),
         id=SAFETY_NET_JOB_ID,
         name="EOD capture safety net (catches a missed 16:20 run)",
+        coalesce=True,
+        misfire_grace_time=None,
+        max_instances=1,
+        replace_existing=True,
+    )
+    # T42: daily bars, additive -- registered on its own job id/trigger, sharing only the
+    # scheduler instance with the two option-capture jobs above, never their code path. Same
+    # misfire/coalesce policy for the same reason as the EOD jobs: a bars update hours late
+    # (laptop asleep, container down) is still better than one that never ran, since a missed
+    # day is a permanent gap in the free Yahoo source's history this app keeps.
+    scheduler.add_job(
+        bars_update_job,
+        trigger=CronTrigger(day_of_week="mon-fri", hour=17, minute=30, timezone=_TZ),
+        id=BARS_JOB_ID,
+        name="Daily bars update (SCAN_UNIVERSE)",
         coalesce=True,
         misfire_grace_time=None,
         max_instances=1,

@@ -24,6 +24,8 @@ from app.jobs.catchup import (
     last_completed_trading_day,
     previous_trading_day,
 )
+from app.storage.bars_repository import get_session_factory as get_bars_session_factory
+from app.storage.bars_repository import last_bar_date
 from app.storage.repository import SnapshotRepository
 
 __all__ = ["router"]
@@ -46,9 +48,32 @@ class SymbolCaptureHealth(BaseModel):
     stale: bool
 
 
+class SymbolBarsHealth(BaseModel):
+    """T42: per-symbol freshness for `daily_bars`, same shape as `SymbolCaptureHealth` above
+    but keyed on `symbol` (a `SCAN_UNIVERSE` ticker, which may not have an option chain at all)
+    rather than `underlying`.
+    """
+
+    symbol: str
+    last_bar_date: dt.date | None
+    stale: bool
+
+
+class BarsHealthBlock(BaseModel):
+    """T42 addition to `CaptureHealthResponse` -- a bars-job outage must be visible the same
+    way a broken option capture already is, per the plan's "What the user sees" section.
+    """
+
+    symbols: list[SymbolBarsHealth]
+    stale_count: int
+
+
 class CaptureHealthResponse(BaseModel):
     generated_at: dt.datetime
     symbols: list[SymbolCaptureHealth]
+    #: T42, additive: daily-bars freshness alongside option-capture freshness. Existing fields
+    #: above are untouched -- see this task's "additive only" constraint on `app/api/health.py`.
+    bars: BarsHealthBlock
 
 
 def _is_stale(last_eod_date: dt.date | None, completed: dt.date) -> bool:
@@ -63,6 +88,27 @@ def _is_stale(last_eod_date: dt.date | None, completed: dt.date) -> bool:
     if last_eod_date is None:
         return True
     return last_eod_date < previous_trading_day(completed)
+
+
+def _bars_health(completed: dt.date) -> BarsHealthBlock:
+    """T42: per-symbol `daily_bars` freshness for every symbol in `settings.scan_universe`.
+
+    Reuses `_is_stale`'s exact rule (more than one trading day behind `completed`) rather than
+    a separate bars-specific threshold -- the bars job runs well after the close (17:30 ET,
+    same evening as the option EOD capture's 16:20 run and 20:00 safety net), so "stale"
+    meaning the same thing in both blocks keeps one alerting rule instead of two a human has to
+    remember are different.
+    """
+    session_factory = get_bars_session_factory()
+    symbols_out: list[SymbolBarsHealth] = []
+    stale_count = 0
+    for symbol in settings.scan_universe:
+        last = last_bar_date(symbol, session_factory=session_factory)
+        stale = _is_stale(last, completed)
+        if stale:
+            stale_count += 1
+        symbols_out.append(SymbolBarsHealth(symbol=symbol, last_bar_date=last, stale=stale))
+    return BarsHealthBlock(symbols=symbols_out, stale_count=stale_count)
 
 
 @router.get("/capture", response_model=CaptureHealthResponse)
@@ -104,4 +150,6 @@ def capture_health() -> CaptureHealthResponse:
                     stale=stale,
                 )
             )
-    return CaptureHealthResponse(generated_at=now, symbols=symbols_out)
+    return CaptureHealthResponse(
+        generated_at=now, symbols=symbols_out, bars=_bars_health(completed)
+    )
