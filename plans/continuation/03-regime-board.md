@@ -130,6 +130,40 @@ Acceptance: verdict cell expands to reasons; noise-dominated rows are visibly di
 carry no verdict colour; clicking a symbol navigates to `/?symbol=XLK` preserving the filter;
 `npm test` and `npm run lint` pass; supervisor sees live rows.
 
+## The 0DTE share is not derivable from an EOD snapshot (measured 2026-09-09)
+
+T48's brief says to check whether `gex_by_strike` can support the 0DTE share and to return
+`None` rather than estimate if it cannot. Measured against the live 16:20 SPY EOD snapshot
+(id 38, `captured_at` 2026-09-09T20:19:27Z): **it cannot.**
+
+```
+/api/gex/SPY/latest?filter=ALL       -> 483 by-strike rows
+/api/gex/SPY/latest?filter=ZERO_DTE  ->   0 by-strike rows
+```
+
+The reason is structural, not a storage gap. That snapshot's earliest expiry is **2026-09-10
+(dte=1)**; the same-day expiry is already gone from Cboe's payload, and the engine's own
+diagnostics count `expired: 330` contracts dropped. `GexByStrike`'s docstring states the
+consequence directly: "a filter that admits nothing (`ZERO_DTE` after the close) simply writes
+zero rows for that filter". So the ratio-of-two-filters derivation the brief suggests evaluates
+to `0 / 483` on every EOD row, for every symbol.
+
+**Two things follow, and the second is the one that bites:**
+
+1. The share must be `None`, never `0.0`. A stored zero would read as "no 0DTE gamma today",
+   which is a claim about the market; the truth is that this snapshot cannot see it.
+2. **The fade verdict must not quietly become unreachable.** The plan's first-cut fade rule
+   requires "0DTE share above a documented floor". With the share always `None` on EOD data,
+   a naive implementation issues `fade` for nothing, ever, and the board silently loses a third
+   of its vocabulary. Either drop that clause when the share is `None` and say so in the row's
+   `reasons`, or replace it with a labelled next-day proxy (`dte <= 1`, which *is* present:
+   SPY's 2026-09-10 expiry carries 263 contracts and 141,438 open interest). Whichever is
+   chosen, name it in the reason string — the user must never read "fade" and assume a 0DTE
+   input stood behind it.
+
+Genuine 0DTE composition only becomes available once intraday capture exists (Phase 4). Until
+then this column is honestly empty, and the page must render it as such.
+
 ## Verified facts (2026-09-09, from T47's first live 16:45 run)
 
 **Cboe's delayed feed serves hours-stale payloads for thin ETFs, and those land flagged as
