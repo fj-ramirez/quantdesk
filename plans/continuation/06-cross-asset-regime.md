@@ -80,7 +80,55 @@ linters pass; supervisor sees live tiles.
 
 - The option-chain Cboe provider lives at `backend/app/providers/cboe.py` and is the pattern
   for HTTP, client injection and `ProviderError` handling; index CSVs are a different Cboe
-  host path and are **not verified**.
+  host path.
+
+**All six index CSVs verified live by the supervisor at 21:00 ET on 2026-09-09.** Every URL in
+*Data* above exists and returns `200 text/csv`. No preamble: the header is line 1. Dates are
+`MM/DD/YYYY`, as the failure list predicted. All six carried **today's** row (`09/09/2026`)
+already at 21:00 ET, so the 17:30 ET bars job will get same-day data.
+
+| Symbol | Columns | Earliest date | Bytes |
+|---|---|---|---|
+| `^VIX` | `DATE,OPEN,HIGH,LOW,CLOSE` | 01/02/1990 | 472 KB |
+| `^VIX9D` | `DATE,OPEN,HIGH,LOW,CLOSE` | 01/04/2011 | 200 KB |
+| `^VIX3M` | `DATE,OPEN,HIGH,LOW,CLOSE` | 09/18/2009 | 218 KB |
+| `^VIX6M` | `DATE,OPEN,HIGH,LOW,CLOSE` | 01/02/2008 | 240 KB |
+| `^VVIX` | **`DATE,VVIX`** — close only | 03/06/2006 | 109 KB |
+| `^SKEW` | **`DATE,SKEW`** — close only | 01/02/1990 | 203 KB |
+
+**The two close-only schemas are the one thing this task has to decide.** `daily_bars` declares
+`open`, `high`, `low` and `close` all `nullable=False` (`app/models/db.py`), so VVIX and SKEW as
+published cannot be stored as-is. Three options, and this is a judgment call to make explicitly
+rather than in passing:
+
+1. Store `open = high = low = close`. Cheapest, no migration, and it matches **Cboe's own
+   convention for its early history** — the 1990 `^VIX` rows are literally
+   `17.240000,17.240000,17.240000,17.240000`, so the file format already carries closes dressed
+   as OHLC. Cost: a consumer cannot distinguish "no intraday range published" from "genuinely
+   flat day". `source="cboe_index"` plus the provider docstring is the mitigation.
+2. Widen the four columns to nullable. Honest, but it is a migration plus a nullability
+   widening across everything that reads bars — exactly the class of change the supervision
+   report caught hiding nine type errors, and T54 is not the task to spend that on.
+3. Keep VVIX and SKEW out of `daily_bars`. Contradicts the plan's own "no new table" constraint.
+
+Recommendation: **(1), documented in the provider docstring and in `docs/validation-scan.md`.**
+The strip needs closes only. Do not silently do (1) without the note.
+
+Two smaller observations:
+
+- `^VVIX`'s early history is sparse — `03/06/2006` is followed by `03/15/2006`. Anything
+  computing a 252-bar percentile over the full file must count bars, not calendar days
+  (`percentile_252` returning `None` under 60 bars already covers the shape of this).
+- The symbol names in `BAR_PROVIDER_GROUPS` carry the `^` prefix (`^VIX`) while the URLs do not
+  (`VIX_History.csv`). Map one to the other inside the provider.
+- **`^VIX` changes hands.** T42 already fetches it from Yahoo; listing it in the `cboe_index`
+  group moves it to Cboe, because `BarProviderRegistry` resolves a group entry ahead of the
+  default (`providers/bars.py`, `provider_name_for`) — so there is no ambiguity to resolve, but
+  there *is* a switch to make deliberately. Do make it: the Cboe file is OHLC back to 1990 and
+  has none of Yahoo's partial-last-bar problem (`00-foundation-daily-bars.md`). Existing Yahoo
+  `^VIX` rows carry `source="yahoo"` and the unique constraint is `(symbol, date)`, so a
+  re-backfill updates them in place and the `source` column records the changeover — check what
+  `upsert_bars` does to `source` on conflict before assuming it rewrites it.
 - T42's registry design (see `00-foundation-daily-bars.md`) is what makes this a provider
   addition rather than a pipeline; if T42 shipped without group routing, add it here as the
   first step and note the interface change in `TASKS.md`.
