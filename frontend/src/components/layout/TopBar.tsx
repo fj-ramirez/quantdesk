@@ -1,89 +1,33 @@
 /**
- * Top bar: symbol switcher, expiry filter, snapshot selector, theme toggle — the T12
+ * Top bar: asset dropdown, expiry filter, snapshot selector, theme toggle — the T12
  * deliverable list, verbatim. All three data controls read/write URL state
  * (`useDashboardParams`) so nothing here holds its own copy of "what's selected".
  *
- * T55: route-aware. The symbol switcher, expiry filter, snapshot selector and freshness
+ * T55: route-aware. The asset dropdown, expiry filter, snapshot selector and freshness
  * badge only make sense for a *symbol* page (`/`, `/report`, `/history`) — the scan family
  * (`/scan`, `/regime`, `/rotation`, `/flows`, `/overview`) are universe pages with no single
  * symbol/expiry/snapshot selection to show, so on those routes this renders a different,
  * much smaller toolbar (bars freshness + theme toggle) instead. Nothing else about the
  * component changes: the dashboard controls below are otherwise untouched from before T55.
+ *
+ * The symbol control used to be a flat wall of up to 28 always-visible buttons
+ * (`CORE_UNDERLYINGS` + `EXTENDED_UNDERLYINGS`, two `role="group"` rows) -- replaced by
+ * `AssetSelector`, a single dropdown trigger that opens a grouped listbox on click. Same
+ * underlying data and `setSymbol` contract; only the presentation changed.
  */
 import { useLocation } from 'react-router-dom';
-import {
-  CORE_UNDERLYINGS,
-  EXPIRY_FILTERS,
-  EXPIRY_FILTER_LABELS,
-  EXTENDED_UNDERLYINGS,
-  type Underlying,
-} from '../../api/types';
+import { EXPIRY_FILTERS, EXPIRY_FILTER_LABELS, type Underlying } from '../../api/types';
 import { useGexResult, useSnapshots } from '../../api/queries';
 import { useDashboardParams } from '../../state/urlState';
 import { formatFreshness, formatNyDateTime } from '../../lib/time';
 import { ThemeToggle } from './ThemeToggle';
+import { AssetSelector } from './AssetSelector';
 import { BarsFreshness } from '../scan/BarsFreshness';
 
 /** The scan family, per 07-ui.md's "Information architecture" -- kept as one list here so a
  * future scan-family route only needs adding in one place (this set, and `AppShell`'s nav)
  * rather than being independently taught to both. */
 const SCAN_FAMILY_PATHS: ReadonlySet<string> = new Set(['/scan', '/regime', '/rotation', '/flows', '/overview']);
-
-function SymbolGroup({
-  label,
-  symbols,
-  symbol,
-  onChange,
-  className,
-}: {
-  label: string;
-  symbols: readonly Underlying[];
-  symbol: Underlying;
-  onChange: (s: Underlying) => void;
-  className?: string;
-}) {
-  return (
-    <div role="group" aria-label={label} className={className ? `symbol-switcher ${className}` : 'symbol-switcher'}>
-      {symbols.map((sym) => (
-        <button
-          key={sym}
-          type="button"
-          aria-pressed={sym === symbol}
-          disabled={sym === symbol}
-          // T36: the current symbol's `disabled` attribute (kept for "no-op click", not
-          // removed) used to be the *only* styling it got, so it inherited the browser's
-          // dimmed/grey disabled look -- reading as "this symbol is unavailable" rather than
-          // "this is the one you're looking at". `symbol-switcher__button--selected` below
-          // overrides that with the app's own accent styling instead.
-          className={sym === symbol ? 'symbol-switcher__button symbol-switcher__button--selected' : 'symbol-switcher__button'}
-          onClick={() => onChange(sym)}
-        >
-          {sym}
-        </button>
-      ))}
-    </div>
-  );
-}
-
-/** T47: the switcher gains a second group -- `CORE_UNDERLYINGS` (the 16:20 EOD five, unchanged
- * from T12/T36) and `EXTENDED_UNDERLYINGS` (T47's sector/industry ETFs, captured separately at
- * 16:45 ET). Two `role="group"` regions rather than one flat list of 28 buttons, so a screen
- * reader (and a human) can tell "the P0 five" from "everything else" the same way
- * `/api/health/capture`'s `symbols`/`extended` split does on the backend. */
-function SymbolSwitcher({ symbol, onChange }: { symbol: Underlying; onChange: (s: Underlying) => void }) {
-  return (
-    <div className="symbol-switcher-groups">
-      <SymbolGroup label="Symbol" symbols={CORE_UNDERLYINGS} symbol={symbol} onChange={onChange} />
-      <SymbolGroup
-        label="Symbol (extended)"
-        symbols={EXTENDED_UNDERLYINGS}
-        symbol={symbol}
-        onChange={onChange}
-        className="symbol-switcher--extended"
-      />
-    </div>
-  );
-}
 
 function ExpiryFilterSelect({
   filter,
@@ -164,7 +108,7 @@ export function TopBar() {
 
   return (
     <header className="topbar">
-      <SymbolSwitcher symbol={symbol} onChange={setSymbol} />
+      <AssetSelector symbol={symbol} onChange={setSymbol} />
       <div className="topbar-fields">
         <ExpiryFilterSelect filter={filter} onChange={setFilter} />
         <SnapshotSelector symbol={symbol} snapshotId={snapshotId} onChange={setSnapshotId} />
