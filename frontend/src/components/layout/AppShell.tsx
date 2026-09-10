@@ -14,7 +14,12 @@ function NavBar() {
   const linkClassName = ({ isActive }: { isActive: boolean }) => (isActive ? 'navlink navlink--active' : 'navlink');
   return (
     <nav className="navbar">
+      {/* Overview is the landing page as of 2026-09-10 (the user's call on 07-ui.md's open
+          question), so it leads the nav at `/` rather than trailing it. */}
       <NavLink to={{ pathname: '/', search: location.search }} end className={linkClassName}>
+        Overview
+      </NavLink>
+      <NavLink to={{ pathname: '/dashboard', search: location.search }} className={linkClassName}>
         Dashboard
       </NavLink>
       <NavLink to={{ pathname: '/report', search: location.search }} className={linkClassName}>
@@ -40,10 +45,6 @@ function NavBar() {
       </NavLink>
       <NavLink to={{ pathname: '/settings', search: location.search }} className={linkClassName}>
         Settings
-      </NavLink>
-      {/* T56: last tab until the plan says this becomes the nav's default landing page. */}
-      <NavLink to={{ pathname: '/overview', search: location.search }} className={linkClassName}>
-        Overview
       </NavLink>
     </nav>
   );

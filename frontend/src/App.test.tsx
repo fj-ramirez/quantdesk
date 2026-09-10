@@ -36,14 +36,14 @@ function renderApp(initialPath: string) {
 
 describe('App', () => {
   it('renders the Dashboard with mocked SPX data by default', async () => {
-    renderApp('/');
+    renderApp('/dashboard');
     await waitFor(() => expect(screen.getByRole('heading', { name: 'SPX key levels' })).toBeInTheDocument());
     // GexByStrike (T13) is mounted too, not just KeyLevels.
     expect(screen.getByRole('img', { name: /GEX by strike for SPX/ })).toBeInTheDocument();
   });
 
   it('T47: the asset dropdown gains a second, labelled group for the extended ETFs', async () => {
-    renderApp('/');
+    renderApp('/dashboard');
     await waitFor(() => expect(screen.getByRole('heading', { name: 'SPX key levels' })).toBeInTheDocument());
 
     fireEvent.click(screen.getByRole('button', { name: 'Symbol SPX' }));
@@ -56,7 +56,7 @@ describe('App', () => {
   });
 
   it('clicking the QQQ symbol option updates the URL and reloads QQQ data', async () => {
-    renderApp('/');
+    renderApp('/dashboard');
     await waitFor(() => expect(screen.getByRole('heading', { name: 'SPX key levels' })).toBeInTheDocument());
 
     fireEvent.click(screen.getByRole('button', { name: 'Symbol SPX' }));
@@ -67,7 +67,7 @@ describe('App', () => {
   });
 
   it('deep link ?symbol=QQQ&filter=ZERO_DTE renders the all-null-walls case cleanly, not as zeros', async () => {
-    renderApp('/?symbol=QQQ&filter=ZERO_DTE');
+    renderApp('/dashboard?symbol=QQQ&filter=ZERO_DTE');
 
     expect(screen.getByRole('button', { name: 'Symbol QQQ' })).toBeInTheDocument();
     await waitFor(() => expect(screen.getByRole('heading', { name: 'QQQ key levels' })).toBeInTheDocument());
@@ -82,12 +82,12 @@ describe('App', () => {
   });
 
   it('the QQQ fixture legitimately has a null flip point and the shell does not crash on it', async () => {
-    renderApp('/?symbol=QQQ');
+    renderApp('/dashboard?symbol=QQQ');
     await waitFor(() => expect(screen.getByText(/No sign change within the profile grid/)).toBeInTheDocument());
   });
 
   it('navigating to /history preserves the current symbol in the URL', async () => {
-    renderApp('/?symbol=SPY');
+    renderApp('/dashboard?symbol=SPY');
     await waitFor(() => expect(screen.getByRole('heading', { name: 'SPY key levels' })).toBeInTheDocument());
 
     fireEvent.click(screen.getByRole('link', { name: 'History' }));
@@ -102,14 +102,14 @@ describe('App', () => {
     // fixture (out of this task's scope), so the real assertion is that the shell renders the
     // existing error path rather than throwing -- the same path a genuine, temporary API
     // failure would hit for any symbol.
-    renderApp('/?symbol=XLK');
+    renderApp('/dashboard?symbol=XLK');
     expect(screen.getByRole('button', { name: 'Symbol XLK' })).toBeInTheDocument();
     await waitFor(() => expect(screen.getByRole('alert')).toBeInTheDocument());
     expect(screen.getByRole('alert').textContent).toContain('Failed to load XLK GEX');
   });
 
   it('pressing "]" cycles the symbol forward (T16 keyboard shortcut) and updates the URL-driven view', async () => {
-    renderApp('/');
+    renderApp('/dashboard');
     await waitFor(() => expect(screen.getByRole('heading', { name: 'SPX key levels' })).toBeInTheDocument());
 
     fireEvent.keyDown(window, { key: ']' });
@@ -125,12 +125,27 @@ describe('App', () => {
 // any more.
 describe('T55 scan-family nav and stub routes', () => {
   it('the nav has one link for each scan-family route, alongside the existing four', async () => {
-    renderApp('/');
+    // Rendered at `/dashboard` because this test waits on a dashboard heading to know the app
+    // has settled; the nav is identical on every route. `/` has been Overview since 2026-09-10.
+    renderApp('/dashboard');
     await waitFor(() => expect(screen.getByRole('heading', { name: 'SPX key levels' })).toBeInTheDocument());
 
     for (const name of ['Dashboard', 'Report', 'History', 'Scan', 'Regime', 'Rotation', 'Flows', 'Settings', 'Overview']) {
       expect(screen.getByRole('link', { name })).toBeInTheDocument();
     }
+  });
+
+  it('/ is the Overview landing page, and the dashboard lives at /dashboard', async () => {
+    // The user made Overview the landing page on 2026-09-10 (07-ui.md's T56 spec left it open).
+    // Both halves matter: the root must be Overview, and the dashboard must still be reachable
+    // -- SymbolCell links every option-chain symbol into `/dashboard?symbol=...`.
+    const { unmount } = renderApp('/');
+    expect(await screen.findByRole('region', { name: 'Tape' })).toBeInTheDocument();
+    expect(screen.queryByRole('heading', { name: 'SPX key levels' })).not.toBeInTheDocument();
+    unmount();
+
+    renderApp('/dashboard');
+    await waitFor(() => expect(screen.getByRole('heading', { name: 'SPX key levels' })).toBeInTheDocument());
   });
 
   it('/overview renders the real overview page (T56), not a stub', async () => {
@@ -164,7 +179,7 @@ describe('T55 scan-family nav and stub routes', () => {
   });
 
   it('the TopBar drops the asset dropdown on /scan and shows it again after navigating back to /', async () => {
-    renderApp('/');
+    renderApp('/dashboard');
     await waitFor(() => expect(screen.getByRole('heading', { name: 'SPX key levels' })).toBeInTheDocument());
     expect(screen.getByRole('button', { name: 'Symbol SPX' })).toBeInTheDocument();
 

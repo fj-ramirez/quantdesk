@@ -35,3 +35,15 @@ npm-debug.log*
 # Agent worktrees
 .claude/
 .ruff_cache/
+
+# AGENTS.md is a *hardlink* to CLAUDE.md (same inode, so the two cannot drift), created
+# because this repo's instruction file is read under both names by different agent tools.
+# It is ignored rather than committed: committing it would put a second, independent copy
+# of the content in git, which is exactly the drift the link exists to prevent.
+#
+# Recreate after a fresh clone (Git Bash, from the repo root):
+#     cmd //c mklink //H AGENTS.md CLAUDE.md
+# A true symlink needs Administrator or Windows Developer Mode; the hardlink does not.
+# Caveat: an editor that saves by writing a temp file and renaming it over CLAUDE.md will
+# silently break the link. `diff -q CLAUDE.md AGENTS.md` checks it in one command.
+AGENTS.md

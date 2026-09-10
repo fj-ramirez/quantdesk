@@ -18,7 +18,27 @@ _DEFAULT_SCAN_UNIVERSE = (
     "GLD,SLV,USO,UNG,DBA,GDX,COPX,"
     "TLT,IEF,HYG,UUP,FXE,FXY,"
     "EEM,EFA,FXI,EWJ,EWZ,EWG,"
-    "SPX,^VIX,^VIX9D,^VIX3M,^VIX6M,^VVIX,^SKEW"
+    "SPX,^VIX,^VIX9D,^VIX3M,^VIX6M,^VVIX,^SKEW,"
+    # Single names, added 2026-09-10 on the user's decision (the open "universe width" question
+    # in plans/continuation/README.md). The initiative exists because the user's *ETFs* keep
+    # fading their breakouts -- and an ETF is a basket, which averages away exactly the
+    # continuation this app is looking for. These are liquid, optionable US large/mid caps
+    # chosen to span every sector plus the high-beta names where continuation actually shows up.
+    #
+    # This is a starting set, not a fixed one: the natural source is the user's own broker CFD
+    # list, and swapping it in is a change to this one string (or a SCAN_UNIVERSE override in
+    # .env) with no code change anywhere. Cost is linear -- the 17:30 bars job and the backfill
+    # sleep 0.5 s between symbols, so ~125 symbols is about a minute of wall clock -- and the
+    # scan pages all sort and truncate, so a wider universe costs ranking depth, not legibility.
+    "AAPL,MSFT,NVDA,GOOGL,META,AMZN,TSLA,AVGO,AMD,MU,QCOM,INTC,ORCL,CRM,ADBE,NFLX,"
+    "SMCI,ARM,LRCX,AMAT,TXN,PLTR,"
+    "NOW,SNOW,CRWD,PANW,NET,SHOP,UBER,"
+    "JPM,BAC,WFC,GS,MS,C,SCHW,AXP,V,MA,"
+    "UNH,LLY,JNJ,PFE,MRK,ABBV,AMGN,ISRG,"
+    "XOM,CVX,COP,SLB,OXY,FCX,NEM,"
+    "BA,CAT,DE,GE,RTX,UPS,FDX,"
+    "HD,COST,WMT,NKE,SBUX,MCD,DIS,"
+    "COIN,HOOD,DKNG,RIVN,MSTR"
 )
 
 

@@ -21,7 +21,14 @@ export function App() {
   return (
     <Routes>
       <Route element={<AppShell />}>
-        <Route index element={<Dashboard />} />
+        {/* The user made Overview the landing page on 2026-09-10 (07-ui.md's T56 spec left
+            this open: "becomes the nav's default landing when the user says so"). `/overview`
+            still resolves to the same page, so every link, bookmark and test that names it
+            explicitly keeps working; the dashboard moved to `/dashboard`, which is what
+            `SymbolCell` and the report/history pages now link a symbol into. */}
+        <Route index element={<Overview />} />
+        <Route path="overview" element={<Overview />} />
+        <Route path="dashboard" element={<Dashboard />} />
         <Route path="history" element={<History />} />
         <Route path="report" element={<Report />} />
         <Route path="settings" element={<Settings />} />
@@ -31,7 +38,6 @@ export function App() {
         <Route path="regime" element={<Regime />} />
         <Route path="rotation" element={<Rotation />} />
         <Route path="flows" element={<Flows />} />
-        <Route path="overview" element={<Overview />} />
         {/* Standalone chart demos. Dashboard assembly is T16's job. */}
         <Route path="demo/gamma-profile" element={<GammaProfileDemo />} />
         <Route path="demo/gex-by-strike" element={<GexByStrikeDemo />} />

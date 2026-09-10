@@ -1,7 +1,8 @@
 /**
  * T55 — the link-or-text rule from 07-ui.md's "Information architecture": any symbol shown
  * on a scan page that has an option chain (`CORE_UNDERLYINGS ∪ EXTENDED_UNDERLYINGS`) is a
- * link to `/?symbol=XLK`, carrying the current page's filter/expiry scope; any other symbol
+ * link to `/dashboard?symbol=XLK`, carrying the current page's filter/expiry scope (the
+ * dashboard moved off `/` on 2026-09-10 when Overview became the landing page); any other symbol
  * (most of `SCAN_UNIVERSE` — 19 of 47 today, e.g. `^VIX`, `IWM`'s benchmark peers) is plain
  * text with a tooltip explaining why it isn't clickable, not a dead-looking link.
  */
@@ -31,7 +32,7 @@ export function SymbolCell({ symbol, search }: SymbolCellProps) {
   params.set('symbol', symbol);
 
   return (
-    <Link className="symbol-cell symbol-cell--link" to={{ pathname: '/', search: `?${params.toString()}` }}>
+    <Link className="symbol-cell symbol-cell--link" to={{ pathname: '/dashboard', search: `?${params.toString()}` }}>
       {symbol}
     </Link>
   );

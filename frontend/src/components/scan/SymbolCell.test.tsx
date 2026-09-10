@@ -12,15 +12,16 @@ function renderCell(symbol: string, search?: string) {
 }
 
 describe('SymbolCell', () => {
+  // The dashboard lives at `/dashboard` since 2026-09-10, when Overview took over `/`.
   it('renders a core underlying (an option-chain symbol) as a link to the dashboard', () => {
     renderCell('SPY');
     const link = screen.getByRole('link', { name: 'SPY' });
-    expect(link).toHaveAttribute('href', '/?symbol=SPY');
+    expect(link).toHaveAttribute('href', '/dashboard?symbol=SPY');
   });
 
   it('renders an extended underlying (also an option-chain symbol) as a link', () => {
     renderCell('XLK');
-    expect(screen.getByRole('link', { name: 'XLK' })).toHaveAttribute('href', '/?symbol=XLK');
+    expect(screen.getByRole('link', { name: 'XLK' })).toHaveAttribute('href', '/dashboard?symbol=XLK');
   });
 
   it('renders a non-chain symbol as plain text with an explanatory tooltip, not a link', () => {

@@ -27,7 +27,17 @@ import { BarsFreshness } from '../scan/BarsFreshness';
 /** The scan family, per 07-ui.md's "Information architecture" -- kept as one list here so a
  * future scan-family route only needs adding in one place (this set, and `AppShell`'s nav)
  * rather than being independently taught to both. */
-const SCAN_FAMILY_PATHS: ReadonlySet<string> = new Set(['/scan', '/regime', '/rotation', '/flows', '/overview']);
+const SCAN_FAMILY_PATHS: ReadonlySet<string> = new Set([
+  // `/` is in this set because Overview became the landing page on 2026-09-10 -- it is a
+  // universe page, so the root route now renders the scan toolbar rather than the symbol
+  // controls. The dashboard, the actual symbol page, moved to `/dashboard`.
+  '/',
+  '/scan',
+  '/regime',
+  '/rotation',
+  '/flows',
+  '/overview',
+]);
 
 function ExpiryFilterSelect({
   filter,

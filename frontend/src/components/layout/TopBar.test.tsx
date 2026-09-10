@@ -24,15 +24,17 @@ function renderTopBar(initialPath: string) {
 }
 
 describe('TopBar route-awareness', () => {
-  it('renders the dashboard controls on /', async () => {
-    renderTopBar('/');
+  it('renders the dashboard controls on /dashboard', async () => {
+    // The dashboard moved off `/` on 2026-09-10 when Overview became the landing page; `/` is
+    // now a universe page and gets the scan toolbar (asserted in its own test below).
+    renderTopBar('/dashboard');
     expect(screen.getByRole('button', { name: 'Symbol SPX' })).toBeInTheDocument();
     expect(screen.getByText('Expiry')).toBeInTheDocument();
     expect(screen.getByText('Snapshot')).toBeInTheDocument();
   });
 
   it('opens the asset dropdown on click and lets a click select a different symbol', () => {
-    renderTopBar('/');
+    renderTopBar('/dashboard');
     const trigger = screen.getByRole('button', { name: 'Symbol SPX' });
     expect(screen.queryByRole('listbox')).not.toBeInTheDocument();
 
@@ -63,7 +65,9 @@ describe('TopBar route-awareness', () => {
   });
 
   it('renders the bars-freshness toolbar instead, on every scan-family route', async () => {
-    for (const path of ['/scan', '/regime', '/rotation', '/flows', '/overview']) {
+    // `/` leads this list: Overview became the landing page on 2026-09-10, so the root route
+    // is a universe page and must render the scan toolbar rather than the symbol controls.
+    for (const path of ['/', '/scan', '/regime', '/rotation', '/flows', '/overview']) {
       const { unmount } = renderTopBar(path);
       expect(screen.queryByRole('button', { name: 'Symbol SPX' })).not.toBeInTheDocument();
       await waitFor(() => expect(screen.queryByText(/Loading bars freshness|Bars through|Bars freshness unavailable/)).toBeInTheDocument());
@@ -72,7 +76,7 @@ describe('TopBar route-awareness', () => {
   });
 
   it('the theme toggle is present on both a symbol route and a scan-family route', () => {
-    const { unmount } = renderTopBar('/');
+    const { unmount } = renderTopBar('/dashboard');
     expect(screen.getByRole('button', { name: /Switch to (dark|light) theme/ })).toBeInTheDocument();
     unmount();
     renderTopBar('/scan');
