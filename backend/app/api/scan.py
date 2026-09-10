@@ -99,11 +99,28 @@ plus one `_lookup_iv30` call, not 47 of each. `GET /api/scan/trend/NOPEXYZ` (zer
 measured **0.01s**, `200 OK`, empty `history`, all-`None` `current` -- confirming the same
 "clean empty result, not a 404 or 500" contract `/breakouts/{symbol}` already established,
 against the live server rather than only `tests/test_scan_api.py`'s offline equivalent.
+
+* `GET /api/scan/regime?filter=` -- one `app.scan.regime.RegimeRow` per `app.models.chain
+  .Underlying` member (core + T47 extended, 28 symbols today), plus a `trend_pct` field (T48,
+  plans/continuation/03-regime-board.md). **Never opens Parquet**: `_load_gex_inputs` below
+  reads `gex_levels`/`gex_by_strike` rows directly and reconstructs the `KeyLevels`/`StrikeGex`
+  objects `app.scan.regime.compute_regime_row` needs from them -- see that module's own
+  docstring for why it takes those two engine types rather than a full `GexResult` (a real
+  `GexResult` would need a fabricated `GexDiagnostics` nothing in storage backs). `iv30`/`rv20`
+  are taken from the *same* `TrendComponents` this route computes for `trend_pct` (one
+  `_lookup_iv30`/`realized_vol` pass, not two) whenever the symbol is in `settings
+  .scan_universe` (true for every `Underlying` member under the default config); `atr14` and
+  `return_5d` come from the same already-fetched `bars` frame. A symbol never captured at all
+  gets a row with every GEX-derived field `None` and `reasons=("no snapshot captured yet for
+  this symbol",)` -- the same "row per universe member, `None` where inputs are missing"
+  contract `/trend` already established, extended to "missing" meaning "no option chain
+  captured" rather than "no bars."
 """
 
 from __future__ import annotations
 
 import datetime as dt
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Annotated
 from zoneinfo import ZoneInfo
@@ -116,12 +133,14 @@ from sqlalchemy import select
 from sqlalchemy.orm import sessionmaker
 
 from app.config import settings
-from app.gex.engine import to_frame
+from app.gex.engine import ExpiryFilter, KeyLevels, StrikeGex, to_frame
 from app.gex.report import iv_regime
-from app.jobs.calendar import is_trading_day
+from app.jobs.calendar import MARKET_CLOSE, effective_data_time, is_trading_day
 from app.jobs.capture import get_session_factory as get_gex_session_factory
 from app.models.chain import Underlying
-from app.models.db import Snapshot
+from app.models.db import GexByStrike, GexLevel, Snapshot
+from app.providers import get_provider
+from app.providers.base import ProviderError
 from app.scan.breakouts import (
     DEFAULT_K,
     DEFAULT_LOOKBACK,
@@ -135,14 +154,17 @@ from app.scan.breakouts import (
 from app.scan.groups import BENCHMARKS, DEFAULT_BENCHMARK, GROUPS, SECTORS
 from app.scan.indicators import (
     ADX_PERIOD,
+    ATR_PERIOD,
     CHOP_PERIOD,
     ER_PERIOD,
     RV_PERIOD,
     adx,
+    atr,
     choppiness,
     efficiency_ratio,
     realized_vol,
 )
+from app.scan.regime import STALE_THRESHOLD_MINUTES, RegimeRow, compute_regime_row
 from app.scan.rotation import (
     RELATIVE_RETURN_WINDOWS,
     RRG_ZSCORE_WINDOW,
@@ -888,3 +910,437 @@ def get_rotation(
         breadth=SectorBreadthOut.from_breadth(breadth),
         note=_RRG_APPROXIMATION_NOTE,
     )
+
+
+# --------------------------------------------------------------------------------------------
+# T48: regime board (plans/continuation/03-regime-board.md)
+# --------------------------------------------------------------------------------------------
+
+#: `filter=` only ever accepts a persisted `ExpiryFilter` -- the same restriction
+#: `app.api.gex._parse_history_filter` applies to `/gex/{underlying}/levels/history`, and for
+#: the identical reason: `app.gex.store.DEFAULT_FILTERS` is the only set `compute_and_store`
+#: ever writes rows for, so anything else would silently and permanently 404-by-omission rather
+#: than surface the mistake.
+_REGIME_FILTERS = (ExpiryFilter.ALL, ExpiryFilter.ZERO_DTE, ExpiryFilter.EX_ZERO_DTE)
+
+#: Fallback used only if `get_provider(source)` itself raises for a `Snapshot.source` this
+#: deployment can no longer construct a provider for (a credential that used to be configured,
+#: or a provider name retired from `app.providers._PROVIDERS`). Cboe's own entitlement delay --
+#: the only provider this app has ever captured real data under -- biased toward the *larger*
+#: delay under ignorance, the same "assume the safer interpretation" reasoning
+#: `app.jobs.calendar.is_market_holiday`'s own docstring gives for its unknown-year fallback:
+#: understating staleness (a smaller fallback) risks a regime row looking fresher than it is,
+#: which is the one failure mode T48 exists to prevent.
+_FALLBACK_DELAYED_MINUTES = 15
+
+
+def _validate_regime_filter(raw: str) -> ExpiryFilter:
+    try:
+        parsed = ExpiryFilter(raw)
+    except ValueError:
+        parsed = None
+    if parsed is None or parsed not in _REGIME_FILTERS:
+        raise HTTPException(
+            status_code=422,
+            detail=(
+                f"filter must be one of {[f.value for f in _REGIME_FILTERS]} (only persisted "
+                f"filters can be read without recomputing from Parquet), got {raw!r}"
+            ),
+        )
+    return parsed
+
+
+def _delayed_minutes_for_source(source: str) -> int:
+    """`Snapshot.source` -> that provider's entitlement delay, without opening Parquet.
+
+    `ChainSnapshot.delayed_minutes` (T34's staleness input) is written once into the Parquet
+    file per snapshot and is **not** a `snapshots` table column (see `app.models.db.Snapshot`'s
+    field list) -- it is, in practice, a constant of the *provider*, not of any one capture
+    (`CboeProvider.delayed_minutes` is a hardcoded `15`, `MarketDataProvider`'s is a hardcoded
+    setting-derived constant too), so reconstructing it from `get_provider(source)` is exact,
+    not an approximation, and (`app.providers.get_provider`'s own docstring) "cheap to
+    construct" -- no I/O, so this does not reopen the Parquet-recompute door T48 is built to
+    stay out of.
+    """
+    try:
+        return get_provider(source).delayed_minutes
+    except (ValueError, ProviderError):
+        # ValueError: `source` is not a name `get_provider` recognizes (a retired provider).
+        # ProviderError (e.g. `MissingCredential`): the provider is registered but this
+        # deployment lacks a credential it needs (e.g. `MARKETDATA_TOKEN` unset) even though
+        # some past deployment captured this snapshot with it configured.
+        return _FALLBACK_DELAYED_MINUTES
+
+
+@dataclass(frozen=True, slots=True)
+class _RegimeGexInputs:
+    """What `_load_gex_inputs` hands `app.scan.regime.compute_regime_row` -- everything that
+    module needs about one symbol's latest snapshot, already read from `gex_levels` /
+    `gex_by_strike`, never from Parquet.
+    """
+
+    levels: KeyLevels
+    by_strike: tuple[StrikeGex, ...]
+    zero_dte_by_strike: tuple[StrikeGex, ...]
+    spot: float
+    as_of: dt.datetime
+    effective_at: dt.datetime
+    chain_age_minutes: float
+    stale: bool
+
+
+def _load_gex_inputs(
+    underlying: str,
+    filter_: ExpiryFilter,
+    gex_session_factory: sessionmaker,
+) -> _RegimeGexInputs | None:
+    """The latest snapshot's persisted `gex_levels`/`gex_by_strike` rows for `underlying`, for
+    both `filter_` (the caller's requested display filter) and `ZERO_DTE` (always, regardless
+    of `filter_` -- 0DTE share is a fixed diagnostic, not something the display filter should
+    change; see `app.scan.regime.compute_regime_row`'s own docstring). Returns `None` when
+    `underlying` has never been captured, or when this snapshot has no stored `GexLevel` row
+    for `filter_` (should not happen once a snapshot exists -- `app.gex.store.compute_and_store`
+    writes all of `DEFAULT_FILTERS` in one transaction -- but a partially-failed historical
+    capture is not something this route should turn into a 500 over).
+
+    **Never opens Parquet.** Every field on the returned `_RegimeGexInputs` is built from
+    `snapshots` / `gex_levels` / `gex_by_strike` columns alone -- see `_strike_gex_from_values` and
+    `KeyLevels`'s construction below for exactly which persisted column backs which field, and
+    `app.scan.regime`'s module docstring for why a full `GexResult` (which would need Parquet
+    for its `profile`/`diagnostics`) is not what gets built here.
+    """
+    with gex_session_factory() as session:
+        snap = session.execute(
+            select(Snapshot)
+            .where(Snapshot.underlying == underlying)
+            .order_by(Snapshot.captured_at.desc())
+            .limit(1)
+        ).scalar_one_or_none()
+        if snap is None:
+            return None
+
+        def _fetch(filter_value: str) -> tuple[GexLevel | None, list[GexByStrike]]:
+            level_row = session.execute(
+                select(GexLevel).where(
+                    GexLevel.snapshot_id == snap.id, GexLevel.filter == filter_value
+                )
+            ).scalar_one_or_none()
+            by_strike_rows = list(
+                session.execute(
+                    select(GexByStrike)
+                    .where(
+                        GexByStrike.snapshot_id == snap.id, GexByStrike.filter == filter_value
+                    )
+                    .order_by(GexByStrike.strike)
+                ).scalars()
+            )
+            return level_row, by_strike_rows
+
+        level_row, by_strike_rows = _fetch(filter_.value)
+        if filter_ is ExpiryFilter.ZERO_DTE:
+            zero_dte_rows = by_strike_rows
+        else:
+            _, zero_dte_rows = _fetch(ExpiryFilter.ZERO_DTE.value)
+
+        # Extract every plain value needed below while the session is still open -- ORM rows
+        # are not touched again after this point, so nothing downstream depends on the
+        # session staying open (avoids any risk of a detached-instance access).
+        snap_source = snap.source
+        snap_spot = snap.spot
+        snap_captured_at = snap.captured_at
+        level_values = None if level_row is None else {
+            "net_gex": level_row.net_gex,
+            "call_wall": level_row.call_wall,
+            "call_wall_gex": level_row.call_wall_gex,
+            "put_wall": level_row.put_wall,
+            "put_wall_gex": level_row.put_wall_gex,
+            "max_abs_strike": level_row.max_abs_strike,
+            "max_call_gex_strike": level_row.max_call_gex_strike,
+            "max_put_gex_strike": level_row.max_put_gex_strike,
+            "flip_point": level_row.flip_point,
+            "spot": level_row.spot,
+            "computed_at": level_row.computed_at,
+        }
+        by_strike_values = [
+            (r.strike, r.call_gex, r.put_gex, r.net_gex) for r in by_strike_rows
+        ]
+        zero_dte_values = [(r.strike, r.call_gex, r.put_gex, r.net_gex) for r in zero_dte_rows]
+
+    if level_values is None:
+        return None
+
+    def _strike_gex_from_values(values) -> tuple[StrikeGex, ...]:
+        return tuple(
+            StrikeGex(strike=s, call_gex=c, put_gex=p, net_gex=n, abs_gex=c - p)
+            for s, c, p, n in values
+        )
+
+    by_strike = _strike_gex_from_values(by_strike_values)
+    zero_dte_by_strike = _strike_gex_from_values(zero_dte_values)
+
+    call_gex_total = sum(c for _, c, _, _ in by_strike_values)
+    put_gex_total = sum(p for _, _, p, _ in by_strike_values)
+
+    levels = KeyLevels(
+        net_gex=level_values["net_gex"] if level_values["net_gex"] is not None else 0.0,
+        call_gex=call_gex_total,
+        put_gex=put_gex_total,
+        abs_gex=call_gex_total - put_gex_total,
+        call_wall=level_values["call_wall"],
+        call_wall_gex=level_values["call_wall_gex"],
+        put_wall=level_values["put_wall"],
+        put_wall_gex=level_values["put_wall_gex"],
+        max_abs_strike=level_values["max_abs_strike"],
+        # Not persisted, and not read by `app.scan.regime` -- see `KeyLevels`'s own docstring:
+        # `max_net_strike`/`min_net_strike` are documented aliases of `call_wall`/`put_wall`
+        # under unambiguous names, so setting them here is not a fabrication, just the alias.
+        max_abs_gex=None,
+        max_net_strike=level_values["call_wall"],
+        min_net_strike=level_values["put_wall"],
+        flip_point=level_values["flip_point"],
+        spot=level_values["spot"],
+        computed_at=level_values["computed_at"],
+        max_call_gex_strike=level_values["max_call_gex_strike"],
+        max_call_gex=None,
+        max_put_gex_strike=level_values["max_put_gex_strike"],
+        max_put_gex=None,
+    )
+
+    delayed_minutes = _delayed_minutes_for_source(snap_source)
+    effective_at = effective_data_time(snap_captured_at, delayed_minutes)
+    local = effective_at.astimezone(_TZ)
+    expected_close = dt.datetime.combine(local.date(), MARKET_CLOSE, tzinfo=_TZ) + dt.timedelta(
+        minutes=delayed_minutes
+    )
+    chain_age_minutes = max(
+        0.0, (expected_close.astimezone(dt.UTC) - effective_at).total_seconds() / 60.0
+    )
+    stale = chain_age_minutes > STALE_THRESHOLD_MINUTES
+
+    return _RegimeGexInputs(
+        levels=levels,
+        by_strike=by_strike,
+        zero_dte_by_strike=zero_dte_by_strike,
+        spot=snap_spot,
+        as_of=snap_captured_at,
+        effective_at=effective_at,
+        chain_age_minutes=chain_age_minutes,
+        stale=stale,
+    )
+
+
+def _last_finite(series: pd.Series) -> float | None:
+    """Most recent non-`NaN` value in `series`, or `None`. Same helper `app.scan.trend`'s own
+    private `_last_finite` provides for that module's own rolling indicators -- duplicated
+    (not imported across a module boundary for a private name) here for `atr`/`realized_vol`.
+    """
+    if series.empty:
+        return None
+    value = series.iloc[-1]
+    return None if pd.isna(value) else float(value)
+
+
+def _return_5d(bars: pd.DataFrame) -> float | None:
+    """5-trading-bar close-to-close return, or `None` when fewer than 6 closes exist or the
+    bar 5 sessions back closed at exactly zero (division would be undefined, not a real
+    -100%-ish return).
+    """
+    if len(bars) <= 5:
+        return None
+    prior = float(bars["close"].iloc[-6])
+    if prior == 0.0:
+        return None
+    return float(bars["close"].iloc[-1]) / prior - 1.0
+
+
+class DealerPositioningOut(BaseModel):
+    """Mirrors `app.gex.report.DealerPositioning` -- see that dataclass's docstring for exactly
+    when `direction` is `None` (noise-dominated, or no contracts at all).
+    """
+
+    net_gex: float | None
+    abs_gex: float | None
+    ratio: float | None
+    ratio_floor: float
+    noise_dominated: bool
+    direction: str | None
+    label: str
+    description: str
+
+
+class WallInfoOut(BaseModel):
+    """Mirrors `app.scan.regime.WallInfo` -- one wall (call or put), its distance from spot in
+    three units, and its `room_beyond` (see that dataclass's own docstring).
+    """
+
+    strike: float | None
+    net_gex: float | None
+    abs_gex: float | None
+    distance: float | None
+    distance_pct: float | None
+    distance_atr: float | None
+    room_beyond: float | None
+    room_beyond_strike: float | None
+
+
+class RegimeRowOut(BaseModel):
+    """One row of the `/regime` table: `app.scan.regime.RegimeRow` plus `trend_pct` (T45's
+    cross-sectional composite, joined in here rather than threaded through the pure module --
+    see this module's own docstring's T48 bullet for why).
+    """
+
+    underlying: str
+    filter: str
+    spot: float | None
+    atr14: float | None
+    iv30: float | None
+    rv20: float | None
+    iv_rv_ratio: float | None
+    return_5d: float | None
+    as_of: dt.datetime | None
+    effective_at: dt.datetime | None
+    chain_age_minutes: float | None
+    stale: bool
+    positioning: DealerPositioningOut | None
+    flip_point: float | None
+    flip_distance: float | None
+    flip_distance_pct: float | None
+    flip_distance_atr: float | None
+    wall_below: WallInfoOut | None
+    wall_above: WallInfoOut | None
+    zero_dte_share: float | None
+    verdict: str | None
+    reasons: list[str]
+    trend_pct: float | None
+
+    @classmethod
+    def missing(cls, underlying: str, filter_value: str, trend_pct: float | None) -> RegimeRowOut:
+        """A symbol with no snapshot captured at all -- every GEX-derived field `None`, per
+        this task's own acceptance item ("the API returns a row per core and extended symbol
+        with `None` where inputs are missing").
+        """
+        return cls(
+            underlying=underlying,
+            filter=filter_value,
+            spot=None,
+            atr14=None,
+            iv30=None,
+            rv20=None,
+            iv_rv_ratio=None,
+            return_5d=None,
+            as_of=None,
+            effective_at=None,
+            chain_age_minutes=None,
+            stale=False,
+            positioning=None,
+            flip_point=None,
+            flip_distance=None,
+            flip_distance_pct=None,
+            flip_distance_atr=None,
+            wall_below=None,
+            wall_above=None,
+            zero_dte_share=None,
+            verdict=None,
+            reasons=["no snapshot captured yet for this symbol"],
+            trend_pct=trend_pct,
+        )
+
+    @classmethod
+    def from_row(cls, row: RegimeRow, trend_pct: float | None) -> RegimeRowOut:
+        payload = row.to_dict()
+        payload["trend_pct"] = trend_pct
+        return cls(**payload)
+
+
+class RegimeResponse(BaseModel):
+    filter: str
+    rows: list[RegimeRowOut]
+
+
+@router.get("/regime", response_model=RegimeResponse)
+def get_regime(
+    filter_: Annotated[
+        str,
+        Query(
+            alias="filter",
+            description=f"One of {[f.value for f in _REGIME_FILTERS]} (persisted filters only).",
+        ),
+    ] = ExpiryFilter.ALL.value,
+) -> RegimeResponse:
+    """One `app.scan.regime.RegimeRow` per `Underlying` member (core + T47 extended), plus
+    `trend_pct`. See this module's own docstring for the full design and why this route never
+    opens Parquet.
+
+    Trend components (and therefore `iv30`/`rv20`/`trend_pct`) are computed once, up front,
+    across the *full* `settings.scan_universe` -- exactly `/trend`'s own pipeline
+    (`_symbol_components` + `rank_universe`) -- both so `trend_pct` here matches what `/trend`
+    shows for the same symbol elsewhere in the app, and so the already-fetched `bars` and
+    already-looked-up `iv30`/`rv20` can be reused for `atr14`/`return_5d`/the regime metrics
+    themselves rather than fetched a second time for every optioned symbol (T45's own
+    `_lookup_iv30` is the dominant cost in that pipeline, ~3s across the universe -- see this
+    module's docstring's T45 timing note -- and this route would otherwise pay it twice for
+    every one of the ~28 `Underlying` members that also sit in `SCAN_UNIVERSE`, which is all of
+    them under the default config).
+    """
+    parsed_filter = _validate_regime_filter(filter_)
+
+    bars_session_factory = get_session_factory()
+    gex_session_factory = get_gex_session_factory()
+
+    components_by_symbol: dict[str, TrendComponents] = {}
+    bars_by_symbol: dict[str, pd.DataFrame] = {}
+    for symbol in settings.scan_universe:
+        components, bars = _symbol_components(symbol, bars_session_factory, gex_session_factory)
+        components_by_symbol[symbol] = components
+        bars_by_symbol[symbol] = bars
+    trend_pct_by_symbol = {
+        row.symbol: row.composite for row in rank_universe(components_by_symbol)
+    }
+
+    rows: list[RegimeRowOut] = []
+    for underlying in Underlying:
+        symbol = underlying.value
+        trend_pct = trend_pct_by_symbol.get(symbol)
+
+        gex_inputs = _load_gex_inputs(symbol, parsed_filter, gex_session_factory)
+        if gex_inputs is None:
+            rows.append(RegimeRowOut.missing(symbol, parsed_filter.value, trend_pct))
+            continue
+
+        components = components_by_symbol.get(symbol)
+        bars = bars_by_symbol.get(symbol)
+        if bars is None:
+            bars = read_bars(symbol, session_factory=bars_session_factory)
+
+        if components is not None:
+            iv30 = components.iv30
+            rv20 = components.rv20
+        else:
+            # `symbol` is an `Underlying` member outside a customized `SCAN_UNIVERSE` -- fall
+            # back to a direct lookup rather than silently reporting `None` for a chain that
+            # does exist.
+            iv30 = _lookup_iv30(symbol, gex_session_factory)
+            rv20 = _last_finite(realized_vol(bars, RV_PERIOD)) if not bars.empty else None
+
+        atr14 = _last_finite(atr(bars, ATR_PERIOD)) if not bars.empty else None
+        return_5d = _return_5d(bars)
+
+        row = compute_regime_row(
+            underlying=symbol,
+            filter_=parsed_filter.value,
+            levels=gex_inputs.levels,
+            by_strike=gex_inputs.by_strike,
+            zero_dte_by_strike=gex_inputs.zero_dte_by_strike,
+            spot=gex_inputs.spot,
+            atr14=atr14,
+            iv30=iv30,
+            rv20=rv20,
+            return_5d=return_5d,
+            as_of=gex_inputs.as_of,
+            effective_at=gex_inputs.effective_at,
+            chain_age_minutes=gex_inputs.chain_age_minutes,
+            stale=gex_inputs.stale,
+        )
+        rows.append(RegimeRowOut.from_row(row, trend_pct))
+
+    return RegimeResponse(filter=parsed_filter.value, rows=rows)

@@ -739,3 +739,155 @@ quarter of SPY's per-share price — a plausible real reading, not a red flag),
 | `GET /api/scan/rotation` measured against the live database | §20 above -- 0.06-0.20s, no stated budget to compare against |
 | Naming honestly signals "approximation, not the real JdK indicator" | §15 above; `note` field in the API response, `rs_ratio_approx`/`rs_momentum_approx` field names throughout, module docstrings in `app/scan/rotation.py` and `app/api/scan.py` |
 | Cross-symbol date alignment | `app.scan.rotation`'s own module docstring's "cross-symbol alignment hazard" section; `test_weekly_closes_a_week_with_no_bar_at_all_is_nan_not_forward_filled`, `test_rrg_approx_benchmark_reindexed_onto_prices_index` |
+
+
+# Validation: regime board (T48)
+
+## 22. The 0DTE share is not derivable from an EOD snapshot -- confirmed live across all 28 symbols
+
+The supervisor measured this first (2026-09-09), against the live 16:20 SPY EOD snapshot
+(id 38, `captured_at` 2026-09-09T20:19:27Z):
+
+```
+/api/gex/SPY/latest?filter=ALL       -> 483 by-strike rows
+/api/gex/SPY/latest?filter=ZERO_DTE  ->   0 by-strike rows
+```
+
+The finding is structural, not a storage gap: that snapshot's earliest expiry is 2026-09-10
+(`dte=1`), the same-day expiry is already gone from Cboe's payload by capture time, and the
+engine's own diagnostics count 330 contracts `expired`. `GexByStrike`'s own docstring names the
+consequence directly ("a filter that admits nothing... simply writes zero rows for that
+filter"), so the ratio-of-two-filters mechanism T48's original brief describes evaluates to
+`0 / 483` on every EOD row, for every symbol -- not a corner case, the ordinary case.
+
+**Decision (this task, not the plan's other named option):** `app.scan.regime.zero_dte_share`
+returns `None`, never `0.0`, whenever the `ZERO_DTE` filter's by-strike rows are empty --
+reporting `0.0` would misstate a data limitation ("this chain cannot see same-day expiries") as
+a fact about the market ("there is no 0DTE gamma today"). The plan's other option -- a `dte<=1`
+next-day proxy, naming SPY's own 2026-09-10 expiry (263 contracts, 141,438 OI) as a candidate --
+was **not** implemented: that number came from a per-contract `dte` query, and no persisted
+`gex_by_strike` filter isolates a `dte<=1` bucket (only `ALL`, `ZERO_DTE`, `EX_ZERO_DTE` are
+ever stored, per `app.gex.store.DEFAULT_FILTERS`), so computing it would require reopening
+Parquet -- exactly what `app.api.scan._load_gex_inputs` is built not to do, and the plan's own
+concluding sentence says the honest state today is "this column is empty," not "this column
+shows something adjacent to 0DTE labelled as if it were."
+
+**The fade verdict must not become unreachable as a result.** The plan's first-cut fade rule
+requires "0DTE share above a documented floor." With the share `None` on every real row today,
+a literal reading would issue `fade` for nothing, ever. `app.scan.regime._verdict` **drops the
+0DTE clause when the share is unavailable** (treats it as neither passing nor failing) rather
+than gating on an unmeasurable input, and always names which case applied in
+`RegimeRow.reasons`:
+
+* known and above the floor: `"0DTE share N% above the M% floor"`
+* known and below the floor: `"0DTE share is N% (fade needs > M%)"`
+* unavailable: `"0DTE share unavailable on this snapshot (same-day expiry already left the
+  payload by capture time...); fade evaluated on flip/wall distance alone, 0DTE clause
+  dropped"`
+
+Pinned offline in `tests/test_scan_regime.py`:
+`test_zero_dte_share_empty_zero_dte_is_none_not_a_fabricated_zero` (the ratio function itself),
+`test_verdict_fade_with_zero_dte_share_unavailable_drops_the_clause` (fade still reachable),
+`test_verdict_mixed_reports_known_zero_dte_share_below_floor` (a *known*, low share still
+blocks fade -- only *unavailable* drops the clause, a known-and-failing input does not).
+
+**Confirmed live, across the whole universe** (`GET /api/scan/regime`, 2026-09-09, all 28
+`Underlying` members, backend restarted to pick up the new route -- the same
+restart-required step §13's own note names): every one of the 28 rows returned
+`"zero_dte_share": null`. `fade` was still issued for 2 symbols that day (XLE, USO), each
+reason string explicitly reading "0DTE share unavailable ... clause dropped" -- confirming the
+clause-drop keeps `fade` reachable rather than silently dead, and confirming a reader of that
+row is told, in the row itself, that no 0DTE evidence stood behind it.
+
+## 23. "Room beyond" hand-check on a known strike ladder (T48 acceptance item)
+
+`ROOM_BEYOND_FRACTION = 0.25` (the plan's own number, verbatim: "the next strike whose |GEX|
+exceeds 25% of the wall's"). Fixture (`tests/test_scan_regime.py
+::test_room_beyond_hand_checked_strike_ladder`): call wall at strike 104 with `abs_gex = 8.0`
+(threshold `0.25 * 8.0 = 2.0`), put wall at strike 96 with `abs_gex = 8.0` (same threshold).
+
+By hand, scanning outward from each wall:
+
+| Direction | Strike | `abs_gex` | Clears `2.0`? |
+|---|---|---|---|
+| above 104 | 106 | 1.0 | no |
+| above 104 | 108 | 1.5 | no |
+| above 104 | **110** | **3.0** | **yes** -> `room_beyond = 110 - 104 = 6.0` |
+| below 96 | 94 | 1.0 | no |
+| below 96 | 92 | 1.8 | no |
+| below 96 | **90** | **3.0** | **yes** -> `room_beyond = 96 - 90 = 6.0` |
+
+`app.scan.regime.compute_regime_row`, run directly on this fixture, reproduces both numbers
+exactly (`wall_above.room_beyond == 6.0`, `room_beyond_strike == 110.0`;
+`wall_below.room_beyond == 6.0`, `room_beyond_strike == 90.0`). A companion fixture
+(`test_room_beyond_none_when_no_strike_beyond_clears_the_threshold`) confirms the "no strike in
+this chain clears the threshold" case returns `None`, not a fabricated "unlimited room."
+
+## 24. Staleness: chip *and* threshold-suppressed verdict, confirmed live against T47's own five symbols
+
+**Decision.** Every `RegimeRow` carries `chain_age_minutes` (how many minutes before its
+trading day's close the chain's `app.jobs.calendar.effective_data_time` instant sits, `0.0`
+when honestly at or after the close) and `stale` (`chain_age_minutes >
+STALE_THRESHOLD_MINUTES`, 30 minutes -- see `app/scan/regime.py`'s own constant comment for why
+30, not some other number). **Both** a visible field (for a UI chip) **and** verdict
+suppression are implemented, not one or the other: a chip a reader can ignore is not enough
+given the mechanism this task is built around (T47's finding that an `is_eod=True` row can be
+hours older than its `captured_at` implies), so `_verdict` returns `verdict=None` with a
+`reasons` entry naming the exact staleness whenever the threshold is cleared, on top of (not
+instead of) the noise-dominated gate.
+
+**Confirmed live** (`GET /api/scan/regime`, 2026-09-09, all 28 symbols): exactly
+`{"XLRE", "XLC", "XBI", "KRE", "GDX"}` came back `"stale": true` -- the identical five symbols
+T47's own verified-facts table names, with the identical ordering by severity (XBI's
+`captured_at` is the furthest from its close). No other symbol, including the two that were
+already `verdict: null` for a different reason (XLK, TLT -- both noise-dominated, ratios 2.5%
+and 1.0%, both under the 3% floor), came back stale. This is the strongest evidence available
+that the staleness detector is reading the right instant: it reproduces, from live data alone,
+a finding the plan's own T47 section had to measure by hand.
+
+## 25. DIA fixture: pinned offline, and why the live DIA row differs
+
+T48's hard acceptance item, verbatim: "a DIA fixture must never yield a verdict." Pinned in
+`tests/test_scan_regime.py::test_verdict_none_when_noise_dominated_dia_like_fixture` (net/gross
+ratio fixed at 0.9%, `docs/validation.md` §9's own historical DIA figure) and
+`tests/test_scan_api.py::test_get_regime_dia_fixture_never_yields_a_verdict` (same ratio, seeded
+through the real DB/API path). Both assert `noise_dominated is True` and `verdict is None`.
+
+**The live DIA row on 2026-09-09 does carry a verdict** (`continuation`, ratio 18.2% of gross)
+-- this is not a contradiction. §9's 0.9% figure was one historical date's measurement, not a
+claim that DIA is *always* noise-dominated; the acceptance item asks for "a DIA fixture" that
+demonstrates the gate works when the ratio is small, which the two fixtures above do
+independently of whatever DIA's ratio happens to be on any given live day.
+
+## 26. Live measurement: `GET /api/scan/regime` (all 28 `Underlying` members, 2026-09-09)
+
+`docker compose restart backend` was required to pick up the new route (uvicorn runs without
+`--reload` in `docker-compose.yml`'s `backend` service -- the same restart-required step T45's
+own validation note names). After restarting:
+
+* `GET /health` -> `200 OK` (sanity check the container came back).
+* `GET /api/scan/regime` -> `200 OK`, 28 rows, one per `Underlying` member, **none** missing
+  (every core and extended symbol had a captured snapshot).
+* Verdict distribution: `continuation` 13, `mixed` 6, `fade` 2 (XLE, USO), `None` 7 (5 stale --
+  §24 above -- plus 2 noise-dominated: XLK 2.5%, TLT 1.0%, both under the 3% floor).
+* `zero_dte_share` was `null` on all 28 rows -- §22 above.
+* Two `fade` rows' reasons both explicitly read the "0DTE share unavailable ... clause dropped"
+  sentence, confirming §22's decision is visible end to end, not just in the pure module.
+
+This is the acceptance item "if you can hit the live app, note whether real rows render" --
+real rows render, with sensible, internally-consistent numbers (e.g. XLE: long gamma 23.8% of
+gross, flip 2.20 ATR below spot, nearest wall 0.25 ATR away -> `fade`).
+
+## 27. Acceptance checklist cross-reference (T48)
+
+| Plan / task acceptance item | Where it is pinned |
+|---|---|
+| Fixture chains pin each verdict branch and the noise-dominated branch | `tests/test_scan_regime.py`: `test_verdict_fade`, `test_verdict_fade_with_zero_dte_share_unavailable_drops_the_clause`, `test_verdict_continuation_from_short_gamma`, `test_verdict_continuation_from_long_gamma_near_flip_with_far_wall`, `test_verdict_mixed_when_neither_rule_clears`, `test_verdict_mixed_reports_known_zero_dte_share_below_floor`, `test_verdict_none_when_noise_dominated_dia_like_fixture`, `test_verdict_none_when_stale_even_if_otherwise_fade` |
+| "Room beyond" hand-checked on a fixture with a known strike ladder | §23 above; `test_room_beyond_hand_checked_strike_ladder` |
+| A DIA fixture never yields a verdict | §25 above; two independent fixtures (pure + API) |
+| API returns a row per core and extended symbol with `None` where inputs are missing | `test_get_regime_returns_a_row_per_underlying_with_none_for_uncaptured_symbols` (offline); confirmed live, §26 above (28/28 present) |
+| `uv run pytest` passes | 705 passed (684 pre-existing + 21 new: 15 in `test_scan_regime.py`, 6 in `test_scan_api.py`) |
+| `ruff check .` passes | 0 errors |
+| 0DTE share: `None` when unsupported by stored data, documented rather than estimated | §22 above |
+| Staleness surfaced, not silently ranked alongside a fresh chain | §24 above, confirmed live against T47's own five symbols |
+| `GET /api/scan/regime` measured against the live database | §26 above |

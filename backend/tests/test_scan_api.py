@@ -11,6 +11,7 @@ from __future__ import annotations
 import asyncio
 import datetime as dt
 from pathlib import Path
+from zoneinfo import ZoneInfo
 
 import httpx
 import pytest
@@ -19,8 +20,8 @@ from fastapi.testclient import TestClient
 
 from app.api.scan import router
 from app.models.bars import DailyBar as DailyBarIn
-from app.models.chain import ChainSnapshot
-from app.models.db import Base, get_engine, get_sessionmaker
+from app.models.chain import ChainSnapshot, Underlying
+from app.models.db import Base, GexByStrike, GexLevel, Snapshot, get_engine, get_sessionmaker
 from app.providers.cboe import CboeProvider
 from app.storage.bars_repository import upsert_bars
 from app.storage.parquet import write_snapshot
@@ -540,3 +541,263 @@ def test_get_rotation_accepts_rsp_benchmark(client, session_factory, monkeypatch
     )
     assert response.status_code == 200
     assert response.json()["benchmark"] == "RSP"
+
+
+# --- GET /api/scan/regime (T48, plans/continuation/03-regime-board.md) ------------------------
+
+_NY = ZoneInfo("America/New_York")
+
+
+def _ny(y, m, d, h, mi) -> dt.datetime:
+    return dt.datetime(y, m, d, h, mi, tzinfo=_NY).astimezone(dt.UTC)
+
+
+def _seed_regime_snapshot(
+    gex_session_factory,
+    underlying: str,
+    *,
+    captured_at: dt.datetime,
+    spot: float = 100.0,
+    is_eod: bool = True,
+    source: str = "cboe",
+) -> int:
+    with gex_session_factory() as session:
+        snap = Snapshot(
+            underlying=underlying,
+            captured_at=captured_at,
+            source=source,
+            spot=spot,
+            contract_count=100,
+            parquet_path=f"{underlying}/unused.parquet",  # never opened by /regime
+            is_eod=is_eod,
+        )
+        session.add(snap)
+        session.commit()
+        return snap.id
+
+
+def _seed_regime_levels(
+    gex_session_factory,
+    snapshot_id: int,
+    filter_value: str,
+    *,
+    net_gex: float,
+    call_wall: float | None,
+    call_wall_gex: float | None,
+    put_wall: float | None,
+    put_wall_gex: float | None,
+    flip_point: float | None,
+    spot: float,
+    computed_at: dt.datetime,
+) -> None:
+    with gex_session_factory() as session:
+        session.add(
+            GexLevel(
+                snapshot_id=snapshot_id,
+                filter=filter_value,
+                net_gex=net_gex,
+                call_wall=call_wall,
+                call_wall_gex=call_wall_gex,
+                put_wall=put_wall,
+                put_wall_gex=put_wall_gex,
+                max_abs_strike=call_wall,
+                max_call_gex_strike=call_wall,
+                max_put_gex_strike=put_wall,
+                flip_point=flip_point,
+                spot=spot,
+                computed_at=computed_at,
+            )
+        )
+        session.commit()
+
+
+def _seed_regime_by_strike(
+    gex_session_factory,
+    snapshot_id: int,
+    filter_value: str,
+    rows: list[tuple[float, float, float]],
+) -> None:
+    with gex_session_factory() as session:
+        for strike, call_gex, put_gex in rows:
+            session.add(
+                GexByStrike(
+                    snapshot_id=snapshot_id,
+                    filter=filter_value,
+                    strike=strike,
+                    call_gex=call_gex,
+                    put_gex=put_gex,
+                    net_gex=call_gex + put_gex,
+                )
+            )
+        session.commit()
+
+
+def test_get_regime_returns_a_row_per_underlying_with_none_for_uncaptured_symbols(
+    client, session_factory, gex_session_factory
+):
+    """T48 acceptance item, verbatim: "the API returns a row per core and extended symbol with
+    `None` where inputs are missing." Nothing is seeded at all here.
+    """
+    response = client.get("/api/scan/regime")
+    assert response.status_code == 200
+    body = response.json()
+    assert body["filter"] == "ALL"
+
+    symbols = {row["underlying"] for row in body["rows"]}
+    assert symbols == {u.value for u in Underlying}
+
+    for row in body["rows"]:
+        assert row["verdict"] is None
+        assert row["positioning"] is None
+        assert row["reasons"] == ["no snapshot captured yet for this symbol"]
+
+
+def test_get_regime_computes_a_fresh_fade_row_for_a_seeded_symbol(
+    client, session_factory, gex_session_factory
+):
+    """A fresh (at-the-close) EOD snapshot, walls/flip arranged like `test_scan_regime.py`'s
+    own `test_verdict_fade_with_zero_dte_share_unavailable_drops_the_clause` fixture -- the
+    ordinary case on real EOD data, where `ZERO_DTE` admits nothing.
+    """
+    # `_seed_monotone`'s bars have a constant true range of 2.0 (high=close+0.5, low=close-1.5,
+    # so |high-prev_close|=1.5, |low-prev_close|=0.5, range=2.0 -- all three below the plain
+    # `high-low=2.0`), so ATR14 settles at exactly 2.0 -- walls/flip below are sized in *that*
+    # unit (not the 5.0 `test_scan_regime.py`'s hand-built fixtures use), since this test
+    # exercises the real `atr()` computation off real bars, not a stand-in ATR value.
+    captured_at = _ny(2026, 1, 5, 16, 20)  # outside the session -> clamps to 16:00+15 (fresh)
+    snap_id = _seed_regime_snapshot(gex_session_factory, "SPY", captured_at=captured_at, spot=100.0)
+    _seed_regime_levels(
+        gex_session_factory,
+        snap_id,
+        "ALL",
+        net_gex=5.0e9,
+        call_wall=101.5,  # 1.5 away = 0.75 ATR, clears fade's "nearest wall within 1 ATR"
+        call_wall_gex=8.0e9,
+        put_wall=98.5,  # 1.5 away = 0.75 ATR
+        put_wall_gex=-6.0e9,
+        flip_point=94.0,  # 6.0 away = 3.0 ATR, clears fade's "flip more than 1 ATR below spot"
+        spot=100.0,
+        computed_at=captured_at,
+    )
+    _seed_regime_by_strike(
+        gex_session_factory, snap_id, "ALL", [(98.5, 0.0, -6.0), (101.5, 8.0, 0.0)]
+    )
+    # ZERO_DTE: no rows at all -- the structural, live-measured (2026-09-09) EOD case.
+    _seed_monotone(session_factory, "SPY", 60, start=dt.date(2025, 10, 1), start_close=90.0)
+
+    response = client.get("/api/scan/regime")
+    assert response.status_code == 200
+    body = response.json()
+    spy = next(row for row in body["rows"] if row["underlying"] == "SPY")
+
+    assert spy["stale"] is False
+    assert spy["zero_dte_share"] is None
+    assert spy["verdict"] == "fade"
+    assert any("unavailable" in r and "dropped" in r for r in spy["reasons"])
+    assert spy["atr14"] is not None  # bars were seeded, so ATR14 should compute
+
+
+def test_get_regime_dia_fixture_never_yields_a_verdict(client, session_factory, gex_session_factory):
+    """T48's hard acceptance item, verbatim: "a DIA fixture must never yield a verdict" --
+    `docs/validation.md`'s own measured DIA figure, net GEX 0.9% of gross.
+    """
+    captured_at = _ny(2026, 1, 5, 16, 20)
+    snap_id = _seed_regime_snapshot(gex_session_factory, "DIA", captured_at=captured_at, spot=400.0)
+    _seed_regime_levels(
+        gex_session_factory,
+        snap_id,
+        "ALL",
+        net_gex=0.9,
+        call_wall=404.0,
+        call_wall_gex=50.0,
+        put_wall=396.0,
+        put_wall_gex=-49.0,
+        flip_point=390.0,
+        spot=400.0,
+        computed_at=captured_at,
+    )
+    _seed_regime_by_strike(
+        gex_session_factory, snap_id, "ALL", [(396.0, 0.0, -50.0), (404.0, 50.0, 0.0)]
+    )
+
+    response = client.get("/api/scan/regime")
+    assert response.status_code == 200
+    dia = next(row for row in response.json()["rows"] if row["underlying"] == "DIA")
+
+    assert dia["positioning"]["noise_dominated"] is True
+    assert dia["verdict"] is None
+
+
+def test_get_regime_stale_snapshot_suppresses_verdict(client, session_factory, gex_session_factory):
+    """T47's verified-facts case: an EOD-flagged row whose `captured_at` is well before the
+    16:00 close (here, 11:39 ET -- XBI's own live figure) must not rank alongside a genuinely
+    fresh chain. Same otherwise-fade inputs as the fresh test above.
+    """
+    captured_at = _ny(2026, 1, 5, 11, 39)  # inside the regular session -> NOT clamped forward
+    snap_id = _seed_regime_snapshot(gex_session_factory, "XBI", captured_at=captured_at, spot=100.0)
+    _seed_regime_levels(
+        gex_session_factory,
+        snap_id,
+        "ALL",
+        net_gex=5.0e9,
+        call_wall=104.0,
+        call_wall_gex=8.0e9,
+        put_wall=96.0,
+        put_wall_gex=-6.0e9,
+        flip_point=90.0,
+        spot=100.0,
+        computed_at=captured_at,
+    )
+    _seed_regime_by_strike(
+        gex_session_factory,
+        snap_id,
+        "ALL",
+        [(96.0, 0.0, -6.0), (100.0, 1.0, -1.0), (104.0, 8.0, 0.0)],
+    )
+
+    response = client.get("/api/scan/regime")
+    assert response.status_code == 200
+    xbi = next(row for row in response.json()["rows"] if row["underlying"] == "XBI")
+
+    assert xbi["stale"] is True
+    assert xbi["chain_age_minutes"] == pytest.approx(4 * 60 + 36, abs=1.0)  # 11:39 -> 16:15
+    assert xbi["verdict"] is None
+    assert any("stale" in r for r in xbi["reasons"])
+
+
+def test_get_regime_rejects_unpersisted_filter_422(client, session_factory, gex_session_factory):
+    response = client.get("/api/scan/regime", params={"filter": "THIS_WEEK"})
+    assert response.status_code == 422
+
+
+def test_get_regime_accepts_zero_dte_filter(client, session_factory, gex_session_factory):
+    """`ZERO_DTE` is a persisted filter (`app.gex.store.DEFAULT_FILTERS`) even though it is
+    structurally empty on EOD data -- the endpoint must accept it (422 only on a filter that is
+    never persisted at all, e.g. `THIS_WEEK`), returning rows with every GEX-derived field
+    `None` for a symbol whose `ZERO_DTE` levels admitted nothing.
+    """
+    captured_at = _ny(2026, 1, 5, 16, 20)
+    snap_id = _seed_regime_snapshot(gex_session_factory, "QQQ", captured_at=captured_at, spot=100.0)
+    _seed_regime_levels(
+        gex_session_factory,
+        snap_id,
+        "ALL",
+        net_gex=5.0e9,
+        call_wall=104.0,
+        call_wall_gex=8.0e9,
+        put_wall=96.0,
+        put_wall_gex=-6.0e9,
+        flip_point=90.0,
+        spot=100.0,
+        computed_at=captured_at,
+    )
+    _seed_regime_by_strike(gex_session_factory, snap_id, "ALL", [(104.0, 8.0, 0.0)])
+    # No GexLevel/GexByStrike rows at all for ZERO_DTE -- exactly the live structural case.
+
+    response = client.get("/api/scan/regime", params={"filter": "ZERO_DTE"})
+    assert response.status_code == 200
+    qqq = next(row for row in response.json()["rows"] if row["underlying"] == "QQQ")
+    # No `GexLevel` row for `ZERO_DTE` at all -- `_load_gex_inputs` returns `None` for this
+    # filter, same "None where inputs are missing" contract as a never-captured symbol.
+    assert qqq["verdict"] is None
+    assert qqq["reasons"] == ["no snapshot captured yet for this symbol"]
