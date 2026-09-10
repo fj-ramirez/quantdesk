@@ -111,6 +111,12 @@ export function vizPaletteFor(theme: 'light' | 'dark'): VizPalette {
  * reading) takes `seriesAll`, the chart's neutral primary blue. Neither red/green/orange
  * verdict hue is reused for it, specifically so a reader never mistakes "this data is too old
  * to trust" for a market judgment.
+ *
+ * **T54 addition -- `contango`/`backwardation`.** `RegimeStrip`'s term-structure tiles reuse
+ * the same red/green pair rather than a third hue: `contango` (the normal, upward-sloping
+ * curve) shares `levelSupport` with `continuation`, `backwardation` (the curve inverted --
+ * near-term stress) shares `levelResistance` with `fade`. `mixed` already shares the
+ * `seriesExZeroDte` orange with `pending` above -- no new case needed for it.
  */
 export function statusChipColor(status: string, palette: VizPalette): string {
   switch (status) {
@@ -120,10 +126,12 @@ export function statusChipColor(status: string, palette: VizPalette): string {
     case 'continued':
     case 'continuation':
     case 'leading':
+    case 'contango':
       return palette.levelSupport;
     case 'failed':
     case 'fade':
     case 'lagging':
+    case 'backwardation':
       return palette.levelResistance;
     case 'pending':
     case 'mixed':

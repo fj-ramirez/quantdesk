@@ -1020,3 +1020,207 @@ and that this implementation reports it honestly rather than substituting the ru
 independent as-of date the survey warns can disagree with `sharesOutstanding`'s -- this
 implementation does not fabricate a NAV from a mismatched date; see
 `app.models.db.EtfSharesOutstanding`'s docstring.
+
+## 29. T54: cross-asset regime strip -- Cboe index bars provider, and the close-only-schema decision
+
+### 29.1 The close-only-schema decision, restated per this task's own instruction
+
+`app.providers.cboe_index.CboeIndexHistoryProvider` fetches six Cboe volatility/skew index
+histories (`^VIX`, `^VIX9D`, `^VIX3M`, `^VIX6M`, `^VVIX`, `^SKEW`) from
+`https://cdn.cboe.com/api/global/us_indices/daily_prices/{IX}_History.csv`. Four of the six
+publish daily OHLC; two (`^VVIX`, `^SKEW`) publish a close only. `app.models.bars.DailyBar`
+declares `open`/`high`/`low`/`close` all required, non-null floats, so a close-only row cannot
+be stored as-is without a decision.
+
+**Decision: store `open = high = low = close`.** Of the three options
+`plans/continuation/06-cross-asset-regime.md`'s "Verified facts" section lays out (flatten the
+OHLC fields; widen the schema to nullable; keep VVIX/SKEW out of `daily_bars` entirely), this
+task takes the first. It is not an arbitrary shortcut: it is **Cboe's own convention for its
+own early history** -- the `^VIX` file's 1990 rows are themselves
+`17.240000,17.240000,17.240000,17.240000` (see
+`backend/tests/fixtures/cboe_index/VIX_History-2026-09-09.csv`'s first data row), so the
+vendor's own OHLC file format already carries a "closes dressed as OHLC" precedent for exactly
+this situation. Widening the schema (option 2) is a migration plus a nullability change
+propagating through every reader of `daily_bars`, which is a larger and riskier change than
+this task's scope justifies, and is exactly the class of change
+`docs/supervision-report.md` names for hiding type errors elsewhere. Keeping the two symbols
+out of `daily_bars` (option 3) contradicts the plan's own "no new table" constraint.
+
+The cost, restated: a consumer cannot distinguish "no intraday range published" from "a
+genuinely flat day" from a `cboe_index`-sourced row's `open`/`high`/`low` alone. Nothing in
+this task's own code reads `open`/`high`/`low` from a `cboe_index` row anywhere --
+`app.scan.cross_asset` reads only `close` throughout -- but a future caller must not assume
+otherwise. The mitigation is `source="cboe_index"` on every row this provider writes, plus this
+section and the provider's own module docstring.
+
+### 29.2 `^VIX` changes hands from Yahoo to Cboe -- confirmed live against the real dev Postgres
+
+`T42` already backfilled `^VIX` from `app.providers.yahoo` (`source="yahoo-splitadj"`).
+Listing `^VIX` in the `cboe_index` `BAR_PROVIDER_GROUPS` entry moves it to
+`app.providers.cboe_index`, since `BarProviderRegistry.provider_name_for` resolves a group
+entry ahead of the default. Before touching the database, the existing rows were read back:
+
+```
+>>> read_bars('^VIX').tail(5)
+      date        ...  source
+2026-09-09  ...  yahoo-splitadj
+```
+
+1256 rows, all `source="yahoo-splitadj"`. After `uv run python -m app.bars_backfill --years 3
+--symbols ^VIX --force` (forced, since the default incremental skip would otherwise never
+re-fetch a symbol whose `last_bar_date` is already recent):
+
+```
+bars_backfill: ^VIX inserted=20 updated=754
+```
+
+Read back again:
+
+```
+      date   open   high    low  close  volume      source
+2026-09-09  15.65  16.68  15.57  16.46     NaN  cboe_index
+```
+
+`source` value counts: `cboe_index: 774, yahoo-splitadj: 502`. Confirms, against the real
+shared dev Postgres (not a fixture): `upsert_bars`'s `ON CONFLICT DO UPDATE` set clause
+includes `source` (`app.storage.bars_repository.upsert_bars`), so the changeover is recorded
+column-by-column on every row the 3-year `--force` window reached (754 updated + 20 newly
+inserted dates Cboe's history has that Yahoo's did not, within that window) -- the 502 rows
+older than the 3-year window are untouched and still correctly read `yahoo-splitadj`, not
+silently relabelled. `volume` also changes from Yahoo's `0` (`^VIX` genuinely trades zero
+contract volume, per T42's own docstring) to Cboe's `None` (the endpoint does not publish a
+volume column at all) -- both are correct under CLAUDE.md invariant 3's None-vs-zero rule for
+their respective source, not a regression.
+
+### 29.3 Live backfill of the other five index symbols
+
+```
+$ uv run python -m app.bars_backfill --years 5 --symbols ^VIX9D,^VIX6M,^VVIX,^SKEW
+bars_backfill: ^VIX9D inserted=1253 updated=0
+bars_backfill: ^VIX6M inserted=1253 updated=0
+bars_backfill: ^VVIX inserted=1253 updated=0
+bars_backfill: ^SKEW inserted=1252 updated=0
+bars_backfill: total=4 fetched=4 skipped_up_to_date=0 failed=0 inserted=5011 updated=0
+```
+
+All four populated cleanly on the first run (no prior rows to conflict with, `updated=0`
+throughout).
+
+### 29.4 `GET /api/scan/cross-asset` -- live response against the real dev Postgres
+
+Captured in-process (`TestClient(app).get(...)`, `app` built from `app.api.scan.router`, no
+session-factory override -- the real `settings.DATABASE_URL`), immediately after the backfills
+in 29.2/29.3, 2026-09-10:
+
+```json
+{
+  "as_of": "2026-09-09",
+  "vix": 16.46, "vix3m": 18.87, "vix9d": 15.59,
+  "vix_vix3m_ratio": 0.8722840487546369, "vix9d_vix_ratio": 0.9471445929526123,
+  "term_structure": "contango", "term_structure_reason": null,
+  "vvix": 94.5, "vvix_pct": 0.36254980079681276, "vvix_pct_n": 252,
+  "vix_pct": 0.35856573705179284, "vix_pct_n": 252,
+  "spy_rv20": 0.08101500442487977, "vrp": 8.358499557512024, "vrp_pct": 0.609375, "vrp_pct_n": 129,
+  "sector_correlation": 0.17511471460690284, "sector_correlation_n": 18, "sector_correlation_universe_n": 11,
+  "uup_return_20d": -0.005685851132994912, "gld_return_20d": 0.00596073099404304,
+  "tlt_return_20d": -0.0055967766249988005
+}
+```
+
+Hand-checked: `term_structure`: `VIX/VIX3M = 16.46/18.87 = 0.872 < 1` and `VIX9D/VIX =
+15.59/16.46 = 0.947 < 1` -> `"contango"`, matching `app.scan.cross_asset.term_structure`'s
+rule. `vrp`: `16.46 - 8.1015 = 8.358...`, matching `app.scan.cross_asset.vrp`.
+
+**`sector_correlation_n: 18`, not `20`, is the live confirmation of the plan's own named
+hazard** ("a correlation window straddling a missing bar for one ETF silently shrinks the
+sample"): at least one of the 11 sector ETFs was missing a bar on 2 of the trailing 20 trading
+days in the live database, and `sector_correlation` correctly reported the *effective* aligned
+sample size rather than silently computing over a misaligned 20. This is the same `n < window`
+behavior `backend/tests/test_scan_cross_asset.py
+::test_sector_correlation_reports_effective_sample_size_when_a_bar_is_missing` exercises on a
+hand-built fixture, now confirmed against real data.
+
+`frontend/src/mocks/fixtures/scan/cross_asset.json` is this exact response, byte-for-byte
+(only re-indented) -- see that directory's `README.md` for why it was captured this way (an
+isolated worktree, guardrail against restarting the shared dev server) rather than curled.
+
+### 29.5 Acceptance checklist cross-reference (T54)
+
+- `uv run python -m app.bars_backfill --years 3 --symbols ^VIX,^VIX3M` populates rows via the
+  new provider -- §29.2 (`^VIX`, forced to demonstrate the changeover) and the plain
+  (non-forced) run's own log line, `bars_backfill: ^VIX3M inserted=752 updated=0`.
+- Recorded fixture CSVs parse; `not-a-csv-error-body.html` raises `ProviderError` --
+  `backend/tests/test_cboe_index.py` (all fixtures under `backend/tests/fixtures/cboe_index/`).
+- `term_structure` on hand-built closes yields all three labels --
+  `backend/tests/test_scan_cross_asset.py::test_term_structure_contango`/`_backwardation`/
+  `_mixed_when_ratios_disagree`/`_mixed_at_exact_parity`.
+- Sector correlation is exactly 1.0 when all sectors share one return series, and ~0 on
+  orthogonal series -- `test_sector_correlation_is_exactly_one_when_every_sector_shares_one_
+  return_series` (Pearson correlation of a series with itself), `test_sector_correlation_is_
+  near_zero_on_orthogonal_series` (an exact Hadamard-matrix construction, not merely
+  approximately uncorrelated random noise).
+- `percentile_252` with fewer than 60 bars returns `None` --
+  `test_percentile_252_none_under_60_bars`, and confirmed live in §29.4's `vix_pct_n`/`vrp_pct_n`
+  fields (`vrp_pct_n: 129` is itself below the plan's full 252-bar window because `vrp`'s own
+  history is bounded by SPY RV20's 20-bar warm-up on top of `daily_bars`' own history depth for
+  this symbol combination -- still comfortably above the 60-bar floor).
+- The strip renders "n/a" tiles for missing inputs -- `RegimeStrip.test.tsx`'s `'renders "n/a"
+  tiles with a reason in the tooltip when nothing is seeded yet'`, against
+  `cross_asset_empty.json` (confirmed to match the real route's own empty-state response by
+  `backend/tests/test_scan_cross_asset_api.py::test_get_cross_asset_empty_when_nothing_seeded`,
+  not merely hand-typed).
+- Both test suites and both linters pass -- backend 810 tests (baseline 769 + 41 new), 0 ruff
+  errors; frontend 233 tests (baseline 226 + 7 new), 0 new lint warnings (still exactly the 4
+  pre-existing `react-refresh/only-export-components` warnings), `tsc -b` clean.
+- `RegimeStrip` is deliberately **not** wired into `/regime` or `/scan` -- both pages are owned
+  by other tasks (T49, T44/T56) per this task's own brief; the component, its types/queries/
+  client additions, MSW fixtures and tests ship standalone, ready for either page to import.
+
+### 29.6 Supervisor review: two sample-size defects from the shared union calendar, found live
+
+Both were found while verifying T54 against the live database, both have the same root cause,
+and the second changed a **displayed number**, not just a reported sample size.
+
+`GET /api/scan/cross-asset` reads one shared wide closes frame (the design is right — it is
+what makes every division align by date). But that frame's index is the *union* of its symbols'
+calendars, and Cboe's index calendar carries dates the ETF histories do not: **1287 `^VIX` rows
+against 1254 for every sector ETF** over five years, and **8 such dates inside the endpoint's own
+400-day lookback**. Those dates are all-`NaN` in any ETF-only slice of the frame.
+
+**1. `sector_correlation`: a 20-day window computed from 18 observations, every day.**
+`tail(window)` was taken before dropping the all-`NaN` rows, so index-only dates ate into the
+window. The live endpoint reported `sector_correlation_n: 18` — honestly, but systematically
+short. Fixed by dropping rows where *no* column has a bar **before** taking the window
+(`dropna(how="all")`), which is a different thing from the per-symbol gap handling
+(`dropna(how="any")`) that stays in place after it: an all-`NaN` row means "not a session for
+this universe", a partially-`NaN` row means "a symbol is genuinely missing a bar", and only the
+second is the hazard `n` exists to report. Live after the fix: `n: 20`, and the value
+(`0.15900930418661577`) matches an independent computation over a sector-only frame exactly.
+
+**2. `vrp`: the volatility risk premium itself was wrong, not merely under-sampled.**
+Realized vol is a *rolling* window, so one all-`NaN` row does not cost one observation — it
+costs `RV_PERIOD` of them, since every trailing window containing that row returns `NaN`.
+Measured: those 8 calendar rows dropped SPY's valid `RV20` count **from 256 to 129**, and
+`vrp_pct_n` with it. Because the surviving rows were the ones whose windows happened to miss a
+gap, the *latest* `RV20` was also computed from a poisoned window:
+
+| | before fix | after fix |
+|---|---|---|
+| `spy_rv20` | 0.08101500442487977 | **0.08397533869386256** |
+| `vrp` (vol points) | 8.358 | **8.062** |
+| `vrp_pct_n` | 129 | **252** |
+
+The corrected `spy_rv20` matches, to 1e-15, the value independently hand-computed from
+`/api/bars` when T45 was verified (`0.08397533869386167`) — which is what identifies the old
+number as wrong rather than merely differently-windowed. Fixed by computing the RV series from
+`spy_close.dropna()`, i.e. SPY's own sessions.
+
+Both are pinned by regression tests in `tests/test_scan_cross_asset.py`
+(`test_sector_correlation_window_counts_sessions_not_foreign_calendar_rows`,
+`test_vrp_percentile_is_not_shortened_by_foreign_calendar_rows`), each carrying the live
+measurement in its docstring so the reason survives the fix.
+
+**The general lesson, worth applying to any later tool that reads the shared frame:** a union
+calendar is safe for *pointwise* arithmetic (which is why the shared-frame design is correct)
+and unsafe for anything *rolling or windowed*. Restrict to the relevant symbols' own sessions
+before a rolling computation, and take trailing windows after that restriction, never before.

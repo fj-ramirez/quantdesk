@@ -12,14 +12,15 @@
  * is already exactly the dashboard's own enum. The sort column/direction still come from
  * `useScanParams`, the one vocabulary every scan-family page shares.
  *
- * The `RegimeStrip` slot belongs to T54, which does not exist yet: this page renders nothing
- * there -- never a placeholder row of dashes (07-ui.md) -- and leaves a comment marking where
- * that task adds its component.
+ * The `RegimeStrip` at the top is T54's component, wired in here once that task landed. It
+ * owns its own query and its own loading/error/`n/a` states, so this page renders it
+ * unconditionally rather than gating it -- and never a placeholder row of dashes (07-ui.md).
  */
 import { useCallback } from 'react';
 import { useRegime } from '../api/queries';
 import { useDashboardParams, useScanParams } from '../state/urlState';
 import { EXPIRY_FILTER_LABELS, type ExpiryFilter } from '../api/types';
+import { RegimeStrip } from '../components/regime/RegimeStrip';
 import { RegimeTable } from '../components/regime/RegimeTable';
 import { toRegimeRows, REGIME_DEFAULT_SORT } from '../components/regime/regimeRows';
 import { EmptyState } from '../components/EmptyState';
@@ -71,8 +72,9 @@ export function Regime() {
 
   return (
     <div className="regime-page">
-      {/* RegimeStrip slot (T54) -- intentionally rendered empty until that endpoint exists.
-          Do not add a placeholder row of dashes here; see this file's own docstring. */}
+      {/* T54's cross-asset strip, wired in by the supervisor once that task landed. It owns
+          its own query and its own empty/error states, so it is rendered unconditionally. */}
+      <RegimeStrip />
 
       <div className="scan-toolbar">
         <FilterToolbar active={filter} onChange={setFilter} />

@@ -21,6 +21,7 @@ import type {
   CfdPremiumCandidate,
   CfdTranslation,
   ChainResponse,
+  CrossAssetResponse,
   ExpiryFilter,
   GexResult,
   LevelHistoryRow,
@@ -69,6 +70,7 @@ import rotationIndustriesRspFixture from './fixtures/scan/rotation_industries_rs
 import rotationAssetsFixture from './fixtures/scan/rotation_assets.json';
 import regimeFixture from './fixtures/scan/regime.json';
 import regimeZeroDteFixture from './fixtures/scan/regime_zero_dte.json';
+import crossAssetFixture from './fixtures/scan/cross_asset.json';
 
 // T47 added 23 more `Underlying` members (sector/industry ETFs), none of which has a mock
 // fixture -- these handlers were built and are tested against exactly the original five, and
@@ -506,6 +508,14 @@ export const handlers = [
   }),
 
   http.get('*/api/health/capture', () => HttpResponse.json(healthCaptureFixture as CaptureHealth)),
+
+  // T54: `RegimeStrip`. One snapshot, no query params -- see `fixtures/scan/README.md`'s
+  // "Cross-asset regime strip fixtures" section for how this was recorded (in-process against
+  // the real dev Postgres, not curled -- the guardrail against restarting the shared dev
+  // server left no running server with this task's code to curl).
+  http.get('*/api/scan/cross-asset', () =>
+    HttpResponse.json(crossAssetFixture as CrossAssetResponse),
+  ),
 
   http.get('*/api/symbols', () =>
     HttpResponse.json({ core: [...CORE_UNDERLYINGS], extended: [...EXTENDED_UNDERLYINGS] }),

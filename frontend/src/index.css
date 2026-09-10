@@ -689,3 +689,49 @@ code {
   border-left: 3px solid var(--accent-border);
   padding-left: 7px;
 }
+
+/* ---------------------------------------------------------------------------
+   T54 -- RegimeStrip (plans/continuation/06-cross-asset-regime.md). Tokens only, same rule
+   as every other block in this file -- per-tile accent colour comes from theme/vizPalette.ts
+   via StatusChip, never a literal hex here.
+   --------------------------------------------------------------------------- */
+
+.regime-strip {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  padding: 4px 0 12px;
+}
+
+.regime-strip__tile {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 128px;
+  flex: 1 1 128px;
+  padding: 8px 12px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+}
+
+.regime-strip__label {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text);
+  opacity: 0.7;
+}
+
+.regime-strip__value {
+  font-size: 18px;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-h);
+  cursor: help;
+}
+
+.regime-strip__value--empty {
+  font-size: 14px;
+  color: var(--text);
+  opacity: 0.6;
+  cursor: help;
+}

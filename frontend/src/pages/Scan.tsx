@@ -20,6 +20,7 @@
 import { useCallback, useState } from 'react';
 import { useBreakouts, useTrend } from '../api/queries';
 import { useScanParams, SCAN_K_VALUES, SCAN_LOOKBACK_VALUES, SCAN_N_VALUES } from '../state/urlState';
+import { RegimeStrip } from '../components/regime/RegimeStrip';
 import { BreakoutTable, BREAKOUT_DEFAULT_SORT } from '../components/scan/BreakoutTable';
 import { BreakoutDetail } from '../components/scan/BreakoutDetail';
 import { OpenBreakouts } from '../components/scan/OpenBreakouts';
@@ -82,6 +83,12 @@ export function Scan() {
 
   return (
     <div className="scan-page">
+      {/* T54's cross-asset strip. 07-ui.md renders it at the top of both `/scan` and
+          `/regime`: it answers "what kind of tape is this" for everything at once, which is
+          the context the per-symbol rows below are read against. It owns its own query and
+          its own loading/error/`n/a` states. */}
+      <RegimeStrip />
+
       <div className="scan-toolbar">
         <div className="scan-toolbar__group" role="group" aria-label="View">
           {(['breakouts', 'trend'] as const).map((candidate) => (

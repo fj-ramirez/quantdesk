@@ -8,6 +8,7 @@ import type {
   BreakoutsResponse,
   CaptureHealth,
   ChainResponse,
+  CrossAssetResponse,
   ExpiryFilter,
   GexResult,
   LevelHistoryRow,
@@ -233,5 +234,14 @@ export const apiClient = {
    * that validator rather than inventing a second one. */
   regime(filter: ExpiryFilter): Promise<RegimeResponse> {
     return apiFetch<RegimeResponse>('/api/scan/regime', { filter });
+  },
+
+  // -------------------------------------------------------------------------------------
+  // T54: the cross-asset regime strip (`RegimeStrip`, plans/continuation/06-cross-asset-
+  // regime.md). No query params -- one snapshot row, always the latest.
+  // -------------------------------------------------------------------------------------
+
+  crossAsset(): Promise<CrossAssetResponse> {
+    return apiFetch<CrossAssetResponse>('/api/scan/cross-asset');
   },
 };

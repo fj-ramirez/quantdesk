@@ -213,3 +213,15 @@ export function useRegime(filter: ExpiryFilter) {
     queryFn: () => apiClient.regime(filter),
   });
 }
+
+// ---------------------------------------------------------------------------------------
+// T54: `RegimeStrip` (plans/continuation/06-cross-asset-regime.md). No params -- always the
+// latest snapshot row.
+// ---------------------------------------------------------------------------------------
+
+export function useCrossAsset() {
+  return useQuery({
+    queryKey: ['scan-cross-asset'] as const,
+    queryFn: () => apiClient.crossAsset(),
+  });
+}

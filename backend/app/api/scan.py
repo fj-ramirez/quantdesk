@@ -1512,3 +1512,120 @@ def get_flows(
     return FlowsResponse(
         window=window, symbols=symbols_out, no_flow_data=no_flow_data, sources=sources
     )
+
+
+# --------------------------------------------------------------------------------------------
+# T54: cross-asset regime strip (plans/continuation/06-cross-asset-regime.md). Kept as one
+# self-contained, additive block -- including its own local imports below, rather than editing
+# this file's shared import list at the top -- same rationale `get_flows`'s own block above
+# gives for the identical pattern: a concurrent edit to this module has nothing here to
+# conflict with beyond this block's own boundaries.
+# --------------------------------------------------------------------------------------------
+
+#: Calendar days of daily closes this route reads before computing anything. Sized to
+#: comfortably clear `app.scan.cross_asset.PERCENTILE_WINDOW` (252 trading days) plus weekends
+#: and holidays (252 * 7/5 ~= 353 calendar days) with real margin -- the same
+#: over-provision-then-measure posture `_ROTATION_LOOKBACK_DAYS`'s own comment describes for an
+#: identical calculation.
+_CROSS_ASSET_LOOKBACK_DAYS = 400
+
+#: The six Cboe index symbols (T54's `app.providers.cboe_index`) this route reads, plus the
+#: everything-else-from-T42's-bars symbols the plan's "Data" section names by name (SPY for
+#: realized vol; UUP/GLD/TLT for the three 20-day-move tiles). The 11 sector ETFs
+#: (`app.scan.groups.SECTORS`) are unioned in below, the same "one shared frame, not one
+#: `read_bars` call per symbol" reasoning `get_rotation` already gives for its own universe.
+_CROSS_ASSET_VOL_SYMBOLS = ("^VIX", "^VIX3M", "^VIX9D", "^VVIX")
+_CROSS_ASSET_OTHER_SYMBOLS = ("SPY", "UUP", "GLD", "TLT")
+
+
+class CrossAssetOut(BaseModel):
+    """Mirrors `app.scan.cross_asset.CrossAssetRow` field for field -- see that dataclass's own
+    docstring for exactly when each field is `None` and why. Nine strip tiles' worth of data;
+    no field here is a composite of any of the others (the plan's "no composite score").
+    """
+
+    as_of: dt.date | None
+
+    vix: float | None
+    vix3m: float | None
+    vix9d: float | None
+    vix_vix3m_ratio: float | None
+    vix_vix3m_ratio_pct: float | None
+    vix_vix3m_ratio_pct_n: int
+    vix9d_vix_ratio: float | None
+    vix9d_vix_ratio_pct: float | None
+    vix9d_vix_ratio_pct_n: int
+    term_structure: str | None
+    term_structure_reason: str | None
+
+    vvix: float | None
+    vvix_pct: float | None
+    vvix_pct_n: int
+
+    vix_pct: float | None
+    vix_pct_n: int
+
+    spy_rv20: float | None
+    vrp: float | None
+    vrp_pct: float | None
+    vrp_pct_n: int
+    vrp_reason: str | None
+
+    sector_correlation: float | None
+    sector_correlation_n: int
+    sector_correlation_universe_n: int
+
+    uup_return_20d: float | None
+    gld_return_20d: float | None
+    tlt_return_20d: float | None
+
+    @classmethod
+    def from_row(cls, row) -> CrossAssetOut:
+        payload = row.to_dict()
+        # `CrossAssetRow.as_of` carries whatever the wide closes frame's own index dtype is
+        # (an object-dtype `datetime.date`, in practice, but `read_universe_closes` makes no
+        # hard promise beyond "whatever `DailyBar.date` was") -- normalized the same
+        # `hasattr(..., "date")`-defensive way `app.api.scan.get_rotation` already normalizes
+        # `rrg`'s own `row.date` before it reaches a response model.
+        as_of = payload["as_of"]
+        if as_of is not None and hasattr(as_of, "date") and not isinstance(as_of, dt.date):
+            as_of = as_of.date()
+        payload["as_of"] = as_of
+        return cls(**payload)
+
+
+@router.get("/cross-asset", response_model=CrossAssetOut)
+def get_cross_asset() -> CrossAssetOut:
+    """The cross-asset regime strip's nine tiles in one row (T54): volatility term structure
+    (`^VIX`/`^VIX3M`/`^VIX9D`), `^VVIX` and its percentile, VIX's own 1-year percentile, the
+    SPY volatility risk premium, 20-day sector correlation, and 20-day UUP/GLD/TLT moves.
+
+    Reads one `_CROSS_ASSET_LOOKBACK_DAYS`-day wide closes frame in a single
+    `read_universe_closes` call (same "one shared frame so every division/subtraction aligns by
+    date" reasoning `get_rotation` already gives for its own universe -- see
+    `app.scan.cross_asset`'s module docstring for why that matters here too), then hands column
+    slices of that one frame to `app.scan.cross_asset.compute_cross_asset_row`, which does all
+    the actual math. This route does no math itself beyond assembling the wire response.
+    """
+    from app.scan.cross_asset import compute_cross_asset_row
+
+    universe = sorted(set(_CROSS_ASSET_VOL_SYMBOLS) | set(_CROSS_ASSET_OTHER_SYMBOLS) | set(SECTORS))
+
+    end = _today()
+    start = end - dt.timedelta(days=_CROSS_ASSET_LOOKBACK_DAYS)
+
+    session_factory = get_session_factory()
+    closes = read_universe_closes(universe, start, end, session_factory=session_factory)
+
+    row = compute_cross_asset_row(
+        vix=closes["^VIX"],
+        vix3m=closes["^VIX3M"],
+        vix9d=closes["^VIX9D"],
+        vvix=closes["^VVIX"],
+        spy_close=closes["SPY"],
+        sector_closes=closes[list(SECTORS)],
+        uup_close=closes["UUP"],
+        gld_close=closes["GLD"],
+        tlt_close=closes["TLT"],
+    )
+    return CrossAssetOut.from_row(row)

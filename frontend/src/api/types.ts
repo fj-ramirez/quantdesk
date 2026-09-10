@@ -671,6 +671,69 @@ export interface RegimeResponse {
 }
 
 // ---------------------------------------------------------------------------------------
+// T54: cross-asset regime strip -- `GET /api/scan/cross-asset`. Mirrors
+// `app.scan.cross_asset.CrossAssetRow` (via `app.api.scan.CrossAssetOut`) field for field.
+// No field here is a composite of any other (the plan's "no composite score" -- see
+// `plans/continuation/06-cross-asset-regime.md`'s "Design decisions"); `RegimeStrip` renders
+// each field independently, and every `null` has either a sibling `*_reason` string or is
+// self-evidently explained by its own `*_n` sample-size field.
+// ---------------------------------------------------------------------------------------
+
+/** `GET /api/scan/cross-asset` response -- nine strip tiles' worth of data. `as_of` is the
+ * most recent date `vix`/`vvix` had a finite close, `null` when neither did (nothing seeded
+ * yet). Percentiles (`*_pct`) are always paired with an `*_pct_n` sample-size field -- render
+ * `null` as "n/a", never `0%`, and prefer showing `*_pct_n` in the tooltip over inventing a
+ * generic "insufficient history" string. */
+export interface CrossAssetResponse {
+  as_of: string | null;
+
+  vix: number | null;
+  vix3m: number | null;
+  vix9d: number | null;
+  vix_vix3m_ratio: number | null;
+  vix_vix3m_ratio_pct: number | null;
+  vix_vix3m_ratio_pct_n: number;
+  vix9d_vix_ratio: number | null;
+  vix9d_vix_ratio_pct: number | null;
+  vix9d_vix_ratio_pct_n: number;
+  /** `"contango"` | `"backwardation"` | `"mixed"`, or `null` -- see `term_structure_reason`
+   * for exactly why whenever it is `null`. Rule (plan 06, verbatim): contango when
+   * `VIX/VIX3M < 1` and `VIX9D/VIX < 1`; backwardation when both `> 1`; mixed otherwise. */
+  term_structure: 'contango' | 'backwardation' | 'mixed' | null;
+  term_structure_reason: string | null;
+
+  vvix: number | null;
+  vvix_pct: number | null;
+  vvix_pct_n: number;
+
+  /** VIX's own trailing 1-year percentile -- the strip's dedicated "VIX 1y pct" tile. */
+  vix_pct: number | null;
+  vix_pct_n: number;
+
+  /** SPY's annualized 20-day realized vol, as a fraction (0.182 = 18.2%), never vol points. */
+  spy_rv20: number | null;
+  /** `VIX - SPY RV20`, in vol points (plan 06, verbatim: "both annualized"). */
+  vrp: number | null;
+  vrp_pct: number | null;
+  vrp_pct_n: number;
+  vrp_reason: string | null;
+
+  /** Mean pairwise 20-day correlation of daily log returns across the 11 sector ETFs (plan
+   * 06, verbatim). `sector_correlation_n` is the *effective* sample size after aligning on
+   * the intersection of dates -- a missing bar for one sector can make this less than 20;
+   * render it, never silently assume 20. */
+  sector_correlation: number | null;
+  sector_correlation_n: number;
+  sector_correlation_universe_n: number;
+
+  /** 20-day close-to-close returns, as fractions (0.0222 = +2.22%) -- same convention
+   * `RotationSymbol.return_5`/etc. already use, format with `formatSignedPct`. */
+  uup_return_20d: number | null;
+  gld_return_20d: number | null;
+  tlt_return_20d: number | null;
+}
+
+// ---------------------------------------------------------------------------------------
 // Report (T39/T40) -- `GET /api/report/{underlying}?filter=`
 //
 // GENERATED, not hand-written. Every interface below was emitted by a script from the live

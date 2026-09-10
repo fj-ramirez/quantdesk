@@ -53,12 +53,20 @@ describe('Regime page -- default view (filter=ALL)', () => {
     expect(within(table).getAllByRole('row')).toHaveLength(regimeFixture.rows.length + 1);
   });
 
-  it('renders the RegimeStrip slot as empty, never a placeholder row of dashes', async () => {
+  it('renders T54 cross-asset strip above the board', async () => {
+    // Was "renders the RegimeStrip slot as empty" while T54 did not exist. T54 has landed and
+    // the supervisor wired it in, so the slot is now filled -- 07-ui.md puts the strip at the
+    // top of both `/regime` and `/scan`. The "never a placeholder row of dashes" half of the
+    // original intent is kept below, and is the part that actually mattered.
     renderRegime();
     await awaitLoaded();
-    // T54 doesn't exist yet -- nothing above the toolbar should render a strip of tiles or a
-    // row that is entirely dashes.
-    expect(screen.queryByText(/regimestrip/i)).not.toBeInTheDocument();
+
+    const strip = await screen.findByRole('region', { name: /cross-asset regime strip/i });
+    expect(strip).toBeInTheDocument();
+
+    // The strip owns its own empty states: a tile with no data reads "n/a", never a bare dash
+    // standing in for a number the app does not have.
+    expect(within(strip).queryByText(/^-+$/)).not.toBeInTheDocument();
   });
 
   it('sorts the board into continuation/mixed/fade/noise-dominated/stale group order by default', async () => {
