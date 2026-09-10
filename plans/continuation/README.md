@@ -75,6 +75,25 @@ is a suggestion, not a requirement.
 
 </details>
 
+## Decisions — all five answered by the user on 2026-09-10
+
+**1. Universe width — widened.** 52 -> 125 symbols: 73 liquid optionable single names added to
+`_DEFAULT_SCAN_UNIVERSE`, backfilled five years with zero failures. Still one config string, so
+swapping in the broker's own CFD list needs no code change.
+**2. VanEck / Invesco / USCF flows — yes, chase them.** Filed as **T59** in `TASKS.md`.
+**3. `/overview` as the landing page — yes.** `/` renders Overview, the dashboard moved to
+`/dashboard`, `/overview` still resolves.
+**4. Git remote — the user said it is not a problem.** No remote added; the repo and `data/`
+remain single-copy on this machine, by their decision.
+**5. `AGENTS.md` — now a hardlink** to `CLAUDE.md` (same inode, cannot drift) and gitignored,
+with the recreate command in `.gitignore`. A true symlink needs Administrator or Windows
+Developer Mode, neither of which was available; the hardlink survives both appends and
+whole-file rewrites, though an editor that saves via temp-file-and-rename would break it
+(`diff -q CLAUDE.md AGENTS.md` checks it).
+
+<details>
+<summary>The decisions as they were originally put</summary>
+
 ## Open decisions for the user
 
 Nothing below blocks the remaining build; each is a choice only the user can make. Recorded
@@ -131,3 +150,5 @@ it is their file.
 `docs/validation.md` covers the GEX engine. Scan analytics get their own
 `docs/validation-scan.md`, started by T43 and appended by T45, T48 and T50, holding the
 hand-checked fixtures and every place the implementation deviates from a textbook definition.
+
+</details>

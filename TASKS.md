@@ -671,7 +671,7 @@ all pass.
 
 The user's assets are fading breakouts; they want to see which markets have continuation and
 where money rotates between sectors. Full specs live in `plans/continuation/` (one file per
-tool, same block shape as here). IDs T42–T56 are reserved. T57 (rotation in-progress week label) and T58 (daily flow series endpoint) were filed on 2026-09-09/10; next free ID is **T59**.
+tool, same block shape as here). IDs T42–T56 are reserved. T57 (rotation in-progress week label), T58 (daily flow series endpoint) and T59 (VanEck/Invesco/USCF flow sources) were filed on 2026-09-09/10; next free ID is **T60**.
 
 UI added 2026-09-09: the page tasks were too thin to dispatch, so `07-ui.md` now carries the
 full specs for every page, a shared UI kit (T55) that all pages build on, and an overview page
@@ -806,3 +806,54 @@ an honest short-history response for one without; `FlowSparkline` renders a real
 where one exists and the short-history state otherwise, never a padded or interpolated line; a
 hand-built fixture's cumulative values match a hand computation; `uv run pytest`, `ruff check .`,
 `npm test`, `npm run lint` and `tsc -b` all pass.
+
+---
+
+## T59 · Sonnet · T52, T53
+**Shares-outstanding sources for VanEck, Invesco and USCF**
+
+The user asked for these on 2026-09-10 (decision 2 in `plans/continuation/README.md`).
+`docs/etf-flows-sources.md` marked four funds unsupported because all three issuers render the
+value client-side: **SMH** and **GDX** (VanEck), **QQQ** (Invesco), **USO** (USCF). They are the
+four holes in `/flows`, and two of them — QQQ and GDX — are instruments the user actually
+watches.
+
+What the survey established, so this task does not repeat it:
+
+- VanEck `https://www.vaneck.com/us/en/investments/semiconductor-etf-smh/` returns 200 (278 KB)
+  and the only occurrence of "shares outstanding" is inside the prose definition of NAV. The
+  older `.../overview/` path 302s to an empty body.
+- Invesco `https://www.invesco.com/qqq-etf/en/about.html` returns 200 (208 KB) carrying only the
+  label wired for client-side fill: `{"fundDetailsLabel":"Shares Outstanding","fundDetailsType":"ShareOutstanding"}`.
+- USCF `https://www.uscfinvestments.com/uso` returns 200 (48 KB) with the table skeleton empty:
+  `<th>Shares Outstanding</th><td data-key="so"></td>`.
+
+**The job is to find the endpoint each page's own JavaScript calls** — open the page, watch the
+network requests, and identify the JSON the value arrives in. Then write one fetcher per family
+behind the existing `SharesOutstandingProvider` ABC, exactly as `SpdrAllFundsProvider` and
+`ISharesProductPageProvider` are written, and register them in `app/jobs/flows.py`.
+
+Constraints, unchanged from T52 and binding here:
+
+- **No page requiring a login, and nothing that sets an anti-bot cookie or serves a captcha.**
+  If a family needs that, mark it unsupported in `docs/etf-flows-sources.md` with the evidence
+  and move on — three working families beat four with one that breaks weekly.
+- Rows key on the **issuer's own stated as-of date**, never the run date. Same rule as T52.
+- Every fetcher is tested against a **recorded fixture**, never the live site.
+- Assert the magnitude on first fetch and record the unit per family — issuers report shares in
+  ones, thousands or millions and the survey found no consistency.
+- These are undocumented internal JSON endpoints and can change without notice. Each fetcher
+  fails per-symbol with the symbol named, never taking the job down, and the health block's
+  per-family staleness is what surfaces a break.
+
+Update `docs/etf-flows-sources.md` in place — move each family from unsupported to supported
+with its endpoint and parsing notes, or record why it stays unsupported. Remove the symbols that
+gain a source from the `no_flow_data` list feeding `/flows`.
+
+Paths: `backend/app/providers/etf_flows.py`, `backend/app/jobs/flows.py`, `backend/app/api/scan.py`
+(only the `no_flow_data` list), `docs/etf-flows-sources.md`, tests + recorded fixtures.
+
+Acceptance: for every family that gains a fetcher, a live run inserts a row with the issuer's own
+as-of date and a second run inserts nothing; each fetcher parses its recorded fixture and reports
+a named per-symbol failure on a body missing the value; any family that stays unsupported has its
+evidence written up; `uv run pytest` and `ruff check .` pass.
