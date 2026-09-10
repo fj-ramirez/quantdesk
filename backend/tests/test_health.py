@@ -249,8 +249,9 @@ def test_capture_health_response_carries_a_flows_block(client, session_factory):
     assert "families" in body["flows"]
     assert "unsupported_symbols" in body["flows"]
     families = {f["family"] for f in body["flows"]["families"]}
-    assert families == {"spdr", "ishares"}
-    assert set(body["flows"]["unsupported_symbols"]) == {"SMH", "GDX", "QQQ", "USO"}
+    assert families == {"spdr", "ishares", "vaneck", "invesco", "uscf"}
+    # T59 gave every one of T52's four unsupported symbols a working fetcher.
+    assert set(body["flows"]["unsupported_symbols"]) == set()
 
 
 def test_flows_health_reports_every_family_null_as_of_date_on_an_empty_db(client, session_factory):

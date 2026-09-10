@@ -1,9 +1,11 @@
 # ETF shares-outstanding sources — survey
 
-**Status:** supervisor-verified live on **2026-09-09** (probes run 20:30–21:00 ET). This is the
-first deliverable of **T52** (`plans/continuation/05-etf-flows.md`), written before any fetcher
-exists so that only families with a working source get code. Every URL below was actually
-requested; every value quoted was actually returned.
+**Status:** T52's half supervisor-verified live on **2026-09-09** (probes run 20:30–21:00 ET);
+T59 went back for the four VanEck/Invesco/USCF symbols on **2026-09-10** and found a working
+endpoint for every one of them. T52 was written before any fetcher existed so that only
+families with a working source got code; T59 updates this document in place rather than
+appending, per its own brief. Every URL below was actually requested; every value quoted was
+actually returned.
 
 A creation or redemption changes a fund's shares outstanding, and that daily change times NAV
 is the flow. So the only thing that has to be sourced is a per-fund, per-day **shares
@@ -15,12 +17,12 @@ outstanding** value with an **as-of date the issuer states itself**.
 |---|---|---|---|
 | State Street / SPDR | XLK XLF XLE XLV XLI XLY XLP XLU XLB XLRE XLC XBI KRE XOP SPY DIA GLD (17) | one daily all-funds XLSX | **supported** |
 | iShares | IWM TLT HYG EEM FXI SLV (6) | per-fund product page, embedded JSON | **supported** |
-| VanEck | SMH GDX (2) | none found in page HTML | **unsupported** |
-| Invesco | QQQ (1) | value is JS-loaded from an internal API | **unsupported** |
-| USCF | USO (1) | value is JS-loaded (`data-key="so"` empty in HTML) | **unsupported** |
+| VanEck | SMH GDX (2) | `Main/FundDetailsBlock/GetContent` JSON (T59) | **supported** |
+| Invesco | QQQ (1) | `dng-api.invesco.com` shareclass JSON (T59) | **supported** |
+| USCF | USO (1) | two-step token + `dailyprice` JSON (T59) | **supported** |
 
-23 of the 27 symbols are covered. The four that are not must appear in the page's "no flow
-data" list and never as a zero bar.
+All 27 symbols are covered as of T59. `UNSUPPORTED_SYMBOLS` (`app.providers.etf_flows`) and the
+`/flows` page's "no flow data" list are both empty.
 
 ## The finding that changes T52's design
 
@@ -161,41 +163,189 @@ Rejected, with evidence:
   `navAmountAsOf` and performance — but the string `sharesOutstanding` appears **zero** times.
   It would have been one request for all six; it is not an option. Worth revisiting only for NAV.
 
-## VanEck (SMH, GDX) — unsupported
+## VanEck (SMH, GDX) — supported (T59)
 
-`https://www.vaneck.com/us/en/investments/semiconductor-etf-smh/` returns 200 (278 KB), but the
-only occurrence of "shares outstanding" in the body is inside the prose definition of NAV. No
-share count is rendered server-side. (The older `.../overview/` path 302s to an empty body.)
-Their internal API was not located within the time box. Mark unsupported; revisit only if the
-user wants SMH/GDX flows specifically.
+T52 found nothing: `https://www.vaneck.com/us/en/investments/semiconductor-etf-smh/` returns
+200 (278 KB), but the only occurrence of "shares outstanding" in the body is inside the prose
+definition of NAV — no share count server-side, and the older `.../overview/` path 302s to an
+empty body. That much still stands; it is *why* T59 had to go find the endpoint the page's own
+JavaScript calls, rather than repeating the page probe.
 
-## Invesco (QQQ) — unsupported
-
-`https://www.invesco.com/qqq-etf/en/about.html` returns 200 (208 KB) and contains only the
-*label*, wired for client-side fill:
+**Method:** drove `https://www.vaneck.com/us/en/investments/semiconductor-etf-smh/` with
+Playwright (`npx playwright`, headless Chromium) and watched every network response for the
+string "outstanding". The page's initial render is mostly `Loading...` placeholders that fill
+in via a family of `Main/<Block>Block/GetContent` AJAX calls; `Main/FundDetailsBlock/GetContent`
+is the one carrying `Shares Outstanding`.
 
 ```
-{"fundDetailsLabel":"Shares Outstanding","fundDetailsType":"ShareOutstanding"}
+GET https://www.vaneck.com/Main/FundDetailsBlock/GetContent/
+    ?blockid=229617&pageid={pageid}&ticker={TICKER}
+    &reactlang=en&reactctr=us&epieditmode=false&latest=false&contextmode=Default
 ```
 
-The value arrives from an internal endpoint after page load. Not scraped here.
+`blockid=229617` (the "Fund Details" panel) is the same for every VanEck fund; only `pageid`
+and `ticker` vary. Confirmed for both symbols in our universe:
 
-## USCF (USO) — unsupported
+| Symbol | `pageid` |
+|---|---|
+| SMH | 233107 |
+| GDX | 233083 |
 
-`https://www.uscfinvestments.com/uso` returns 200 (48 KB) with the table skeleton present and
-empty: `<th>Shares Outstanding</th><td data-key="so"></td>`. JS-filled, same as Invesco.
+Response shape (SMH, 2026-09-09, `Content-Type: application/json`):
+
+```json
+{"data":{"LongVersionAsOfDate":"09/09/2026","Values":[
+  {"Title":"Exchange","Value":"Nasdaq",...},
+  {"Title":"Shares Outstanding","Value":"123,891,874","AsOfDate":null,...},
+  {"Title":"Options","Value":"Available",...},
+  ...
+]}}
+```
+
+- **Unit: ones, full precision** — `"123,891,874"`, not `"123.89 M"`. Strip commas and parse as
+  int; no scaling.
+- **As-of date is the block's, not the field's.** Every `Values` entry (including `Shares
+  Outstanding`) carries `"AsOfDate": null` in every fixture recorded; the real date is
+  `data.LongVersionAsOfDate` (`"MM/DD/YYYY"`), one date for the whole panel. A row is only
+  written when this field is present — a missing one is a named failure, not a fallback to
+  "today".
+- **No NAV in this block.** VanEck's NAV is rendered by a different part of the page; `nav` is
+  always `None` for this source, same optionality as iShares'.
+- **Plain, unauthenticated `GET`.** Verified with `curl`, no cookies at all, both before and
+  after loading the page in a browser — same response either way. `Set-Cookie` headers present
+  on the response (`ARRAffinity`, `TiPMix`, a locale preference) are ordinary load-balancer/
+  session cookies, never required on the request; no login, no anti-bot challenge, no captcha.
+
+## Invesco (QQQ) — supported (T59)
+
+T52 found the client-fill label only:
+`https://www.invesco.com/qqq-etf/en/about.html` → `{"fundDetailsLabel":"Shares Outstanding",
+"fundDetailsType":"ShareOutstanding"}`. That still stands.
+
+**Method:** drove the same page with Playwright and captured every `xhr`/`fetch` request. Among
+~20 analytics calls, one stood out: `dng-api.invesco.com`, Invesco's own data-gateway domain.
+
+```
+GET https://dng-api.invesco.com/cache/v1/accounts/en_US/shareclasses/{TICKER}
+    ?idType=ticker&variationType=fundDetails&productType=ETF
+```
+
+Response (QQQ, 2026-09-09):
+
+```json
+{ "cusip": "QQQ", "effectiveDate": "2026-09-09", "effectiveBusinessDate": "2026-09-09",
+  "shareclassTotalNetAssets": 481706269448.89, "nav": 716.185355, "marketValue": 481706269448.89,
+  "sharesOutstanding": 672600000, "feeValue": 0.18, "exchange": "Nasdaq/NMS (Global Market)", ... }
+```
+
+- **Unit: ones, full precision** — `672600000`, a plain JSON number.
+- **As-of date: `effectiveDate`** (`"YYYY-MM-DD"`). NAV's own `effectiveDate` matches in every
+  sample seen; stored from the same field regardless, per the "one row, one date" model this
+  source uses (unlike iShares' separate SO/NAV dates).
+- **Unrecognized ticker returns literal `""`** (still HTTP `200`), not an object or an error
+  status — the "no data" signature this source's fetcher treats as a named per-symbol failure.
+- **No headers are actually required — corrected on supervisor re-verification.** T59 recorded
+  this endpoint as needing an `Origin: https://www.invesco.com` header, having isolated headers
+  one at a time and seen `406 Not Acceptable` without it. That did **not** reproduce the next
+  morning (2026-09-10): five consecutive requests sent with *no* headers at all — no
+  `User-Agent`, no `Origin`, no `Referer` — each returned `200` with the full payload
+  (`sharesOutstanding: 672600000`, `effectiveDate: 2026-09-09`). Whatever produced those 406s
+  was transient or specific to that moment, not the missing header.
+
+  The fetcher still sends `Origin`/`Referer`/`Accept` defensively: they cost nothing, they are
+  what the site's own JS sends, and if the gateway ever does gate intermittently or from another
+  network, that is the shape known to pass. They are fixed public values, never a cookie,
+  session token or credential, so this stays a plain public GET either way — no login, no
+  captcha, no cookie. **Do not infer from their presence that they are load-bearing**; if they
+  ever cause trouble, drop them and re-measure.
+
+## USCF (USO) — supported (T59)
+
+T52 found the empty table skeleton: `https://www.uscfinvestments.com/uso` → `<th>Shares
+Outstanding</th><td data-key="so"></td>`, JS-filled. That still stands.
+
+**Method:** drove the same page with Playwright and captured every `xhr`/`fetch` request.
+`secure.alpsinc.com/MarketingAPI/api/v1/dailyprice/USO` carries the value (`"so"`), but a bare
+`curl` against it 401s with `WWW-Authenticate: Bearer` — this is the one T59 family that needed
+a second step.
+
+**Step 1 — mint a token.** The page's own `<script src="assets/javascript/api_key.php">` tag
+(resolved against the page's `<base href="https://www.uscfinvestments.com/site-template/">` —
+*not* against `www.uscfinvestments.com/assets/...` directly, which serves an unrelated sitemap
+page for that path; the `<base>` tag is what makes the relative script path resolve correctly):
+
+```
+GET https://www.uscfinvestments.com/site-template/assets/javascript/api_key.php
+```
+
+returns a small JS snippet, not JSON:
+
+```js
+var token = 'eyJhbGciOiJIUzUxMiIsInR5cCI6IkpXVCJ9...';var api_url_v2 = 'https://secure.alpsinc.com/MarketingAPI/api/v1/';...
+```
+
+Decoded JWT payload: `{"iat": <unix>, "sub": ".../Token/New", "nbf": <iat>, "exp": <iat +
+86400>, "mkt": "false"}` — an anonymous, one-day token every visitor's browser gets from this
+same public URL. Verified with **no cookies at all** (`curl`, fresh each time) that this still
+returns a fresh, working token — no login, no session required to mint it.
+
+**Step 2 — call the price/shares endpoint with it:**
+
+```
+GET https://secure.alpsinc.com/MarketingAPI/api/v1/dailyprice/{TICKER}
+Authorization: Bearer <token from step 1>
+```
+
+Response (USO, 2026-09-09), a one-element array:
+
+```json
+[{"symbol":"USO","nav":149.1700,"navtotal":2121736459.9800,"so":14223603.0000,
+  "displaydate":"2026-09-09T05:00:00", ...}]
+```
+
+- **Unit: ones, full precision** — `14223603.0000`, a JSON float with a `.0000` tail; round to
+  the nearest int, don't truncate.
+- **As-of date: `displaydate`**, `"YYYY-MM-DDTHH:MM:SS"` with a fixed time-of-day and no
+  timezone marker. Only the date component is meaningful (this table stores a calendar date,
+  not an instant — see `app.models.db.EtfSharesOutstanding`'s docstring); the `05:00:00` is
+  presumed to be a display artifact of whatever internal timezone ALPS's feed uses, not
+  something worth parsing further.
+- **Unrecognized ticker 404s** with a plain-text body (`"No resources found for given
+  resource: {ticker}."`) — unlike Invesco's 200-with-empty-body shape.
+- **No login, no anti-bot cookie, no captcha at any step.** The `__cf_bm` cookie Cloudflare
+  sets on responses from both `uscfinvestments.com` and `alpsinc.com` is bot-management
+  telemetry, never required to be echoed back — confirmed by making both requests fresh, with
+  no cookie jar at all, and getting a 200 every time.
 
 ## Constraints this survey respected
 
 No page requiring a login was touched, and nothing here set an anti-bot cookie or served a
-captcha. Every family above is a plain `GET` with a browser `User-Agent`. Per the plan: every
-fetcher T52 writes is tested against a **recorded fixture**, never the live site.
+captcha, in either T52's probes or T59's. Every family above is a plain `GET` (USCF: two plain
+`GET`s) with a browser `User-Agent`, found by watching what each page's own JavaScript actually
+requested — never by guessing a path against the live site — per this task's brief. Per the
+plan: every fetcher is tested against a **recorded fixture**, never the live site.
 
-## What T52 should build, given the above
+## What T52 built
 
 1. `SharesOutstandingProvider` ABC returning `(symbol, as_of_date, shares_outstanding, nav | None)`.
 2. **`SpdrAllFundsProvider`** — one fetch, 17 symbols, `TNA / NAV` derived share count with the
    printed value as a cross-check.
 3. **`ISharesProductPageProvider`** — six per-fund fetches, full precision, per-field as-of dates.
-4. Nothing for VanEck, Invesco or USCF; those four symbols are listed as "no flow data".
-5. The as-of-date keying rule from the section above, replacing the spec's skip-unless-today rule.
+4. The as-of-date keying rule from the section above, replacing the spec's skip-unless-today rule.
+
+## What T59 added
+
+5. **`VanEckFundDetailsProvider`** — two per-fund fetches (SMH, GDX), full precision, block-level
+   as-of date, no NAV.
+6. **`InvescoShareclassProvider`** — one fetch (QQQ), full precision, `effectiveDate`, NAV
+   included. Sends the `Origin`/`Referer` headers documented above defensively; re-measurement
+   showed the endpoint answers a bare request with no headers at all.
+7. **`USCFDailyPriceProvider`** — a token fetch plus one price fetch (USO), full precision,
+   `displaydate`, NAV included. The token fetch is family-level: a failure there fails the whole
+   `fetch()` call (`ProviderError`), never a per-symbol entry, since no USCF symbol can be
+   fetched without it.
+8. All four of T52's "no flow data" symbols removed from `UNSUPPORTED_SYMBOLS`
+   (`app.providers.etf_flows`) and from `/api/scan/flows`'s `no_flow_data` list, which both
+   derive from it. `FAMILY_SYMBOLS` and `ALL_SUPPORTED_SYMBOLS` extended accordingly; the health
+   block (`/api/health/capture`) picks up the three new families automatically since it iterates
+   `FAMILY_SYMBOLS`.

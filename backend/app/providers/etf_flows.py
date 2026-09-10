@@ -1,9 +1,9 @@
 """Shares-outstanding provider interface and fetchers (T52,
-plans/continuation/05-etf-flows.md; survey: docs/etf-flows-sources.md).
+plans/continuation/05-etf-flows.md; T59, VanEck/Invesco/USCF; survey: docs/etf-flows-sources.md).
 
-**Read the survey before touching this file.** It is ground truth, verified live on
-2026-09-09, and it overrides the plan's *Data* section in two places this module implements
-directly:
+**Read the survey before touching this file.** It is ground truth -- T52's half verified live
+on 2026-09-09, T59's addition on 2026-09-10 -- and it overrides the plan's *Data* section in
+two places this module implements directly:
 
 1. The iShares `?fileType=csv` endpoint no longer returns CSV -- it returns HTML under a
    `text/csv` content type. The real source is a JSON blob embedded in the product page
@@ -13,12 +13,32 @@ directly:
    enforces the "insert once per (symbol, date), never update" half of that rule; this module
    is only responsible for reporting the date honestly).
 
-Only two families have a working, login-free, non-JS-rendered source (the survey's "Result at
-a glance" table): State Street/SPDR (one all-funds XLSX, 17 of our symbols) and iShares (six
-per-fund product pages, embedded JSON). VanEck, Invesco and USCF are JS-loaded or otherwise
-unreachable without scripting a browser and stay unsupported -- `UNSUPPORTED_SYMBOLS` below,
-never a fetcher, per this task's "no scraping behind a login or an anti-bot cookie, and the
-four unsupported families stay unsupported" guardrail.
+T52 found a working source for two families (State Street/SPDR, one all-funds XLSX; iShares,
+six per-fund product pages) and left three unreached because their pages render shares
+outstanding client-side: VanEck (SMH, GDX), Invesco (QQQ), USCF (USO). T59 went looking for
+the JSON endpoint each page's own JavaScript calls -- by driving the page with Playwright and
+watching its network requests, not by guessing paths -- and found one for every one of them,
+all public, unauthenticated `GET`s with a browser `User-Agent`, no login and no anti-bot
+cookie:
+
+- **VanEck**: `Main/FundDetailsBlock/GetContent` -- the same content block (`blockid=229617`)
+  both funds' pages fetch, parameterized by `pageid` (per-fund) and `ticker`. Returns a
+  `Values` list of `{Title, Value}` pairs; `Shares Outstanding` is one of them, in full
+  precision (no `M`/`K` suffix), with the block's own `LongVersionAsOfDate` -- not a per-value
+  date -- as the as-of date. No NAV field in this block, so `nav` is always `None` here.
+- **Invesco**: `dng-api.invesco.com/cache/v1/accounts/en_US/shareclasses/{ticker}` with
+  `variationType=fundDetails`. Returns one flat JSON object with `sharesOutstanding` (full
+  precision), `nav`, and `effectiveDate` as the as-of date. An unrecognized ticker returns
+  literal `""` (still HTTP 200), not an object. It is a plain public GET: re-verified on
+  2026-09-10 with *no* headers at all (no `User-Agent`, no `Origin`), five for five 200s with
+  the full payload. T59 had recorded a 406 without `Origin` the previous evening, which did not
+  reproduce -- the headers in `_INVESCO_REQUIRED_HEADERS` are therefore defensive, not required;
+  see that constant's own comment before treating them as load-bearing.
+- **USCF**: a two-step fetch. `site-template/assets/javascript/api_key.php` mints a short-lived
+  bearer JWT (no login -- it is the same anonymous token every visitor's browser gets); that
+  token authorizes `secure.alpsinc.com/MarketingAPI/api/v1/dailyprice/{ticker}`, which returns
+  a one-element JSON array with `so` (shares outstanding, full precision), `nav`, and
+  `displaydate` as the as-of date. An unrecognized ticker 404s.
 
 Mirrors `app.providers.bars`'s shape (one ABC, the `ProviderError` hierarchy reused rather
 than reinvented) with one deliberate difference: `BarProvider.fetch_daily_bars` takes a single
@@ -34,6 +54,14 @@ of a moved product page, or a symbol simply absent from the SPDR file) are colle
 with no sharesOutstanding key is a named per-symbol failure, not a crash." A raised
 `ProviderError` from `fetch` means the whole family's request itself failed (the SPDR file
 didn't come back at all, or its header row is not the shape every column lookup depends on).
+For USCF specifically, a failed *token* fetch is a family-level `ProviderError` too -- without
+a token nothing in the family can be fetched, so that failure mode is not a per-symbol one.
+
+`UNSUPPORTED_SYMBOLS` is empty as of T59: every symbol the T52 survey found now has a working
+fetcher. The name and shape are kept (rather than deleted) because it is still the honest place
+to list a family that a *future* survey finds and cannot clear the "no login, no anti-bot
+cookie/captcha" bar -- see this task's own report in docs/etf-flows-sources.md for what was
+checked and rejected along the way (there was nothing to reject here; all three cleared it).
 """
 
 from __future__ import annotations
@@ -57,19 +85,28 @@ from app.providers.base import ProviderError, SymbolNotSupported, UpstreamUnavai
 __all__ = [
     "ALL_SUPPORTED_SYMBOLS",
     "FAMILY_SYMBOLS",
+    "INVESCO_SYMBOLS",
     "ISHARES_SYMBOLS",
     "SPDR_SYMBOLS",
     "UNSUPPORTED_SYMBOLS",
+    "USCF_SYMBOLS",
+    "VANECK_SYMBOLS",
     "ISharesProductPageProvider",
+    "InvescoShareclassProvider",
     "ProviderError",
     "SharesOutstandingFetchResult",
     "SharesOutstandingProvider",
     "SharesOutstandingRow",
     "SpdrAllFundsProvider",
     "SymbolNotSupported",
+    "USCFDailyPriceProvider",
     "UpstreamUnavailable",
+    "VanEckFundDetailsProvider",
+    "parse_invesco_shareclass",
     "parse_ishares_page",
     "parse_spdr_xlsx",
+    "parse_uscf_dailyprice",
+    "parse_vaneck_fund_details",
 ]
 
 logger = logging.getLogger(__name__)
@@ -100,12 +137,29 @@ ISHARES_PRODUCT_URLS: dict[str, str] = {
 }
 ISHARES_SYMBOLS: tuple[str, ...] = tuple(ISHARES_PRODUCT_URLS)
 
-#: The survey's four "unsupported" symbols: VanEck (SMH, GDX), Invesco (QQQ), USCF (USO) --
-#: every one JS-loaded from an internal endpoint the survey deliberately did not chase (this
-#: task's "no scraping behind a login or an anti-bot cookie" guardrail, and "the four
-#: unsupported families stay unsupported -- do not go hunting their private APIs"). Callers
-#: (the health block, the flows API) list these as "no flow data," never draw them at zero.
-UNSUPPORTED_SYMBOLS: tuple[str, ...] = ("SMH", "GDX", "QQQ", "USO")
+#: Symbol -> VanEck `pageid` (T59). Both funds' pages fetch the same `blockid` (229617, the
+#: "Fund Details" panel) -- only `pageid` and `ticker` vary per fund. Found by driving each
+#: page with Playwright and watching its network requests for the `FundDetailsBlock` call.
+VANECK_PAGE_IDS: dict[str, str] = {
+    "SMH": "233107",
+    "GDX": "233083",
+}
+VANECK_SYMBOLS: tuple[str, ...] = tuple(VANECK_PAGE_IDS)
+
+#: T59: the one Invesco fund in our universe. `dng-api.invesco.com` is keyed by ticker
+#: directly, so there is nothing per-symbol to look up beyond the ticker itself -- unlike
+#: VanEck's `pageid`, no separate id map is needed.
+INVESCO_SYMBOLS: tuple[str, ...] = ("QQQ",)
+
+#: T59: the one USCF fund in our universe.
+USCF_SYMBOLS: tuple[str, ...] = ("USO",)
+
+#: Every symbol the T52 survey found no working source for at all. Empty as of T59 -- VanEck,
+#: Invesco and USCF each turned out to have a public, login-free, non-anti-bot JSON endpoint
+#: once the right network request was found (see the module docstring). Kept as a named,
+#: exported constant rather than deleted: it is still the right place for a future survey to
+#: record a family that fails the "no login, no anti-bot cookie/captcha" bar.
+UNSUPPORTED_SYMBOLS: tuple[str, ...] = ()
 
 #: Family name -> the symbols that family's provider covers. Used by the health block and the
 #: flows API to report per-family freshness without either module re-deriving which provider
@@ -113,9 +167,14 @@ UNSUPPORTED_SYMBOLS: tuple[str, ...] = ("SMH", "GDX", "QQQ", "USO")
 FAMILY_SYMBOLS: dict[str, tuple[str, ...]] = {
     "spdr": SPDR_SYMBOLS,
     "ishares": ISHARES_SYMBOLS,
+    "vaneck": VANECK_SYMBOLS,
+    "invesco": INVESCO_SYMBOLS,
+    "uscf": USCF_SYMBOLS,
 }
 
-ALL_SUPPORTED_SYMBOLS: tuple[str, ...] = SPDR_SYMBOLS + ISHARES_SYMBOLS
+ALL_SUPPORTED_SYMBOLS: tuple[str, ...] = (
+    SPDR_SYMBOLS + ISHARES_SYMBOLS + VANECK_SYMBOLS + INVESCO_SYMBOLS + USCF_SYMBOLS
+)
 
 #: One creation unit for these funds (the survey's recommendation): the derived-vs-printed
 #: shares-outstanding cross-check flags a disagreement only beyond this many shares, since
@@ -632,6 +691,623 @@ class ISharesProductPageProvider(SharesOutstandingProvider):
             except ValueError as exc:
                 # parse_ishares_page's "moved page" signature -- a named per-symbol failure,
                 # not a crash, per this task's acceptance.
+                failures[symbol] = str(exc)
+            except ProviderError as exc:
+                failures[symbol] = str(exc)
+
+        return SharesOutstandingFetchResult(rows=rows, failures=failures)
+
+
+# --------------------------------------------------------------------------------------------
+# VanEck (T59) -- one product-page-block fetch per fund, plain JSON
+# --------------------------------------------------------------------------------------------
+
+_VANECK_FUND_DETAILS_URL = "https://www.vaneck.com/Main/FundDetailsBlock/GetContent/"
+_VANECK_BLOCK_ID = "229617"
+
+
+def parse_vaneck_fund_details(body: str, symbol: str) -> SharesOutstandingRow:
+    """Parse one VanEck `Main/FundDetailsBlock/GetContent` response body for `symbol`.
+
+    Unlike iShares, this is plain JSON (`Content-Type: application/json`) -- no HTML-entity
+    escaping to undo. The shape (found by driving `https://www.vaneck.com/us/en/investments/
+    semiconductor-etf-smh/` with Playwright and watching its network requests, per this task's
+    brief -- the page's own text never carries the value, only the survey's already-recorded
+    finding): `{"data": {"LongVersionAsOfDate": "MM/DD/YYYY", "Values": [{"Title": ...,
+    "Value": ...}, ...]}}`. `Shares Outstanding` is one of the `Values` entries, printed at
+    full precision (`"123,891,874"`, not `"123.89 M"`) -- so, unlike SPDR, there is no unit
+    ambiguity to resolve, only commas to strip.
+
+    **The as-of date comes from the block's own `LongVersionAsOfDate`, not a per-value date.**
+    Every entry in `Values` (including the `Shares Outstanding` one) carries `"AsOfDate": null`
+    in every fixture this parser was built against -- VanEck dates the whole panel, not each
+    field in it separately.
+
+    This block has no NAV field at all (VanEck shows NAV in a different part of the page, not
+    this one), so the returned row's `nav` is always `None` -- same optionality as
+    `parse_ishares_page`'s, for the same reason (`app.models.db.EtfSharesOutstanding.nav`'s
+    docstring).
+
+    Args:
+        body: The raw JSON response text.
+        symbol: The plain ticker this page is for, written straight into the returned row --
+            never re-derived from the page body itself.
+
+    Raises:
+        ValueError: the body is not JSON, is missing `data`/`Values`/a `Shares Outstanding`
+            entry, or is missing `LongVersionAsOfDate` -- every one of these the "page layout
+            moved" signature this task's acceptance calls for: a named per-symbol failure, not
+            a crash. `LongVersionAsOfDate` missing is deliberately fatal too (not defaulted to
+            "today"): per this task's as-of-date rule, a source with no as-of date at all is not
+            a usable source for a given fetch, and reporting a wrong date would be worse than
+            reporting a failure.
+    """
+    try:
+        payload = json.loads(body)
+    except json.JSONDecodeError as exc:
+        raise ValueError(f"response body is not JSON: {exc}") from exc
+
+    block = payload.get("data") if isinstance(payload, dict) else None
+    if not isinstance(block, dict):
+        raise ValueError("no 'data' object in response (page layout may have moved)")  # noqa: TRY004
+
+    values = block.get("Values")
+    if not isinstance(values, list):
+        raise ValueError("no 'Values' array in response (page layout may have moved)")  # noqa: TRY004
+
+    shares_entry = next(
+        (v for v in values if isinstance(v, dict) and v.get("Title") == "Shares Outstanding"),
+        None,
+    )
+    if shares_entry is None or not shares_entry.get("Value"):
+        raise ValueError(
+            "no 'Shares Outstanding' entry in Values (page layout may have moved)"
+        )
+
+    as_of_raw = block.get("LongVersionAsOfDate")
+    if not as_of_raw:
+        raise ValueError("no LongVersionAsOfDate in response -- cannot key this row honestly")
+
+    try:
+        shares = int(str(shares_entry["Value"]).replace(",", "").strip())
+        # Same rationale as `_parse_spdr_date`: a calendar date, not an instant.
+        as_of = dt.datetime.strptime(str(as_of_raw).strip(), "%m/%d/%Y").date()  # noqa: DTZ007
+    except ValueError as exc:
+        raise ValueError(f"Shares Outstanding entry present but unparseable: {exc}") from exc
+
+    if shares <= 0:
+        raise ValueError(f"non-positive shares outstanding ({shares!r})")
+
+    return SharesOutstandingRow(
+        symbol=symbol,
+        as_of_date=as_of,
+        shares_outstanding=shares,
+        nav=None,
+        source="vaneck-funddetails",
+    )
+
+
+class VanEckFundDetailsProvider(SharesOutstandingProvider):
+    """Fetches one `FundDetailsBlock` per requested `VANECK_SYMBOLS` member and parses each
+    with `parse_vaneck_fund_details`. Same per-request-per-symbol shape as
+    `ISharesProductPageProvider` (each fund is its own HTTP call, so a per-symbol failure here
+    is genuinely per-request), with `pageid` looked up per symbol from `VANECK_PAGE_IDS`
+    alongside the one `blockid` both funds share.
+    """
+
+    def __init__(
+        self,
+        *,
+        client: httpx.AsyncClient | None = None,
+        timeout: float = _DEFAULT_TIMEOUT_SECONDS,
+        max_retries: int = _DEFAULT_MAX_RETRIES,
+        backoff_seconds: float = _DEFAULT_BACKOFF_SECONDS,
+    ) -> None:
+        self._client = client
+        self._owns_client = client is None
+        self._timeout = timeout
+        self._max_retries = max_retries
+        self._backoff_seconds = backoff_seconds
+
+    @property
+    def name(self) -> str:
+        return "vaneck"
+
+    @property
+    def symbols(self) -> tuple[str, ...]:
+        return VANECK_SYMBOLS
+
+    async def close(self) -> None:
+        if self._client is not None and self._owns_client:
+            await self._client.aclose()
+            self._client = None
+
+    async def _get_client(self) -> httpx.AsyncClient:
+        if self._client is None:
+            self._client = httpx.AsyncClient(timeout=self._timeout, headers={"User-Agent": _USER_AGENT})
+        return self._client
+
+    async def _fetch_one(self, symbol: str) -> SharesOutstandingRow:
+        client = await self._get_client()
+        params = {
+            "blockid": _VANECK_BLOCK_ID,
+            "pageid": VANECK_PAGE_IDS[symbol],
+            "ticker": symbol,
+            "reactlang": "en",
+            "reactctr": "us",
+            "epieditmode": "false",
+            "latest": "false",
+            "contextmode": "Default",
+        }
+        last_exc: Exception | None = None
+        for attempt in range(1, self._max_retries + 1):
+            try:
+                response = await client.get(_VANECK_FUND_DETAILS_URL, params=params)
+            except httpx.TransportError as exc:
+                last_exc = exc
+                logger.warning(
+                    "vaneck: attempt %d/%d transport error for %s: %s",
+                    attempt, self._max_retries, symbol, exc,
+                )
+                if attempt < self._max_retries:
+                    await asyncio.sleep(self._backoff_seconds * attempt)
+                continue
+
+            if response.status_code == 200:
+                return parse_vaneck_fund_details(response.text, symbol)
+
+            last_exc = httpx.HTTPStatusError(
+                f"unexpected status {response.status_code}", request=response.request, response=response
+            )
+            logger.warning(
+                "vaneck: attempt %d/%d status %d for %s",
+                attempt, self._max_retries, response.status_code, symbol,
+            )
+            if attempt < self._max_retries:
+                await asyncio.sleep(self._backoff_seconds * attempt)
+
+        raise UpstreamUnavailable(
+            f"vaneck: {symbol} request failed after {self._max_retries} attempts"
+        ) from last_exc
+
+    async def fetch(self, symbols: Sequence[str] | None = None) -> SharesOutstandingFetchResult:
+        wanted = [s for s in (symbols if symbols is not None else self.symbols) if s in self.symbols]
+
+        rows: list[SharesOutstandingRow] = []
+        failures: dict[str, str] = {}
+        for symbol in wanted:
+            try:
+                rows.append(await self._fetch_one(symbol))
+            except ValueError as exc:
+                failures[symbol] = str(exc)
+            except ProviderError as exc:
+                failures[symbol] = str(exc)
+
+        return SharesOutstandingFetchResult(rows=rows, failures=failures)
+
+
+# --------------------------------------------------------------------------------------------
+# Invesco (T59) -- one per-fund JSON fetch, keyed directly by ticker
+# --------------------------------------------------------------------------------------------
+
+_INVESCO_SHARECLASS_URL = "https://dng-api.invesco.com/cache/v1/accounts/en_US/shareclasses/{symbol}"
+
+#: Sent defensively, **not because the endpoint demands them.** T59 recorded that
+#: `dng-api.invesco.com` 406s without an `Origin` header; on supervisor re-verification the next
+#: morning (2026-09-10) that did not reproduce -- five consecutive requests with *no* headers at
+#: all, not even a `User-Agent`, each returned 200 with the full payload. So whatever produced
+#: those 406s was transient, or specific to that moment rather than to the missing header.
+#:
+#: These are kept anyway: they cost nothing, they are what the site's own JS sends, and if the
+#: gateway does gate intermittently (or from other networks) this is the shape that passed. They
+#: are fixed public values, never a session token, cookie or credential -- so this stays inside
+#: the "no login, no anti-bot cookie, no captcha" constraint either way. What must **not** be
+#: inferred from their presence is that the endpoint requires them; if a future change makes
+#: them a problem, drop them and re-measure rather than assuming they are load-bearing.
+_INVESCO_REQUIRED_HEADERS: dict[str, str] = {
+    "Accept": "application/json, text/javascript, */*; q=0.01",
+    "Origin": "https://www.invesco.com",
+    "Referer": "https://www.invesco.com/qqq-etf/en/about.html",
+}
+
+
+def parse_invesco_shareclass(body: str, symbol: str) -> SharesOutstandingRow:
+    """Parse one Invesco `dng-api.invesco.com/.../shareclasses/{ticker}?variationType=
+    fundDetails` response body for `symbol`.
+
+    Found the same way as the VanEck endpoint: driving `https://www.invesco.com/qqq-etf/en/
+    about.html` with Playwright and watching its network requests -- the page's own HTML
+    carries only the client-fill label (`{"fundDetailsLabel":"Shares Outstanding",
+    "fundDetailsType":"ShareOutstanding"}`, the survey's finding), never the value.
+
+    The response is one flat JSON object: `{"sharesOutstanding": <int>, "effectiveDate":
+    "YYYY-MM-DD", "nav": <float>, ...}` -- full precision, ISO date, NAV included (unlike
+    VanEck). **An unrecognized ticker returns the literal two-character body `""`** (still
+    HTTP 200) rather than an object or an error -- this is what turns into the per-symbol
+    failure below, not an HTTP error status.
+
+    Args:
+        body: The raw JSON response text.
+        symbol: The plain ticker this request was for, written straight into the returned row.
+
+    Raises:
+        ValueError: the body is not JSON, is not an object (the empty-string "ticker not
+            recognized" shape), or is missing `sharesOutstanding`/`effectiveDate` -- all named
+            per-symbol failures, never a crash. Same "no as-of date, no usable row" rule as
+            `parse_vaneck_fund_details`: a missing `effectiveDate` is fatal, not defaulted.
+    """
+    try:
+        payload = json.loads(body)
+    except json.JSONDecodeError as exc:
+        raise ValueError(f"response body is not JSON: {exc}") from exc
+
+    if not isinstance(payload, dict) or not payload:
+        raise ValueError(
+            "response body is not a fund-details object (ticker not recognized by dng-api?)"
+        )
+
+    shares_raw = payload.get("sharesOutstanding")
+    as_of_raw = payload.get("effectiveDate")
+    if shares_raw is None or not as_of_raw:
+        raise ValueError("no 'sharesOutstanding'/'effectiveDate' field in response")
+
+    try:
+        shares = int(shares_raw)
+        as_of = dt.datetime.strptime(str(as_of_raw).strip(), "%Y-%m-%d").date()  # noqa: DTZ007
+    except (TypeError, ValueError) as exc:
+        raise ValueError(f"sharesOutstanding/effectiveDate present but unparseable: {exc}") from exc
+
+    if shares <= 0:
+        raise ValueError(f"non-positive shares outstanding ({shares!r})")
+
+    nav: float | None = None
+    nav_raw = payload.get("nav")
+    if nav_raw is not None:
+        try:
+            nav = float(nav_raw)
+        except (TypeError, ValueError):
+            nav = None  # a malformed NAV never blocks the shares-outstanding row itself
+
+    return SharesOutstandingRow(
+        symbol=symbol,
+        as_of_date=as_of,
+        shares_outstanding=shares,
+        nav=nav,
+        source="invesco-shareclass",
+    )
+
+
+class InvescoShareclassProvider(SharesOutstandingProvider):
+    """Fetches one `dng-api.invesco.com` shareclass response per requested `INVESCO_SYMBOLS`
+    member and parses each with `parse_invesco_shareclass`. Same per-request-per-symbol shape
+    as `ISharesProductPageProvider`; unlike VanEck there is no separate id to look up -- the
+    ticker is the URL path segment directly.
+    """
+
+    def __init__(
+        self,
+        *,
+        client: httpx.AsyncClient | None = None,
+        timeout: float = _DEFAULT_TIMEOUT_SECONDS,
+        max_retries: int = _DEFAULT_MAX_RETRIES,
+        backoff_seconds: float = _DEFAULT_BACKOFF_SECONDS,
+    ) -> None:
+        self._client = client
+        self._owns_client = client is None
+        self._timeout = timeout
+        self._max_retries = max_retries
+        self._backoff_seconds = backoff_seconds
+
+    @property
+    def name(self) -> str:
+        return "invesco"
+
+    @property
+    def symbols(self) -> tuple[str, ...]:
+        return INVESCO_SYMBOLS
+
+    async def close(self) -> None:
+        if self._client is not None and self._owns_client:
+            await self._client.aclose()
+            self._client = None
+
+    async def _get_client(self) -> httpx.AsyncClient:
+        if self._client is None:
+            self._client = httpx.AsyncClient(
+                timeout=self._timeout,
+                headers={"User-Agent": _USER_AGENT, **_INVESCO_REQUIRED_HEADERS},
+            )
+        return self._client
+
+    async def _fetch_one(self, symbol: str) -> SharesOutstandingRow:
+        client = await self._get_client()
+        url = _INVESCO_SHARECLASS_URL.format(symbol=symbol)
+        params = {"idType": "ticker", "variationType": "fundDetails", "productType": "ETF"}
+        last_exc: Exception | None = None
+        for attempt in range(1, self._max_retries + 1):
+            try:
+                response = await client.get(url, params=params)
+            except httpx.TransportError as exc:
+                last_exc = exc
+                logger.warning(
+                    "invesco: attempt %d/%d transport error for %s: %s",
+                    attempt, self._max_retries, symbol, exc,
+                )
+                if attempt < self._max_retries:
+                    await asyncio.sleep(self._backoff_seconds * attempt)
+                continue
+
+            if response.status_code == 200:
+                return parse_invesco_shareclass(response.text, symbol)
+
+            last_exc = httpx.HTTPStatusError(
+                f"unexpected status {response.status_code}", request=response.request, response=response
+            )
+            logger.warning(
+                "invesco: attempt %d/%d status %d for %s",
+                attempt, self._max_retries, response.status_code, symbol,
+            )
+            if attempt < self._max_retries:
+                await asyncio.sleep(self._backoff_seconds * attempt)
+
+        raise UpstreamUnavailable(
+            f"invesco: {symbol} request failed after {self._max_retries} attempts"
+        ) from last_exc
+
+    async def fetch(self, symbols: Sequence[str] | None = None) -> SharesOutstandingFetchResult:
+        wanted = [s for s in (symbols if symbols is not None else self.symbols) if s in self.symbols]
+
+        rows: list[SharesOutstandingRow] = []
+        failures: dict[str, str] = {}
+        for symbol in wanted:
+            try:
+                rows.append(await self._fetch_one(symbol))
+            except ValueError as exc:
+                failures[symbol] = str(exc)
+            except ProviderError as exc:
+                failures[symbol] = str(exc)
+
+        return SharesOutstandingFetchResult(rows=rows, failures=failures)
+
+
+# --------------------------------------------------------------------------------------------
+# USCF (T59) -- a two-step fetch: mint a bearer token, then call the price/shares endpoint
+# --------------------------------------------------------------------------------------------
+
+_USCF_TOKEN_URL = "https://www.uscfinvestments.com/site-template/assets/javascript/api_key.php"
+_USCF_DAILYPRICE_URL = "https://secure.alpsinc.com/MarketingAPI/api/v1/dailyprice/{symbol}"
+
+#: Matches `var token = '<jwt>';` in `api_key.php`'s response body -- a plain JS snippet, not
+#: JSON (see `_parse_uscf_token`'s docstring for why this is the shape).
+_USCF_TOKEN_RE = re.compile(r"var\s+token\s*=\s*'([^']+)'")
+
+
+def _parse_uscf_token(body: str) -> str:
+    """Extract the bearer JWT from `api_key.php`'s response body.
+
+    This endpoint is not JSON -- it is a small JS snippet (`var token = '...'; var
+    api_url_v2 = '...'; ...`) meant to be `<script>`-included directly, found by loading
+    `https://www.uscfinvestments.com/uso` with Playwright and following the relative script
+    path in its `<script src="assets/javascript/api_key.php">` tag (resolved against the
+    page's own `<base href="https://www.uscfinvestments.com/site-template/">` -- *not* against
+    `www.uscfinvestments.com/assets/...`, which 404s the same request differently and is the
+    trap a naive path guess falls into).
+
+    The token is anonymous and unauthenticated in the sense that matters here: every visitor's
+    browser gets one from this same public, login-free URL, with no cookie or session required
+    -- verified by requesting it with no cookies at all and it still returning a fresh, working
+    token. It is short-lived (the JWT's own `exp` claim is `iat + 86400`, one day), which is
+    why this is minted fresh on every `fetch()` call rather than cached across them.
+
+    Raises:
+        UpstreamUnavailable: no `var token = '...'` assignment found in the body -- the
+            endpoint moved or changed shape. This is a family-level failure (see the module
+            docstring): without a token, no USCF symbol can be fetched at all this run.
+    """
+    match = _USCF_TOKEN_RE.search(body)
+    if match is None:
+        raise UpstreamUnavailable(
+            "uscf: no 'var token = ...' assignment found in api_key.php response "
+            "(endpoint may have moved)"
+        )
+    return match.group(1)
+
+
+def parse_uscf_dailyprice(body: str, symbol: str) -> SharesOutstandingRow:
+    """Parse one `secure.alpsinc.com/MarketingAPI/api/v1/dailyprice/{ticker}` response body
+    for `symbol`.
+
+    The response is a one-element JSON array (`[{...}]`), not a bare object -- found the same
+    way as the other two T59 endpoints, by driving `https://www.uscfinvestments.com/uso` with
+    Playwright and watching its network requests. The element carries `so` (shares
+    outstanding, full precision, as a JSON float with a `.0000` tail -- `14223603.0000`, not an
+    int), `nav`, and `displaydate` (`"YYYY-MM-DDTHH:MM:SS"`, a fixed time-of-day with no
+    timezone marker; only the date component is used, per this table's `date`-not-`datetime`
+    convention -- see `app.models.db.EtfSharesOutstanding`'s docstring).
+
+    **An unrecognized ticker 404s** (unlike Invesco's 200-with-empty-body shape) with a plain
+    text body (`"No resources found for given resource: {ticker}."`) -- the calling provider's
+    retry loop treats a non-200 status as a transport-level failure the same way every other
+    fetcher here does, so that case never reaches this parser at all.
+
+    Args:
+        body: The raw JSON response text (expected to be a one-element array).
+        symbol: The plain ticker this request was for, written straight into the returned row.
+
+    Raises:
+        ValueError: the body is not JSON, is not a non-empty list, or its first element is
+            missing `so`/`displaydate` -- all named per-symbol failures, never a crash. Same
+            "no as-of date, no usable row" rule as the other two T59 parsers.
+    """
+    try:
+        payload = json.loads(body)
+    except json.JSONDecodeError as exc:
+        raise ValueError(f"response body is not JSON: {exc}") from exc
+
+    if not isinstance(payload, list) or not payload or not isinstance(payload[0], dict):
+        raise ValueError("response body is not a non-empty JSON array of records")
+
+    record = payload[0]
+    shares_raw = record.get("so")
+    as_of_raw = record.get("displaydate")
+    if shares_raw is None or not as_of_raw:
+        raise ValueError("no 'so'/'displaydate' field in response")
+
+    try:
+        shares = round(float(shares_raw))
+        # Only the date component is meaningful (see this function's docstring); a calendar
+        # date, not an instant -- same rationale as `_parse_spdr_date`.
+        as_of = dt.datetime.strptime(str(as_of_raw).strip()[:10], "%Y-%m-%d").date()  # noqa: DTZ007
+    except (TypeError, ValueError) as exc:
+        raise ValueError(f"'so'/'displaydate' present but unparseable: {exc}") from exc
+
+    if shares <= 0:
+        raise ValueError(f"non-positive shares outstanding ({shares!r})")
+
+    nav: float | None = None
+    nav_raw = record.get("nav")
+    if nav_raw is not None:
+        try:
+            nav = float(nav_raw)
+        except (TypeError, ValueError):
+            nav = None
+
+    return SharesOutstandingRow(
+        symbol=symbol,
+        as_of_date=as_of,
+        shares_outstanding=shares,
+        nav=nav,
+        source="uscf-dailyprice",
+    )
+
+
+class USCFDailyPriceProvider(SharesOutstandingProvider):
+    """Fetches a fresh bearer token, then one `dailyprice` response per requested
+    `USCF_SYMBOLS` member, parsing each with `parse_uscf_dailyprice`.
+
+    The token fetch is family-level (one token serves every symbol in this `fetch()` call, per
+    `_parse_uscf_token`'s docstring), so a token-fetch failure raises `UpstreamUnavailable`
+    straight out of `fetch` rather than becoming a per-symbol failure -- consistent with the
+    module docstring's "a failed token fetch is a family-level `ProviderError`" note.
+    """
+
+    def __init__(
+        self,
+        *,
+        client: httpx.AsyncClient | None = None,
+        timeout: float = _DEFAULT_TIMEOUT_SECONDS,
+        max_retries: int = _DEFAULT_MAX_RETRIES,
+        backoff_seconds: float = _DEFAULT_BACKOFF_SECONDS,
+    ) -> None:
+        self._client = client
+        self._owns_client = client is None
+        self._timeout = timeout
+        self._max_retries = max_retries
+        self._backoff_seconds = backoff_seconds
+
+    @property
+    def name(self) -> str:
+        return "uscf"
+
+    @property
+    def symbols(self) -> tuple[str, ...]:
+        return USCF_SYMBOLS
+
+    async def close(self) -> None:
+        if self._client is not None and self._owns_client:
+            await self._client.aclose()
+            self._client = None
+
+    async def _get_client(self) -> httpx.AsyncClient:
+        if self._client is None:
+            self._client = httpx.AsyncClient(timeout=self._timeout, headers={"User-Agent": _USER_AGENT})
+        return self._client
+
+    async def _fetch_token(self) -> str:
+        client = await self._get_client()
+        last_exc: Exception | None = None
+        for attempt in range(1, self._max_retries + 1):
+            try:
+                response = await client.get(_USCF_TOKEN_URL)
+            except httpx.TransportError as exc:
+                last_exc = exc
+                logger.warning(
+                    "uscf: attempt %d/%d transport error fetching token: %s",
+                    attempt, self._max_retries, exc,
+                )
+                if attempt < self._max_retries:
+                    await asyncio.sleep(self._backoff_seconds * attempt)
+                continue
+
+            if response.status_code == 200:
+                return _parse_uscf_token(response.text)
+
+            last_exc = httpx.HTTPStatusError(
+                f"unexpected status {response.status_code}", request=response.request, response=response
+            )
+            logger.warning(
+                "uscf: attempt %d/%d status %d fetching token",
+                attempt, self._max_retries, response.status_code,
+            )
+            if attempt < self._max_retries:
+                await asyncio.sleep(self._backoff_seconds * attempt)
+
+        raise UpstreamUnavailable(
+            f"uscf: token request failed after {self._max_retries} attempts"
+        ) from last_exc
+
+    async def _fetch_one(self, symbol: str, token: str) -> SharesOutstandingRow:
+        client = await self._get_client()
+        url = _USCF_DAILYPRICE_URL.format(symbol=symbol)
+        headers = {"Authorization": f"Bearer {token}", "Accept": "application/json"}
+        last_exc: Exception | None = None
+        for attempt in range(1, self._max_retries + 1):
+            try:
+                response = await client.get(url, headers=headers)
+            except httpx.TransportError as exc:
+                last_exc = exc
+                logger.warning(
+                    "uscf: attempt %d/%d transport error for %s: %s",
+                    attempt, self._max_retries, symbol, exc,
+                )
+                if attempt < self._max_retries:
+                    await asyncio.sleep(self._backoff_seconds * attempt)
+                continue
+
+            if response.status_code == 200:
+                return parse_uscf_dailyprice(response.text, symbol)
+            if response.status_code == 404:
+                # "No resources found for given resource: {symbol}." -- an unrecognized
+                # ticker, not a transport failure worth retrying.
+                raise ValueError(f"no resource found for {symbol!r} (404)")
+
+            last_exc = httpx.HTTPStatusError(
+                f"unexpected status {response.status_code}", request=response.request, response=response
+            )
+            logger.warning(
+                "uscf: attempt %d/%d status %d for %s",
+                attempt, self._max_retries, response.status_code, symbol,
+            )
+            if attempt < self._max_retries:
+                await asyncio.sleep(self._backoff_seconds * attempt)
+
+        raise UpstreamUnavailable(
+            f"uscf: {symbol} request failed after {self._max_retries} attempts"
+        ) from last_exc
+
+    async def fetch(self, symbols: Sequence[str] | None = None) -> SharesOutstandingFetchResult:
+        wanted = [s for s in (symbols if symbols is not None else self.symbols) if s in self.symbols]
+        if not wanted:
+            return SharesOutstandingFetchResult(rows=[], failures={})
+
+        token = await self._fetch_token()  # ProviderError here is family-level, not per-symbol
+
+        rows: list[SharesOutstandingRow] = []
+        failures: dict[str, str] = {}
+        for symbol in wanted:
+            try:
+                rows.append(await self._fetch_one(symbol, token))
+            except ValueError as exc:
                 failures[symbol] = str(exc)
             except ProviderError as exc:
                 failures[symbol] = str(exc)

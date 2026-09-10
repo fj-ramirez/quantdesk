@@ -59,10 +59,15 @@ def test_get_flows_defaults_to_window_20(client, session_factory):
 def test_get_flows_lists_unsupported_symbols_as_no_flow_data_never_a_zero_bar(
     client, session_factory
 ):
+    """T59 gave every one of the T52 survey's four unsupported symbols (SMH, GDX, QQQ, USO) a
+    working fetcher, so `no_flow_data` (driven by `UNSUPPORTED_SYMBOLS`) is empty -- but the
+    invariant it exists to enforce (nothing unsupported is ever drawn as a zero bar) is still
+    worth asserting for whatever `no_flow_data` names now or in the future.
+    """
     response = client.get("/api/scan/flows", params={"window": 5})
     body = response.json()
     no_flow_symbols = {s["symbol"] for s in body["no_flow_data"]}
-    assert no_flow_symbols == {"SMH", "GDX", "QQQ", "USO"}
+    assert no_flow_symbols == set()
     # None of the unsupported symbols appear in the scored list at all -- never a zero bar.
     scored_symbols = {s["symbol"] for s in body["symbols"]}
     assert no_flow_symbols.isdisjoint(scored_symbols)

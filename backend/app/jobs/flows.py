@@ -25,10 +25,13 @@ from dataclasses import asdict, dataclass, field
 from sqlalchemy.orm import Session, sessionmaker
 
 from app.providers.etf_flows import (
+    InvescoShareclassProvider,
     ISharesProductPageProvider,
     ProviderError,
     SharesOutstandingProvider,
     SpdrAllFundsProvider,
+    USCFDailyPriceProvider,
+    VanEckFundDetailsProvider,
 )
 from app.storage.flows_repository import insert_new_rows
 
@@ -55,13 +58,18 @@ def _log_result(result: FlowsFamilyResult) -> None:
 
 
 def _default_providers() -> list[SharesOutstandingProvider]:
-    """The two supported families, per `docs/etf-flows-sources.md`'s survey result. VanEck,
-    Invesco and USCF have no provider at all -- see that survey and
-    `app.providers.etf_flows.UNSUPPORTED_SYMBOLS` -- so there is nothing to register for them
-    here; a caller cannot accidentally "fix" that by asking for one of their symbols, since
-    every provider's `fetch` silently ignores a symbol outside its own `symbols`.
+    """The five supported families, per `docs/etf-flows-sources.md`'s survey result: T52's
+    SPDR and iShares, plus T59's VanEck, Invesco and USCF. `app.providers.etf_flows.
+    UNSUPPORTED_SYMBOLS` is empty as of T59 -- every symbol the survey looked at now has a
+    provider here, so there is nothing left to route around.
     """
-    return [SpdrAllFundsProvider(), ISharesProductPageProvider()]
+    return [
+        SpdrAllFundsProvider(),
+        ISharesProductPageProvider(),
+        VanEckFundDetailsProvider(),
+        InvescoShareclassProvider(),
+        USCFDailyPriceProvider(),
+    ]
 
 
 async def update_flows_job(
