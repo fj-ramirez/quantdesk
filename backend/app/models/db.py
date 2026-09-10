@@ -40,6 +40,7 @@ from app.config import settings
 __all__ = [
     "Base",
     "DailyBar",
+    "EtfSharesOutstanding",
     "GexByStrike",
     "GexLevel",
     "Snapshot",
@@ -290,6 +291,64 @@ class DailyBar(Base):
         return (
             f"<DailyBar symbol={self.symbol!r} date={self.date.isoformat()!r} "
             f"close={self.close!r} volume={self.volume!r}>"
+        )
+
+
+class EtfSharesOutstanding(Base):
+    """One fund's issuer-published shares outstanding for one calendar as-of date (T52,
+    plans/continuation/05-etf-flows.md; survey: docs/etf-flows-sources.md).
+
+    **`date` is the issuer's own stated as-of date, never the day the fetch ran.** The survey
+    that preceded this table found issuer files lag a full trading day -- at 20:56 ET on a
+    Wednesday, State Street's file still carried Tuesday's date, and iShares was not even
+    uniform about it across its own funds captured at the same instant. Keying on the run date
+    (the plan's original design) would either overwrite yesterday's real value with a
+    duplicate under today's date, or -- under the "skip unless as-of is today" rule the survey
+    replaced -- never insert a row at all. `(symbol, date)` unique below is what makes
+    `app.storage.flows_repository.insert_new_rows`'s "insert when unseen, do nothing when
+    already stored" contract enforceable at the database level, not just in application code.
+
+    `date` is a plain SQLAlchemy `Date`, same choice and same rationale as `DailyBar.date`
+    above: an as-of date is a calendar date with no instant attached, so the `UTCDateTime`
+    machinery for tz-aware instants does not apply, and `Date` round-trips identically on
+    SQLite (tests) and Postgres (production) without a custom type.
+
+    `shares` is `BigInteger`, not `Integer`, for the same belt-and-suspenders reason as
+    `DailyBar.volume`: every fund in this app's covered universe today fits comfortably in a
+    32-bit int, but a share count is exactly the kind of large, ever-growing index quantity
+    that has already bitten this codebase once (SPX volume overflowing Postgres `int4` on the
+    very first real backfill, caught only because SQLite's 64-bit `INTEGER` accepted it
+    silently in tests) -- see `DailyBar.volume`'s own docstring for the full story.
+
+    `nav` is nullable: the SPDR all-funds file always reports one, but the trimmed iShares
+    product-page fixtures this table's provider was built and tested against
+    (`docs/etf-flows-sources.md`'s iShares section) do not carry a `navAmount` block at all --
+    a provider that cannot find one supplies `None` rather than fabricating a NAV from some
+    other source, matching the `SharesOutstandingProvider` contract's own `nav | None` return.
+
+    `source` names the provider that produced the row (`'spdr-xlsx'`, `'ishares-productpage'`)
+    -- the per-fund freshness/provenance the health block and the flows API both surface,
+    mirroring `DailyBar.source`.
+    """
+
+    __tablename__ = "etf_shares_outstanding"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    symbol: Mapped[str] = mapped_column(String(16), nullable=False)
+    date: Mapped[dt.date] = mapped_column(Date, nullable=False)
+    shares: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    nav: Mapped[float | None] = mapped_column(Float, nullable=True)
+    source: Mapped[str] = mapped_column(String(32), nullable=False)
+
+    __table_args__ = (
+        UniqueConstraint("symbol", "date", name="uq_etf_shares_outstanding_symbol_date"),
+        Index("ix_etf_shares_outstanding_symbol", "symbol"),
+    )
+
+    def __repr__(self) -> str:  # pragma: no cover - debugging aid only
+        return (
+            f"<EtfSharesOutstanding symbol={self.symbol!r} date={self.date.isoformat()!r} "
+            f"shares={self.shares!r} nav={self.nav!r}>"
         )
 
 

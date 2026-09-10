@@ -17,12 +17,14 @@ from app.jobs.scheduler import (
     BARS_JOB_ID,
     EOD_JOB_ID,
     EXTENDED_JOB_ID,
+    FLOWS_JOB_ID,
     SAFETY_NET_JOB_ID,
     bars_update_job,
     build_scheduler,
     capture_eod_job,
     capture_eod_safety_net_job,
     capture_extended_job,
+    flows_update_job,
 )
 
 _NY = ZoneInfo("America/New_York")
@@ -209,6 +211,7 @@ def test_build_scheduler_still_registers_the_two_option_capture_jobs_unchanged()
         SAFETY_NET_JOB_ID,
         BARS_JOB_ID,
         EXTENDED_JOB_ID,
+        FLOWS_JOB_ID,
     }
 
 
@@ -305,6 +308,7 @@ def test_build_scheduler_adding_the_extended_job_leaves_the_other_three_untouche
         SAFETY_NET_JOB_ID,
         BARS_JOB_ID,
         EXTENDED_JOB_ID,
+        FLOWS_JOB_ID,
     }
 
 
@@ -389,5 +393,100 @@ async def test_capture_extended_job_survives_an_unexpected_exception(monkeypatch
 
     with caplog.at_level(logging.ERROR, logger="app.jobs.scheduler"):
         await capture_extended_job()  # must not raise
+
+    assert any("unexpected top-level failure" in r.message for r in caplog.records)
+
+
+# --- T52: 18:30 NY ETF shares-outstanding flows job -- additive, must never affect capture -----
+
+
+def test_build_scheduler_registers_flows_job():
+    scheduler = build_scheduler()
+    job = scheduler.get_job(FLOWS_JOB_ID)
+    assert job is not None
+    assert job.max_instances == 1
+    assert job.misfire_grace_time is None
+    assert job.coalesce is True
+
+
+def test_build_scheduler_flows_job_trigger_is_mon_fri_1830_ny():
+    scheduler = build_scheduler()
+    job = scheduler.get_job(FLOWS_JOB_ID)
+    trigger = job.trigger
+    field_strs = {f.name: str(f) for f in trigger.fields}
+    assert field_strs["hour"] == "18"
+    assert field_strs["minute"] == "30"
+    assert field_strs["day_of_week"] == "mon-fri"
+    assert str(trigger.timezone) == "America/New_York"
+
+
+def test_build_scheduler_adding_the_flows_job_leaves_the_other_four_untouched():
+    """P0 guardrail, the acceptance criterion verbatim: the core EOD job, its safety net, the
+    bars job and the extended-capture job must be provably unchanged by this task."""
+    scheduler = build_scheduler()
+
+    eod = scheduler.get_job(EOD_JOB_ID)
+    assert eod is not None
+    eod_fields = {f.name: str(f) for f in eod.trigger.fields}
+    assert (eod_fields["hour"], eod_fields["minute"], eod_fields["day_of_week"]) == ("16", "20", "mon-fri")
+
+    safety_net = scheduler.get_job(SAFETY_NET_JOB_ID)
+    assert safety_net is not None
+    safety_net_fields = {f.name: str(f) for f in safety_net.trigger.fields}
+    assert (safety_net_fields["hour"], safety_net_fields["minute"], safety_net_fields["day_of_week"]) == (
+        "20",
+        "0",
+        "mon-fri",
+    )
+
+    bars = scheduler.get_job(BARS_JOB_ID)
+    assert bars is not None
+    bars_fields = {f.name: str(f) for f in bars.trigger.fields}
+    assert (bars_fields["hour"], bars_fields["minute"], bars_fields["day_of_week"]) == ("17", "30", "mon-fri")
+
+    extended = scheduler.get_job(EXTENDED_JOB_ID)
+    assert extended is not None
+    extended_fields = {f.name: str(f) for f in extended.trigger.fields}
+    assert (extended_fields["hour"], extended_fields["minute"], extended_fields["day_of_week"]) == (
+        "16",
+        "45",
+        "mon-fri",
+    )
+
+    assert {job.id for job in scheduler.get_jobs()} == {
+        EOD_JOB_ID,
+        SAFETY_NET_JOB_ID,
+        BARS_JOB_ID,
+        EXTENDED_JOB_ID,
+        FLOWS_JOB_ID,
+    }
+
+
+async def test_flows_update_job_delegates_to_update_flows_job(monkeypatch):
+    called = False
+
+    async def fake_update_flows_job(*args, **kwargs):
+        nonlocal called
+        called = True
+        return []
+
+    monkeypatch.setattr(scheduler_module, "update_flows_job", fake_update_flows_job)
+
+    await flows_update_job()
+
+    assert called is True
+
+
+async def test_flows_update_job_survives_an_unexpected_exception(monkeypatch, caplog):
+    """P0 guardrail: a bug in the flows pipeline must not be capable of taking the scheduler
+    thread down with it, which would silently deregister the option-capture jobs too."""
+
+    async def boom(*args, **kwargs):
+        raise RuntimeError("an issuer endpoint is unreachable")
+
+    monkeypatch.setattr(scheduler_module, "update_flows_job", boom)
+
+    with caplog.at_level(logging.ERROR, logger="app.jobs.scheduler"):
+        await flows_update_job()  # must not raise
 
     assert any("unexpected top-level failure" in r.message for r in caplog.records)

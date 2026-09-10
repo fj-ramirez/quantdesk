@@ -891,3 +891,132 @@ gross, flip 2.20 ATR below spot, nearest wall 0.25 ATR away -> `fade`).
 | 0DTE share: `None` when unsupported by stored data, documented rather than estimated | §22 above |
 | Staleness surfaced, not silently ranked alongside a fresh chain | §24 above, confirmed live against T47's own five symbols |
 | `GET /api/scan/regime` measured against the live database | §26 above |
+
+## 28. T52: ETF shares-outstanding ingest -- XLSX parsing, precision, and `compute_flows`
+
+`docs/etf-flows-sources.md` is the survey this task built against (the two places it overrides
+`plans/continuation/05-etf-flows.md` are called out there, not repeated here). This section
+records the two implementation decisions the survey left to T52, and the hand computation for
+`app.scan.flows.compute_flows`.
+
+### 28.1 XLSX parsing: stdlib `zipfile`, not `openpyxl`
+
+`openpyxl` was **not** added to `backend/pyproject.toml`. `app.providers.etf_flows.parse_spdr_xlsx`
+reads `xl/sharedStrings.xml` and `xl/worksheets/sheet1.xml` directly out of the response body
+(a zip archive) via `zipfile.ZipFile` plus a handful of regexes -- the same technique the
+survey used to read the file in the first place. This avoids a backend dependency add (and the
+Docker image rebuild the task brief flagged as the cost of the alternative) for what is, in
+practice, about 60 lines split across `_shared_strings`, `_parse_row` and `parse_spdr_xlsx`
+itself. Verified directly against the recorded fixture
+(`tests/fixtures/etf_flows/spdr-product-data-us-en-2026-09-08.xlsx`): all 17 `SPDR_SYMBOLS`
+parse with zero failures (`test_parse_spdr_xlsx_parses_all_17_symbols_from_the_real_fixture`),
+and the same parser was re-run live against the real ssga.com endpoint during this task's
+acceptance check (§28.4 below) with no code path difference from the fixture-driven test.
+
+### 28.2 Shares-outstanding precision: `TNA / NAV`, printed value as a cross-check
+
+Per the survey's recommendation, `parse_spdr_xlsx` derives `shares_outstanding` as
+`Total Net Assets / NAV` (both quoted to $0.01M / $0.01, respectively) rather than reading the
+printed `Shares Outstanding` column (quoted to only 10,000 shares, i.e. two decimals in
+millions). The printed value is still parsed and compared: a disagreement beyond one creation
+unit (50,000 shares, `_ONE_CREATION_UNIT`) is logged as a warning, never raised.
+
+**Did the cross-check ever disagree on the real fixture? No -- but one fund came within 3% of
+the threshold.** Every one of the 17 SPDR symbols in the recorded fixture (all as of
+2026-09-08) was computed directly and compared:
+
+| Symbol | Derived (`TNA/NAV`) | Printed | \|diff\| (shares) |
+|---|---|---|---|
+| XLF | 955,501,135 | 955,550,000 | **48,865** (closest to the 50,000 threshold) |
+| XLV | 259,408,006 | 259,420,000 | 11,994 |
+| XLRE | 187,061,759 | 187,050,000 | 11,759 |
+| XLI | 182,021,676 | 182,030,000 | 8,324 |
+| XLU | 518,543,048 | 518,550,000 | 6,952 |
+| KRE | 56,205,950 | 56,200,000 | 5,950 |
+| XLP | 171,675,914 | 171,670,000 | 5,914 |
+| XLY | 192,705,227 | 192,710,000 | 4,773 |
+| GLD | 368,195,508 | 368,200,000 | 4,492 |
+| XLK | 651,805,940 | 651,810,000 | 4,060 |
+| SPY | 1,052,583,971 | 1,052,580,000 | 3,971 |
+| DIA | 86,442,731 | 86,440,000 | 2,731 |
+| XLB | 164,597,035 | 164,600,000 | 2,965 |
+| XLC | 202,197,436 | 202,200,000 | 2,564 |
+| XLE | 656,947,490 | 656,950,000 | 2,510 |
+| XBI | 69,999,197 | 70,000,000 | 803 |
+| XOP | 21,000,000 | 21,000,000 | **0** (TNA `$4,069.80M` / NAV `$193.80` is exactly 21.0 on this file) |
+
+Every disagreement is comfortably inside the one-creation-unit (50,000-share) threshold, and
+every one is fully explained by the printed column's own 10,000-share rounding -- exactly the
+survey's prediction. XLF is the closest call (48,865, about 98% of the threshold): a fund this
+large ($54.7B AUM) accumulates more absolute rounding error at the same relative precision,
+which is expected and not itself evidence of a data problem. `test_parse_spdr_xlsx_xlk_matches_the_survey_worked_example`
+pins the XLK figure; the full 17-symbol table above was produced by a one-off script run
+against the fixture during this task, not committed as a test (re-deriving all 17 by hand in
+an assertion would just restate this table).
+
+One number in the survey's own worked example does not reproduce against this fixture:
+`docs/etf-flows-sources.md` quotes XOP's derived share count as `20,998,968`. Recomputing
+directly from the fixture's own printed cells (`Total Net Assets = $4,069.80M`,
+`NAV = $193.80`) gives `4,069.80e6 / 193.80 = 21,000,000` exactly -- the two inputs happen to
+divide evenly on this file. The survey's figure was almost certainly computed against a
+live probe a day later (2026-09-09) with a slightly different TNA/NAV pair; it does not
+indicate a bug in this implementation, since re-deriving directly from the recorded fixture's
+own cells reproduces exactly what `parse_spdr_xlsx` returns.
+
+### 28.3 `compute_flows`: hand computation
+
+Fixture (also `test_compute_flows_matches_a_hand_computed_2day_window` in
+`tests/test_scan_flows.py`): three days of `XLK` shares outstanding (`SO`) and NAV:
+
+| Date | SO | NAV |
+|---|---|---|
+| d0 | 100 | 10 |
+| d1 | 110 | 11 |
+| d2 | 105 | 9 |
+
+By hand, per the plan's definitions (`flow_t = (SO_t - SO_{t-1}) * NAV_t`,
+`flow_pct_t = flow_t / (SO_{t-1} * NAV_t)`, aggregates sum daily flows and divide by the
+window-start AUM):
+
+```
+flow_d1 = (110 - 100) * 11 = 110
+flow_d2 = (105 - 110) * 9  = -45
+aggregate flow (w=2)       = 110 + (-45) = 65
+window-start AUM           = SO_d0 * NAV_d0 = 100 * 10 = 1000
+flow_pct (w=2)             = 65 / 1000 = 0.065
+```
+
+`compute_flows(so_frame, nav_frame, windows=[2])` returns `flow_2 = 65.0`,
+`flow_pct_2 = 0.065` for `XLK` -- an exact match, asserted to `pytest.approx` tolerance (no
+manual rounding needed since every intermediate value here is exact in floating point).
+
+### 28.4 Live acceptance check (2026-09-09, real network, real Postgres)
+
+Run against the shared dev Postgres (`docker compose`'s `postgres` container, already at
+migration head `6d74a6583548` before this task's `961d52e4d010` was applied) and the real
+ssga.com/ishares.com endpoints -- not a fixture, per the acceptance brief's literal command:
+
+```
+$ uv run python -m app.flows_fetch --symbols XLK,IWM
+flows_fetch: spdr inserted=1 skipped=0 failed_symbols=[]
+flows_fetch: ishares inserted=1 skipped=0 failed_symbols=[]
+
+$ uv run python -m app.flows_fetch --symbols XLK,IWM   # second run, same day
+flows_fetch: spdr inserted=0 skipped=1 failed_symbols=[]
+flows_fetch: ishares inserted=0 skipped=1 failed_symbols=[]
+```
+
+Stored rows, read back through `read_shares_outstanding`:
+
+| symbol | date | shares | nav | source |
+|---|---|---|---|---|
+| XLK | 2026-09-08 | 651,805,940 | 187.88 | spdr-xlsx |
+| IWM | 2026-09-09 | 269,850,000 | (none) | ishares-productpage |
+
+Both dates match the survey's own live probe from the same day (SPDR one day behind, IWM
+same-day) -- confirming the as-of-date lag the survey identified is still the live behavior,
+and that this implementation reports it honestly rather than substituting the run date.
+`IWM.nav` is `None` because iShares' `navAmount` block, when present at all, carries its own
+independent as-of date the survey warns can disagree with `sharesOutstanding`'s -- this
+implementation does not fabricate a NAV from a mismatched date; see
+`app.models.db.EtfSharesOutstanding`'s docstring.
