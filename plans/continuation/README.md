@@ -75,9 +75,14 @@ is a suggestion, not a requirement.
 
 </details>
 
-## Open decision for the user
+## Open decisions for the user
 
-**Universe.** The default `SCAN_UNIVERSE` T42 shipped is 47 tickers: ETFs only (index, 11
+Nothing below blocks the remaining build; each is a choice only the user can make. Recorded
+here so they survive the session.
+
+### 1. Universe width
+
+The default `SCAN_UNIVERSE` T42 shipped is 47 tickers: ETFs only (index, 11
 sectors, ~10 industries, commodities, rates, FX, international), plus `SPX` and `^VIX`.
 Continuation is more likely in single names and in the broker's full CFD list.
 
@@ -86,6 +91,40 @@ the full 47-symbol, 5-year backfill ran on 2026-09-09 against Yahoo in a few min
 0.5 s sleep between symbols and **zero failures or throttling**, so Yahoo's budget is not the
 binding constraint Stooq's was assumed to be. The real limits are the daily 17:30 job's
 runtime and how many symbols the scan pages can render usefully.
+
+**Supervisor recommendation (2026-09-09): widen to ~120 by adding single names, in one step,
+and leave the pages' default views ranked and truncated rather than paginated.** Reasoning:
+the initiative exists because *ETFs* are fading breakouts — an ETF is a basket, and a basket
+averages away exactly the continuation the user is hunting. Every scan page already sorts and
+the tables already cut to a top-N, so the marginal cost of a wider universe is job runtime
+(linear, ~0.5 s/symbol → about a minute for 120) and nothing else. What the user has to supply
+is *which* names: the broker's CFD list is the natural source and only they have it.
+
+### 2. Three ETF families have no free flow source
+
+`docs/etf-flows-sources.md` (survey done 2026-09-09) covers SPDR and iShares — 23 of the 27
+symbols. **VanEck (SMH, GDX), Invesco (QQQ) and USCF (USO)** all render shares outstanding
+client-side from an internal API, so T53's page will list those four under "no flow data".
+Chasing their private endpoints is possible but is scraping undocumented JSON that can change
+without notice. Say the word if those four matter enough to spend a task on.
+
+### 3. Does `/overview` become the landing page?
+
+07-ui.md's T56 spec says the overview page "becomes the nav's default landing when the user
+says so; until then it is the last nav tab". T56 will ship it as the last tab. Flipping it to
+`/` later is a one-line route change.
+
+### 4. Still no git remote, still one copy of `data/`
+
+P0 item 3 in `docs/state-review-2026-09-05.md`, unchanged. Everything built in this initiative
+exists on one disk. Adding a remote needs the user's account and is one command afterwards.
+
+### 5. `AGENTS.md` is a byte-identical copy of `CLAUDE.md`
+
+Untracked, created outside this session (presumably for another agent tool). Two copies of the
+project's instruction file will drift. Options: track it and accept manual syncing, replace it
+with a one-line pointer to `CLAUDE.md`, or delete it. Left alone pending the user's call —
+it is their file.
 
 ## Where results go
 
