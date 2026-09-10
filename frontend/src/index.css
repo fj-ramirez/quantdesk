@@ -633,3 +633,59 @@ code {
 }
 .rotation-breadth__list dt { color: var(--text); opacity: 0.6; }
 .rotation-breadth__list dd { margin: 0; text-align: right; }
+
+/* ---------------------------------------------------------------------------
+   T49 -- /regime page. Same token discipline as /scan and /rotation above: no
+   literal colours here; the two null-verdict tints (`--stale`/`--noise`) both
+   read `--accent*`/opacity tokens that already flip between light and dark.
+   --------------------------------------------------------------------------- */
+
+.regime-page { padding: 16px; display: flex; flex-direction: column; gap: 12px; }
+
+.regime-verdict summary {
+  cursor: pointer;
+  list-style: none;
+  display: inline-block;
+}
+.regime-verdict summary::-webkit-details-marker { display: none; }
+.regime-verdict__reasons {
+  margin: 6px 0 0 16px;
+  padding: 0;
+  font-size: 12px;
+  color: var(--text);
+  opacity: 0.85;
+  max-width: 48ch;
+}
+
+.regime-wall,
+.regime-room-beyond {
+  font-family: var(--mono);
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.regime-zero-dte { cursor: help; }
+
+/* Per-cell tint for a `stale` or `noise-dominated` row (RegimeTable.tsx's `tinted` helper --
+   `ScanTable` owns `<tr>`/`<td>` markup and is not modified here, so the tint fills each
+   cell's own padding box via matching negative margins rather than styling the row itself). */
+.regime-row-tint {
+  display: inline-block;
+  margin: -6px -10px;
+  padding: 6px 10px;
+  width: calc(100% + 20px);
+  box-sizing: border-box;
+}
+
+/* Noise-dominated: a fresh chain with nothing trustworthy to say -- de-emphasised, per
+   07-ui.md's explicit "noise-dominated rows get the neutral chip and a muted row style". */
+.regime-row-tint--noise { opacity: 0.6; }
+
+/* Stale: the opposite intent -- this row's *other* numbers are not wrong, only its verdict is
+   unsafe to read, so it is flagged rather than dimmed (dimming it the same way a noise-
+   dominated row is dimmed would bury exactly the distinction the two causes need). */
+.regime-row-tint--stale {
+  background: var(--accent-bg);
+  border-left: 3px solid var(--accent-border);
+  padding-left: 7px;
+}

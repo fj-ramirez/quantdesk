@@ -11,6 +11,7 @@ import type {
   ExpiryFilter,
   GexResult,
   LevelHistoryRow,
+  RegimeResponse,
   Report,
   RotationBenchmark,
   RotationGroup,
@@ -225,5 +226,12 @@ export const apiClient = {
 
   captureHealth(): Promise<CaptureHealth> {
     return apiFetch<CaptureHealth>('/api/health/capture');
+  },
+
+  /** T49's `/regime` page. `filter` is the same three-way `ALL`/`ZERO_DTE`/`EX_ZERO_DTE`
+   * toolbar as the dashboard's expiry filter -- `07-ui.md`'s `/regime` section says to reuse
+   * that validator rather than inventing a second one. */
+  regime(filter: ExpiryFilter): Promise<RegimeResponse> {
+    return apiFetch<RegimeResponse>('/api/scan/regime', { filter });
   },
 };

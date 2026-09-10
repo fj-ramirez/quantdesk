@@ -24,6 +24,7 @@ import type {
   ExpiryFilter,
   GexResult,
   LevelHistoryRow,
+  RegimeResponse,
   Report,
   RotationResponse,
   SnapshotSummary,
@@ -66,6 +67,8 @@ import healthCaptureFixture from './fixtures/scan/health_capture.json';
 import rotationSectorsFixture from './fixtures/scan/rotation_sectors.json';
 import rotationIndustriesRspFixture from './fixtures/scan/rotation_industries_rsp.json';
 import rotationAssetsFixture from './fixtures/scan/rotation_assets.json';
+import regimeFixture from './fixtures/scan/regime.json';
+import regimeZeroDteFixture from './fixtures/scan/regime_zero_dte.json';
 
 // T47 added 23 more `Underlying` members (sector/industry ETFs), none of which has a mock
 // fixture -- these handlers were built and are tested against exactly the original five, and
@@ -485,6 +488,21 @@ export const handlers = [
       return HttpResponse.json(rotationAssetsFixture as RotationResponse);
     }
     return HttpResponse.json(rotationSectorsFixture as RotationResponse);
+  }),
+
+  // T49: `/regime`. Two fixtures, both the live recorded response -- see
+  // `fixtures/scan/README.md`'s "Regime fixtures" section. `ALL` is the default and covers
+  // every verdict plus a stale row and a noise-dominated row (07-ui.md's acceptance line);
+  // `ZERO_DTE` is the live snapshot's honest post-close degenerate case, where every row's
+  // chain admits zero same-day contracts and `positioning.noise_dominated` is true across the
+  // board -- plan 03's "0/483" fact, not fabricated.
+  http.get('*/api/scan/regime', ({ request }) => {
+    const url = new URL(request.url);
+    const filter = url.searchParams.get('filter');
+    if (filter === 'ZERO_DTE') {
+      return HttpResponse.json(regimeZeroDteFixture as RegimeResponse);
+    }
+    return HttpResponse.json(regimeFixture as RegimeResponse);
   }),
 
   http.get('*/api/health/capture', () => HttpResponse.json(healthCaptureFixture as CaptureHealth)),

@@ -138,6 +138,7 @@ export const scanQueryKeys = {
   captureHealth: () => ['capture-health'] as const,
   rotation: (group: RotationGroup, benchmark: RotationBenchmark, weeks: number) =>
     ['scan-rotation', group, benchmark, weeks] as const,
+  regime: (filter: ExpiryFilter) => ['scan-regime', filter] as const,
 };
 
 export function useBreakouts(params: { n?: number; k?: number; lookback?: number } = {}) {
@@ -201,5 +202,14 @@ export function useRotation(group: RotationGroup, benchmark: RotationBenchmark, 
   return useQuery({
     queryKey: scanQueryKeys.rotation(group, benchmark, weeks),
     queryFn: () => apiClient.rotation({ group, benchmark, weeks }),
+  });
+}
+
+/** T49's `/regime` page. `filter` comes from `useDashboardParams` -- the plan's own
+ * instruction to reuse the dashboard's expiry-filter validator rather than a second one. */
+export function useRegime(filter: ExpiryFilter) {
+  return useQuery({
+    queryKey: scanQueryKeys.regime(filter),
+    queryFn: () => apiClient.regime(filter),
   });
 }

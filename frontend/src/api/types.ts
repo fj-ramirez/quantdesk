@@ -566,6 +566,111 @@ export interface CaptureHealth {
 }
 
 // ---------------------------------------------------------------------------------------
+// Regime board (T48 backend, T49 page) -- `GET /api/scan/regime?filter=`.
+//
+// Hand-written, mirrored from the live backend response verified against
+// `http://localhost:8001/api/scan/regime?filter=ALL` and `?filter=ZERO_DTE` on 2026-09-09 --
+// see `mocks/fixtures/scan/README.md`'s "Regime fixtures" section for the exact curls and
+// what each fixture demonstrates. Two things worth recording because a hand-written guess
+// would very likely have gotten them wrong:
+//
+//  - `room_beyond`/`room_beyond_strike` live *inside* `wall_below`/`wall_above`, not at the
+//    row's top level -- easy to mis-place given `07-ui.md`'s prose describes "Room beyond" as
+//    if it were its own field.
+//  - `zero_dte_share` is `null` on every one of the 28 live rows, and per
+//    `plans/continuation/03-regime-board.md`'s "The 0DTE share is not derivable from an EOD
+//    snapshot" this is permanent until intraday capture exists (Phase 4), not a transient gap.
+//    Never render it as `0%` -- a stored zero would be a false claim about today's market.
+// ---------------------------------------------------------------------------------------
+
+/** Mirrors `app.scan.regime`'s dealer-positioning read for one row. Reuses the same shape
+ * (and the same `noise_dominated` gate) as `Report.tsx`'s `DealerPositioning` in spirit, but
+ * is a separate type here because the regime board's backend module is its own, not the
+ * report's -- keeping them independently typed means a future divergence between the two
+ * shows up as a type error instead of a silent assumption. */
+export interface RegimePositioning {
+  net_gex: number | null;
+  abs_gex: number | null;
+  ratio: number | null;
+  ratio_floor: number | null;
+  noise_dominated: boolean;
+  direction: string | null;
+  label: string;
+  description: string;
+}
+
+/** One side's nearest gamma wall and what lies beyond it. `distance`/`distance_pct`/
+ * `distance_atr` are magnitudes (always >= 0) -- `wall_below` is by construction below spot
+ * and `wall_above` above it, so the side already carries the direction; do not re-sign these
+ * with a level/spot subtraction. `room_beyond_strike` is the next strike past this wall in
+ * the same direction, `room_beyond` the strike-count gap to it. */
+export interface RegimeWall {
+  strike: number;
+  net_gex: number;
+  abs_gex: number;
+  distance: number;
+  distance_pct: number;
+  distance_atr: number;
+  room_beyond: number;
+  room_beyond_strike: number;
+}
+
+/** `verdict` is the regime board's three-way call; `null` has two distinct, named causes
+ * (`plans/continuation/03-regime-board.md`'s "Verified facts"): `stale` (the chain predates
+ * its trading day's close by more than the 30-minute threshold, so the verdict is suppressed
+ * outright) or `positioning.noise_dominated` (a fresh chain, but net gamma too small relative
+ * to gross to trust a direction from). `reasons` always explains which -- render it verbatim,
+ * never reworded, re-cased or truncated. */
+export interface RegimeSymbolRow {
+  underlying: string;
+  filter: string;
+  spot: number;
+  atr14: number | null;
+  iv30: number | null;
+  rv20: number | null;
+  iv_rv_ratio: number | null;
+  return_5d: number | null;
+  /** ISO 8601 UTC -- the vendor payload instant, same caveat as `SnapshotInfo.captured_at`. */
+  as_of: string;
+  /** ISO 8601 UTC -- the honest "as of" instant, same convention as `SnapshotInfo.effective_at`. */
+  effective_at: string;
+  /** Minutes between `effective_at` and this row's trading day's close. The staleness signal
+   * itself -- `stale` is this value cleared against a 30-minute threshold server-side. */
+  chain_age_minutes: number;
+  /** True when `chain_age_minutes` exceeds the 30-minute threshold. When true, `verdict` is
+   * always `null` and `reasons` carries the suppression sentence -- a row this stale must
+   * never be presented as equivalent to a fresh one. */
+  stale: boolean;
+  positioning: RegimePositioning;
+  flip_point: number | null;
+  flip_distance: number | null;
+  /** Signed percent, already computed server-side as `(spot - flip_point) / spot * 100` --
+   * note this is the *opposite* sign convention from this file's own `formatDistancePct`
+   * helper (which is `(level - spot) / spot`). Render this field's sign as given; do not
+   * recompute it from `flip_point`/`spot` through that helper, which would flip it. */
+  flip_distance_pct: number | null;
+  flip_distance_atr: number | null;
+  /** `null` when no wall exists on that side in the current strike ladder (e.g. XLRE's
+   * `wall_below` on 2026-09-09) -- a real state, render a dash, not a synthesized zero. */
+  wall_below: RegimeWall | null;
+  wall_above: RegimeWall | null;
+  /** Always `null` today and for the foreseeable future -- see this section's header comment.
+   * Render a dash with a tooltip explaining why, never `0%` and never a bare, unexplained
+   * blank. */
+  zero_dte_share: number | null;
+  verdict: 'continuation' | 'mixed' | 'fade' | null;
+  reasons: string[];
+  /** T45's cross-sectional trend composite, already joined server-side by symbol -- do not
+   * issue a second `/api/scan/trend` request for this. */
+  trend_pct: number | null;
+}
+
+export interface RegimeResponse {
+  filter: string;
+  rows: RegimeSymbolRow[];
+}
+
+// ---------------------------------------------------------------------------------------
 // Report (T39/T40) -- `GET /api/report/{underlying}?filter=`
 //
 // GENERATED, not hand-written. Every interface below was emitted by a script from the live

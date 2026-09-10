@@ -131,11 +131,10 @@ describe('T55 scan-family nav and stub routes', () => {
     }
   });
 
-  // T44 replaced /scan and T51 replaced /rotation with real pages, so neither is in this
-  // list any more. The remaining two stay stubs until T49/T53 land ("last tab" T56/Overview
-  // remains a stub too, until T44/T49/T51/T54 all land).
+  // T44 replaced /scan, T49 replaced /regime and T51 replaced /rotation with real pages, so
+  // none of the three is in this list any more. The remaining two stay stubs until T53 lands
+  // ("last tab" T56/Overview remains a stub too, until T44/T49/T51/T53/T54 all land).
   it.each([
-    ['/regime', 'Regime'],
     ['/flows', 'Flows'],
     ['/overview', 'Overview'],
   ])('%s renders a one-line "not built yet" empty state, not a crash', async (path, label) => {
@@ -147,6 +146,12 @@ describe('T55 scan-family nav and stub routes', () => {
     renderApp('/scan');
     expect(await screen.findByRole('group', { name: 'View' })).toBeInTheDocument();
     expect(screen.queryByRole('region', { name: 'Scan is not built yet' })).not.toBeInTheDocument();
+  });
+
+  it('/regime renders the real regime page (T49), not a stub', async () => {
+    renderApp('/regime');
+    expect(await screen.findByRole('group', { name: 'Filter' })).toBeInTheDocument();
+    expect(screen.queryByRole('region', { name: 'Regime is not built yet' })).not.toBeInTheDocument();
   });
 
   it('/rotation renders the real rotation page (T51), not a stub', async () => {

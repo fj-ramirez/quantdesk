@@ -77,3 +77,33 @@ sector-level inputs do.
   rather than plotting them at `(0, 0)`.
 
 No other rotation fixture was edited.
+
+## Regime fixtures (T49)
+
+Recorded 2026-09-09 against the same live backend:
+
+```
+curl -s "http://localhost:8001/api/scan/regime?filter=ALL"       > regime.json
+curl -s "http://localhost:8001/api/scan/regime?filter=ZERO_DTE"  > regime_zero_dte.json
+```
+
+Both are the live response, byte-for-byte (only re-indented) — neither was hand-edited.
+`regime.json` is the page's default (`filter=ALL`) and, by itself, exercises every case the
+T49 acceptance line names: 28 rows, verdict distribution `continuation: 13, mixed: 6, fade: 2,
+null: 7`; of the seven nulls, five are stale (`GDX`, `KRE`, `XBI`, `XLC`, `XLRE`, each with
+`stale: true` and a `chain_age_minutes` past the 30-minute threshold — XLRE's is 159.6) and two
+are noise-dominated (`XLK`, `TLT`, `positioning.noise_dominated: true`, `stale: false`).
+`zero_dte_share` is `null` on all 28 rows. `wall_below` is `null` for XLRE (no wall on that side
+in the current strike ladder), which is the live case exercising that field's own nullability.
+
+`regime_zero_dte.json` is the honest degenerate case `plans/continuation/03-regime-board.md`'s
+"The 0DTE share is not derivable from an EOD snapshot" describes: every row's `positioning`
+comes back `net_gex: 0, abs_gex: 0, ratio: null, noise_dominated: true, label: "NO DATA"` and
+every wall/flip field is `null`, because the same-day expiry has already left the payload by
+capture time (Cboe's `0 by-strike rows` fact from that section, not fabricated for this
+fixture). Worth recording because it isn't obvious from the plan text alone: the same five
+symbols that are stale in `regime.json` are *also* `noise_dominated: true` here (all 28 rows
+are noise-dominated under `ZERO_DTE`) — this fixture is therefore the one live case that
+actually exercises `regimeRows.ts`'s "stale wins" precedence rule (a row can genuinely be both
+at once; the board must group it as `stale`, not `noise-dominated`, since the stale chain is
+the reason nothing about it, including the noise reading, can be trusted for today).

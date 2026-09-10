@@ -102,6 +102,15 @@ export function vizPaletteFor(theme: 'light' | 'dark'): VizPalette {
  * measured contrast numbers). `pending`/`mixed` (still resolving, not yet a verdict) use the
  * `seriesExZeroDte` orange. `noise-dominated`/`n/a` (nothing to say) fall through to
  * `textMuted`, a neutral, not a third hue.
+ *
+ * **T49 addition -- `stale`.** The regime board's `verdict: null` has two distinct causes
+ * (`plans/continuation/03-regime-board.md`'s "Verified facts") and they must not look the
+ * same: `noise-dominated` (a fresh chain with too little net gamma to trust a direction from)
+ * keeps the neutral `textMuted` above, while `stale` (the chain itself predates its trading
+ * day's close and the verdict is suppressed outright -- a data-quality fact, not a market
+ * reading) takes `seriesAll`, the chart's neutral primary blue. Neither red/green/orange
+ * verdict hue is reused for it, specifically so a reader never mistakes "this data is too old
+ * to trust" for a market judgment.
  */
 export function statusChipColor(status: string, palette: VizPalette): string {
   switch (status) {
@@ -122,6 +131,8 @@ export function statusChipColor(status: string, palette: VizPalette): string {
       return palette.seriesExZeroDte;
     case 'improving':
       return palette.divergingPositive;
+    case 'stale':
+      return palette.seriesAll;
     case 'noise-dominated':
     case 'n/a':
     default:
