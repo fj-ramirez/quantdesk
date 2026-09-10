@@ -23,9 +23,9 @@ function NavBar() {
       <NavLink to={{ pathname: '/history', search: location.search }} className={linkClassName}>
         History
       </NavLink>
-      {/* T55: the scan family (07-ui.md). Each of these lands on a one-line "not built yet"
-          EmptyState today (see App.tsx) and gets replaced by its real page in a later task
-          (T44/T49/T51/T53) -- the nav's shape doesn't change task by task. */}
+      {/* T55: the scan family (07-ui.md). T44/T49/T51/T53/T56 have since replaced every one of
+          these with a real page -- the nav's shape never changed task by task, per 07-ui.md's
+          own instruction. */}
       <NavLink to={{ pathname: '/scan', search: location.search }} className={linkClassName}>
         Scan
       </NavLink>

@@ -799,3 +799,55 @@ code {
   color: var(--text);
   opacity: 0.6;
 }
+
+/* ---------------------------------------------------------------------------
+   T56 -- /overview page. Tokens only, same discipline as every scan-family
+   page above: no literal colours, chart/chip colour comes from the components
+   it composes (RegimeStrip, ScanTable, StatusChip, PercentileBar), all
+   unmodified here.
+   --------------------------------------------------------------------------- */
+
+.overview-page { padding: 16px; display: flex; flex-direction: column; gap: 20px; }
+
+.overview-section { display: flex; flex-direction: column; gap: 12px; }
+
+.overview-section__title {
+  font-size: 13px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-h);
+  margin: 0;
+}
+
+.overview-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; align-items: start; }
+@media (max-width: 900px) { .overview-grid { grid-template-columns: 1fr; } }
+
+.overview-block { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+
+.overview-block__head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.overview-block__title {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-h);
+  margin: 0;
+}
+
+.overview-block__link {
+  font-size: 12px;
+  color: var(--accent);
+  white-space: nowrap;
+}
+
+.overview-note {
+  margin: 0;
+  font-size: 12px;
+  color: var(--text);
+  opacity: 0.75;
+  max-width: 80ch;
+}

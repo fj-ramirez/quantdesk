@@ -119,8 +119,10 @@ describe('App', () => {
   });
 });
 
-// T55: the nav gains five scan-family links, each landing on a one-line "not built yet"
-// EmptyState today (07-ui.md: "the nav does not change shape task by task").
+// T55: the nav gains five scan-family links (07-ui.md). T44/T49/T51/T53/T56 have since
+// replaced every one of the five stub routes with a real page, so the nav's shape is now
+// exactly what it will stay -- nothing under it renders `NotBuiltYetPage` (removed with T56)
+// any more.
 describe('T55 scan-family nav and stub routes', () => {
   it('the nav has one link for each scan-family route, alongside the existing four', async () => {
     renderApp('/');
@@ -131,16 +133,11 @@ describe('T55 scan-family nav and stub routes', () => {
     }
   });
 
-  // T44 replaced /scan, T49 replaced /regime, T51 replaced /rotation and T53 replaced /flows
-  // with real pages, so none of the four is in this list any more. Only the "last tab"
-  // (T56/Overview) remains a stub.
-  it.each([['/overview', 'Overview']])(
-    '%s renders a one-line "not built yet" empty state, not a crash',
-    async (path, label) => {
-      renderApp(path);
-      expect(await screen.findByRole('region', { name: `${label} is not built yet` })).toBeInTheDocument();
-    },
-  );
+  it('/overview renders the real overview page (T56), not a stub', async () => {
+    renderApp('/overview');
+    expect(await screen.findByRole('region', { name: 'Tape' })).toBeInTheDocument();
+    expect(screen.queryByRole('region', { name: 'Overview is not built yet' })).not.toBeInTheDocument();
+  });
 
   it('/scan renders the real scan page (T44), not a stub', async () => {
     renderApp('/scan');
