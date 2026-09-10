@@ -695,7 +695,10 @@ full specs for every page, a shared UI kit (T55) that all pages build on, and an
 | T55 | Sonnet | T43, T45, T47 | Scan UI kit: route-aware TopBar, `useScanParams`, ScanTable/Sparkline/StatusChip/EmptyState, recorded MSW fixtures, stub routes | [07-ui.md](plans/continuation/07-ui.md) |
 | T56 | Sonnet | T44, T49, T51, T54 | `/overview` page: tape strip, where continuation is, open now | [07-ui.md](plans/continuation/07-ui.md) |
 
-Dispatch order and the one open decision (universe width) are in
+**All of T42–T56 shipped, 2026-09-09/10.** Every task in the table above is merged, with both
+suites green (812 backend, 263 frontend). Follow-on work found while verifying it is filed as
+T57 (rotation in-progress week label) and T58 (daily flow series endpoint). The open decisions
+left for the user -- universe width among them -- are collected in
 `plans/continuation/README.md`.
 
 ---
