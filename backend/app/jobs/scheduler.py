@@ -23,17 +23,20 @@ from app.jobs.bars import update_bars_job
 from app.jobs.calendar import is_trading_day
 from app.jobs.capture import capture_all_symbols
 from app.jobs.catchup import catch_up_missed_eod
+from app.jobs.flows import update_flows_job
 
 __all__ = [
     "BARS_JOB_ID",
     "EOD_JOB_ID",
     "EXTENDED_JOB_ID",
+    "FLOWS_JOB_ID",
     "SAFETY_NET_JOB_ID",
     "bars_update_job",
     "build_scheduler",
     "capture_eod_job",
     "capture_eod_safety_net_job",
     "capture_extended_job",
+    "flows_update_job",
 ]
 
 logger = logging.getLogger("app.jobs.scheduler")
@@ -42,6 +45,7 @@ EOD_JOB_ID = "capture_eod"
 SAFETY_NET_JOB_ID = "capture_eod_safety_net"
 BARS_JOB_ID = "bars_update"
 EXTENDED_JOB_ID = "capture_extended"
+FLOWS_JOB_ID = "flows_update"
 
 # `settings.TZ` (default "America/New_York") drives both the trigger's wall-clock time and
 # the weekday/holiday check inside the job -- if this were ever pointed at another zone, both
@@ -156,6 +160,27 @@ async def capture_extended_job() -> None:
         logger.exception("capture_extended_job: unexpected top-level failure")
 
 
+async def flows_update_job() -> None:
+    """18:30 ET ETF shares-outstanding update (T52), scheduled after the 17:30 ET bars job so
+    the three evening data pipelines (option capture, bars, flows) never compete for a slow
+    evening connection at the same moment.
+
+    **P0 guardrail (T52 brief), same wording as `bars_update_job`'s own: a flows failure must
+    be structurally incapable of affecting the option capture.** `update_flows_job` already
+    turns every provider failure into a logged `FlowsFamilyResult` per family rather than
+    raising (see its own docstring), but this wrapper exists for the identical
+    belt-and-suspenders reason every other job in this module wraps its worker call: a future
+    bug here must not be able to crash the scheduler thread and silently deregister every job
+    on it, `capture_eod`/`capture_eod_safety_net` included. No trading-day guard, matching
+    `bars_update_job`'s own reasoning -- issuer files simply repeat Friday's value over a
+    weekend rather than erroring, so there is no "closed today" case worth special-casing.
+    """
+    try:
+        await update_flows_job()
+    except Exception:  # must never take the scheduler thread down with it
+        logger.exception("flows_update_job: unexpected top-level failure")
+
+
 def build_scheduler() -> AsyncIOScheduler:
     """Construct (but do not start) the scheduler with `capture_eod` registered.
 
@@ -228,6 +253,21 @@ def build_scheduler() -> AsyncIOScheduler:
         trigger=CronTrigger(day_of_week="mon-fri", hour=16, minute=45, timezone=_TZ),
         id=EXTENDED_JOB_ID,
         name="Extended (sector/industry ETF) option chain capture",
+        coalesce=True,
+        misfire_grace_time=None,
+        max_instances=1,
+        replace_existing=True,
+    )
+    # T52: ETF shares-outstanding flows, additive and separate from every job above -- see
+    # `flows_update_job`'s own docstring for why 18:30 (an hour after the 17:30 bars job) and
+    # why it is its own job id. Same misfire/coalesce policy as every other job here, for the
+    # identical reason: a run hours late still beats one that never happens, and this table
+    # has no backfill path at all (issuer pages serve only "the latest published value").
+    scheduler.add_job(
+        flows_update_job,
+        trigger=CronTrigger(day_of_week="mon-fri", hour=18, minute=30, timezone=_TZ),
+        id=FLOWS_JOB_ID,
+        name="ETF shares-outstanding flows update",
         coalesce=True,
         misfire_grace_time=None,
         max_instances=1,

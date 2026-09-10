@@ -888,3 +888,171 @@ def get_rotation(
         breadth=SectorBreadthOut.from_breadth(breadth),
         note=_RRG_APPROXIMATION_NOTE,
     )
+
+
+# --------------------------------------------------------------------------------------------
+# T52: ETF shares-outstanding flows route (plans/continuation/05-etf-flows.md;
+# docs/etf-flows-sources.md). Kept as one self-contained, additive block -- including its own
+# local imports below, rather than editing this file's shared import list at the top -- so a
+# concurrent edit to this same module (another agent's task, landing in the same window) has
+# nothing here to conflict with beyond this block's own boundaries.
+# --------------------------------------------------------------------------------------------
+
+_VALID_FLOW_WINDOWS = (5, 20, 60)
+
+#: Calendar days of shares-outstanding history to read before computing flows. This table
+#: accumulates one row per symbol per issuer-publishing-day starting from whenever T52's job
+#: first ran (no backfill exists, per the survey) -- 400 days comfortably covers the largest
+#: supported window (60 trading days) many times over while staying cheap to query long after
+#: the table has years of history.
+_FLOWS_LOOKBACK_DAYS = 400
+
+
+def _validate_flow_window(window: int) -> int:
+    if window not in _VALID_FLOW_WINDOWS:
+        raise HTTPException(
+            status_code=422,
+            detail=f"window must be one of {_VALID_FLOW_WINDOWS}, got {window}",
+        )
+    return window
+
+
+class FlowSymbolOut(BaseModel):
+    """One row of the flows bar chart: a fund's net flow (dollars and percent of AUM) over
+    the requested window. `flow`/`flow_pct` are `None` -- with `message` explaining why --
+    whenever fewer than `window + 1` days of paired shares-outstanding/NAV history exist yet
+    (see `app.scan.flows.compute_flows`'s own docstring); the plan's "never draw a symbol with
+    no usable source at zero" rule for *unsupported* symbols is enforced separately by
+    `no_flow_data` below, not by this model.
+    """
+
+    symbol: str
+    flow: float | None
+    flow_pct: float | None
+    history_since: dt.date | None
+    message: str | None
+
+
+class NoFlowDataOut(BaseModel):
+    """A symbol with no supported shares-outstanding source at all -- the plan's "no flow
+    data" list, never drawn as a zero bar."""
+
+    symbol: str
+    reason: str
+
+
+class FlowsFamilySourceOut(BaseModel):
+    """One supported family's data-source banner: which family, and the as-of date of its
+    newest stored row -- mirrors `app.api.health.FlowsFamilyHealth` exactly (same field
+    meaning, same "stored row date, not last fetch time" freshness rule) so the flows page's
+    own source banner and `/api/health/capture`'s `flows` block can never disagree.
+    """
+
+    family: str
+    last_as_of_date: dt.date | None
+
+
+class FlowsResponse(BaseModel):
+    window: int
+    symbols: list[FlowSymbolOut]
+    no_flow_data: list[NoFlowDataOut]
+    sources: list[FlowsFamilySourceOut]
+
+
+def _clean_float_or_none(value: float | None) -> float | None:
+    """Same `NaN`/`inf` -> `None` cleaning as `_clean_float` above, but tolerating a `None`
+    input too -- `app.scan.flows.compute_flows` already returns plain `None` for an
+    insufficient-history window (never a fabricated `NaN`), so this is a defensive pass
+    guarding only against pandas up-casting a mixed `None`/`float` column, exactly the
+    rationale `get_rotation`'s own `return_5`/etc. cleaning gives for the identical re-clean.
+    """
+    return None if value is None else _clean_float(value)
+
+
+@router.get("/flows", response_model=FlowsResponse)
+def get_flows(
+    window: Annotated[
+        int, Query(description=f"Flow window in trading days, one of {_VALID_FLOW_WINDOWS}.")
+    ] = 20,
+) -> FlowsResponse:
+    """Net ETF creation/redemption flow over `window` trading days, in dollars and as a
+    percent of AUM, for every symbol with a working shares-outstanding source (T52).
+
+    This is the "honest version of a money-flow indicator" the plan requires: every number
+    here comes from `app.scan.flows.compute_flows`'s `flow_t = (SO_t - SO_{t-1}) * NAV_t`
+    definition over real issuer-published shares outstanding, never a volume/price proxy.
+    `no_flow_data` names the four symbols (`app.providers.etf_flows.UNSUPPORTED_SYMBOLS`) this
+    task's survey found no working source for at all -- they are never drawn as a zero bar,
+    per the plan's explicit requirement.
+    """
+    from app.providers.etf_flows import ALL_SUPPORTED_SYMBOLS, FAMILY_SYMBOLS, UNSUPPORTED_SYMBOLS
+    from app.scan.flows import compute_flows
+    from app.storage.flows_repository import (
+        get_session_factory as get_flows_session_factory,
+    )
+    from app.storage.flows_repository import (
+        last_as_of_date,
+        read_universe_nav,
+        read_universe_shares_outstanding,
+    )
+
+    _validate_flow_window(window)
+
+    session_factory = get_flows_session_factory()
+    end = _today()
+    start = end - dt.timedelta(days=_FLOWS_LOOKBACK_DAYS)
+
+    supported = list(ALL_SUPPORTED_SYMBOLS)
+    so_frame = read_universe_shares_outstanding(supported, start, end, session_factory=session_factory)
+    nav_frame = read_universe_nav(supported, start, end, session_factory=session_factory)
+
+    flows = compute_flows(so_frame, nav_frame, windows=[window])
+
+    symbols_out: list[FlowSymbolOut] = []
+    for row in flows.itertuples(index=False):
+        flow_value = getattr(row, f"flow_{window}")
+        flow_pct = getattr(row, f"flow_pct_{window}")
+        message = None
+        if flow_value is None:
+            message = (
+                f"history since {row.history_since.isoformat()}"
+                if row.history_since is not None
+                else "no data yet"
+            )
+        symbols_out.append(
+            FlowSymbolOut(
+                symbol=row.symbol,
+                flow=_clean_float_or_none(flow_value),
+                flow_pct=_clean_float_or_none(flow_pct),
+                history_since=row.history_since,
+                message=message,
+            )
+        )
+
+    # Worst-to-best is not this route's contract (unlike /breakouts' rate sort) -- the plan
+    # asks for a sorted bar chart without naming a direction, so this sorts largest-outflow
+    # first (most negative flow_pct first), symbols with no computable flow last, ties broken
+    # by symbol for determinism.
+    symbols_out.sort(
+        key=lambda s: (s.flow_pct is None, s.flow_pct if s.flow_pct is not None else 0.0, s.symbol)
+    )
+
+    no_flow_data = [
+        NoFlowDataOut(symbol=symbol, reason="no supported shares-outstanding source (see docs/etf-flows-sources.md)")
+        for symbol in UNSUPPORTED_SYMBOLS
+    ]
+
+    sources = [
+        FlowsFamilySourceOut(
+            family=family,
+            last_as_of_date=max(
+                (d for d in (last_as_of_date(s, session_factory=session_factory) for s in symbols) if d is not None),
+                default=None,
+            ),
+        )
+        for family, symbols in FAMILY_SYMBOLS.items()
+    ]
+
+    return FlowsResponse(
+        window=window, symbols=symbols_out, no_flow_data=no_flow_data, sources=sources
+    )

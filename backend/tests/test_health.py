@@ -34,6 +34,10 @@ def session_factory(tmp_path, monkeypatch):
     # through the identical temp-SQLite factory rather than the real Postgres default.
     monkeypatch.setattr("app.api.health.get_bars_session_factory", lambda: factory)
     monkeypatch.setattr("app.storage.bars_repository.get_session_factory", lambda: factory)
+    # T52: same reasoning, for etf_shares_outstanding -- the flows health block below must
+    # never touch the real Postgres default either.
+    monkeypatch.setattr("app.api.health.get_flows_session_factory", lambda: factory)
+    monkeypatch.setattr("app.storage.flows_repository.get_session_factory", lambda: factory)
     yield factory
     engine.dispose()
 
@@ -230,3 +234,62 @@ def test_capture_health_extended_symbol_reports_healthy_when_todays_eod_row_exis
     # (etc.) never got a snapshot in this test, so it stays stale.
     spx = next(s for s in body["symbols"] if s["underlying"] == "SPX")
     assert spx["stale"] is True
+
+
+# --- T52: additive `flows` block -----------------------------------------------------------
+
+
+def test_capture_health_response_carries_a_flows_block(client, session_factory):
+    """Additive per the T52 brief: existing blocks are untouched (covered by every test
+    above), and a new `flows` key appears alongside them."""
+    response = client.get("/api/health/capture")
+    assert response.status_code == 200
+    body = response.json()
+    assert "flows" in body
+    assert "families" in body["flows"]
+    assert "unsupported_symbols" in body["flows"]
+    families = {f["family"] for f in body["flows"]["families"]}
+    assert families == {"spdr", "ishares"}
+    assert set(body["flows"]["unsupported_symbols"]) == {"SMH", "GDX", "QQQ", "USO"}
+
+
+def test_flows_health_reports_every_family_null_as_of_date_on_an_empty_db(client, session_factory):
+    response = client.get("/api/health/capture")
+    body = response.json()
+    for family in body["flows"]["families"]:
+        assert family["last_as_of_date"] is None
+        for symbol in family["symbols"]:
+            assert symbol["last_as_of_date"] is None
+
+
+def test_flows_health_reports_the_newest_stored_as_of_date_per_family(client, session_factory):
+    from app.providers.etf_flows import SharesOutstandingRow
+    from app.storage.flows_repository import insert_new_rows
+
+    insert_new_rows(
+        [
+            SharesOutstandingRow(
+                symbol="XLK",
+                as_of_date=dt.date(2026, 9, 8),
+                shares_outstanding=651_805_940,
+                nav=187.88,
+                source="spdr-xlsx",
+            ),
+            SharesOutstandingRow(
+                symbol="IWM",
+                as_of_date=dt.date(2026, 9, 9),
+                shares_outstanding=269_850_000,
+                nav=None,
+                source="ishares-productpage",
+            ),
+        ],
+        session_factory=session_factory,
+    )
+
+    response = client.get("/api/health/capture")
+    body = response.json()
+    families = {f["family"]: f for f in body["flows"]["families"]}
+    assert families["spdr"]["last_as_of_date"] == "2026-09-08"
+    assert families["ishares"]["last_as_of_date"] == "2026-09-09"
+    xlk = next(s for s in families["spdr"]["symbols"] if s["symbol"] == "XLK")
+    assert xlk["last_as_of_date"] == "2026-09-08"

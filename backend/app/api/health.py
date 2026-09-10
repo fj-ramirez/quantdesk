@@ -25,8 +25,11 @@ from app.jobs.catchup import (
     last_completed_trading_day,
     previous_trading_day,
 )
+from app.providers.etf_flows import FAMILY_SYMBOLS, UNSUPPORTED_SYMBOLS
 from app.storage.bars_repository import get_session_factory as get_bars_session_factory
 from app.storage.bars_repository import last_bar_date
+from app.storage.flows_repository import get_session_factory as get_flows_session_factory
+from app.storage.flows_repository import last_as_of_date
 from app.storage.repository import SnapshotRepository
 
 __all__ = ["router"]
@@ -69,6 +72,68 @@ class BarsHealthBlock(BaseModel):
     stale_count: int
 
 
+class SymbolFlowsHealth(BaseModel):
+    """T52: per-symbol freshness for `etf_shares_outstanding`, keyed on `symbol` (same
+    universe as `SymbolBarsHealth`'s convention) rather than `underlying`."""
+
+    symbol: str
+    last_as_of_date: dt.date | None
+
+
+class FlowsFamilyHealth(BaseModel):
+    """One supported fund family's freshness: every symbol it covers plus the newest as-of
+    date across all of them. `last_as_of_date` is deliberately the max of the *stored rows'*
+    own as-of dates, not the last time the 18:30 job ran or last returned 200 -- per
+    `docs/etf-flows-sources.md`'s corrected freshness rule, a fetch that succeeds and returns a
+    week-old file (an issuer's URL silently changed shape, say) is not freshness, and reporting
+    "last successful fetch" would hide exactly that failure mode.
+    """
+
+    family: str
+    last_as_of_date: dt.date | None
+    symbols: list[SymbolFlowsHealth]
+
+
+class FlowsHealthBlock(BaseModel):
+    """T52 addition to `CaptureHealthResponse`. `unsupported_symbols` names the four symbols
+    (`app.providers.etf_flows.UNSUPPORTED_SYMBOLS`) with no working source at all, per the
+    survey -- listed here so a reader of this endpoint sees the honest "no flow data" set
+    rather than having to cross-reference the provider module to know it exists.
+    """
+
+    families: list[FlowsFamilyHealth]
+    unsupported_symbols: list[str]
+
+
+def _flows_health() -> FlowsHealthBlock:
+    """T52: per-family `etf_shares_outstanding` freshness, one row per `FAMILY_SYMBOLS` entry.
+
+    No staleness threshold is applied here, unlike `_bars_health`/`_is_stale` -- issuer files
+    already lag a full trading day by design (the survey's central finding), so "one trading
+    day behind" is this data's *normal* state, not a threshold worth alerting on the same way
+    a broken option capture is. The as-of date is reported plainly; a human (or a future task)
+    decides what counts as stale for this specific lag.
+    """
+    session_factory = get_flows_session_factory()
+    families_out: list[FlowsFamilyHealth] = []
+    for family, symbols in FAMILY_SYMBOLS.items():
+        symbol_rows: list[SymbolFlowsHealth] = []
+        dates: list[dt.date] = []
+        for symbol in symbols:
+            last = last_as_of_date(symbol, session_factory=session_factory)
+            symbol_rows.append(SymbolFlowsHealth(symbol=symbol, last_as_of_date=last))
+            if last is not None:
+                dates.append(last)
+        families_out.append(
+            FlowsFamilyHealth(
+                family=family,
+                last_as_of_date=max(dates) if dates else None,
+                symbols=symbol_rows,
+            )
+        )
+    return FlowsHealthBlock(families=families_out, unsupported_symbols=list(UNSUPPORTED_SYMBOLS))
+
+
 class CaptureHealthResponse(BaseModel):
     generated_at: dt.datetime
     symbols: list[SymbolCaptureHealth]
@@ -81,6 +146,10 @@ class CaptureHealthResponse(BaseModel):
     #: cannot distinguish "the P0 16:20 job is broken" from "one sector ETF's 16:45 job had a
     #: thin day", which is exactly the ambiguity this split exists to avoid.
     extended: list[SymbolCaptureHealth]
+    #: T52, additive: ETF shares-outstanding flows freshness, one entry per supported fund
+    #: family. See `FlowsHealthBlock`'s own docstring for why this reports the as-of date of
+    #: the newest *stored row*, not the last time the job merely ran.
+    flows: FlowsHealthBlock
 
 
 def _is_stale(last_eod_date: dt.date | None, completed: dt.date) -> bool:
@@ -181,4 +250,5 @@ def capture_health() -> CaptureHealthResponse:
         symbols=symbols_out,
         bars=_bars_health(completed),
         extended=extended_out,
+        flows=_flows_health(),
     )
