@@ -5,8 +5,12 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 #: SPX itself is fetched too, as ^GSPC inside the Yahoo provider, so the regime board can use
 #: index bars directly); SPX and ^VIX are appended per the plan's explicit instruction ("Add
 #: SPX and ^VIX to the default SCAN_UNIVERSE string above -- T54 needs the latter and the Yahoo
-#: provider already serves it"). Kept as one literal string, not a list, so it round-trips
-#: through `.env` the same way `SYMBOLS` already does.
+#: provider already serves it"). T54 adds the other five Cboe index symbols the cross-asset
+#: regime strip needs (^VIX9D/^VIX3M/^VIX6M term structure, ^VVIX, ^SKEW) so the daily bars job
+#: and `bars_backfill` fetch them the same way as every other symbol -- see
+#: `BAR_PROVIDER_GROUPS` below for what routes them to `app.providers.cboe_index` instead of
+#: the `^VIX`-shaped default provider. Kept as one literal string, not a list, so it
+#: round-trips through `.env` the same way `SYMBOLS` already does.
 _DEFAULT_SCAN_UNIVERSE = (
     "SPY,QQQ,DIA,IWM,RSP,"
     "XLK,XLF,XLE,XLV,XLI,XLY,XLP,XLU,XLB,XLRE,XLC,"
@@ -14,7 +18,7 @@ _DEFAULT_SCAN_UNIVERSE = (
     "GLD,SLV,USO,UNG,DBA,GDX,COPX,"
     "TLT,IEF,HYG,UUP,FXE,FXY,"
     "EEM,EFA,FXI,EWJ,EWZ,EWG,"
-    "SPX,^VIX"
+    "SPX,^VIX,^VIX9D,^VIX3M,^VIX6M,^VVIX,^SKEW"
 )
 
 
@@ -65,10 +69,12 @@ class Settings(BaseSettings):
     # silently widen the other.
     SCAN_UNIVERSE: str = _DEFAULT_SCAN_UNIVERSE
     # Symbol -> provider routing overrides, parsed by app.providers.bars.BarProviderRegistry.
-    # Empty by default (every symbol uses BARS_PROVIDER); format is
-    # "provider1:SYM1,SYM2;provider2:SYM3" -- see that module's docstring. T54 is expected to
-    # set this to route ^VIX to a Cboe index-history provider.
-    BAR_PROVIDER_GROUPS: str = ""
+    # Format is "provider1:SYM1,SYM2;provider2:SYM3" -- see that module's docstring. T54's
+    # default routes the six Cboe volatility/skew indices to app.providers.cboe_index instead
+    # of BARS_PROVIDER's default (yahoo) -- see that provider's module docstring for why ^VIX
+    # in particular is deliberately moved off Yahoo, and app.providers.bars's own docstring for
+    # why a group entry always wins over the default.
+    BAR_PROVIDER_GROUPS: str = "cboe_index:^VIX,^VIX9D,^VIX3M,^VIX6M,^VVIX,^SKEW"
 
     @property
     def symbols(self) -> list[str]:

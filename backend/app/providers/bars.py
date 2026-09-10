@@ -27,7 +27,8 @@ discovery, no per-symbol wildcards, one flat dict built once per registry.
 
 `BAR_PROVIDER_GROUPS` format: ``"provider1:SYM1,SYM2;provider2:SYM3"`` -- semicolon-separated
 groups, each a provider name, a colon, then a comma-separated symbol list. Empty (the default)
-means every symbol uses `BARS_PROVIDER`. Example for T54: ``"cboe-index:^VIX"``.
+means every symbol uses `BARS_PROVIDER`. T54's default:
+``"cboe_index:^VIX,^VIX9D,^VIX3M,^VIX6M,^VVIX,^SKEW"`` (`app.providers.cboe_index`).
 
 Concrete provider modules (`app.providers.yahoo`, `app.providers.tiingo`) are imported lazily,
 inside `_construct`, rather than at module level -- importing them eagerly here would create a
@@ -54,7 +55,7 @@ __all__ = [
 
 #: Registered bar provider names -> lazy constructor. Adding a provider is a one-line change to
 #: `_construct` below plus this tuple (kept only for the error message's "here is what exists").
-_REGISTERED_PROVIDERS = ("yahoo", "tiingo")
+_REGISTERED_PROVIDERS = ("yahoo", "tiingo", "cboe_index")
 
 
 class BarProvider(ABC):
@@ -113,6 +114,10 @@ def _construct(provider_name: str) -> BarProvider:
         from app.providers.tiingo import TiingoBarProvider
 
         return TiingoBarProvider()
+    if key == "cboe_index":
+        from app.providers.cboe_index import CboeIndexHistoryProvider
+
+        return CboeIndexHistoryProvider()
     raise ValueError(
         f"unknown bars provider {key!r}; registered providers are {_REGISTERED_PROVIDERS}"
     )

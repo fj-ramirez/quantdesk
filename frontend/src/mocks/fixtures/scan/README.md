@@ -107,3 +107,29 @@ are noise-dominated under `ZERO_DTE`) — this fixture is therefore the one live
 actually exercises `regimeRows.ts`'s "stale wins" precedence rule (a row can genuinely be both
 at once; the board must group it as `stale`, not `noise-dominated`, since the stale chain is
 the reason nothing about it, including the noise reading, can be trusted for today).
+
+## Cross-asset regime strip fixtures (T54)
+
+`cross_asset.json` was **not** curled against a running dev server (this task built the route
+inside an isolated git worktree, and the guardrail against restarting the shared dev
+server/Docker stack means there was no running server with this task's code to curl). Instead
+it was captured by invoking the real FastAPI router in-process
+(`TestClient(app).get('/api/scan/cross-asset')`, `app` built from `app.api.scan.router` with no
+session-factory override) against the **real dev Postgres**, immediately after backfilling all
+six Cboe index symbols into it (`uv run python -m app.bars_backfill --years 3/5 --symbols
+^VIX,^VIX3M,...`, see the T54 report for the exact commands and their output). This is the live
+computed response, byte-for-byte (only re-indented) — not fabricated, not hand-typed. Recorded
+2026-09-10: `term_structure: "contango"` (VIX 16.46 < VIX3M 18.87 and VIX9D 15.59 < VIX 16.46),
+`vrp: 8.36` (VIX 16.46 minus SPY RV20 8.10 vol points), and — worth calling out specifically,
+since it is exactly the hazard `plans/continuation/06-cross-asset-regime.md` names by name —
+`sector_correlation_n: 18`, not `20`: two of the trailing 20 daily bars were dropped from the
+aligned sample because at least one of the 11 sector ETFs was missing a bar on those dates,
+live evidence the alignment/effective-sample-size logic is doing real work, not merely passing
+its own hand-built unit tests.
+
+- **`cross_asset_empty.json`** — hand-built (not curled): every field `null`/`0`/its own
+  `*_reason`, the state before any of the six Cboe index symbols has ever been backfilled (or,
+  for a fresh deployment, before the 17:30 ET bars job has run once). Confirmed to match the
+  real route's own behavior in this state by `backend/tests/test_scan_cross_asset_api.py
+  ::test_get_cross_asset_empty_when_nothing_seeded`, not merely assumed. Exercises
+  `RegimeStrip`'s "n/a tiles with the reason, never a fabricated number" contract.
