@@ -23,6 +23,7 @@ import type {
   ChainResponse,
   CrossAssetResponse,
   ExpiryFilter,
+  FlowsResponse,
   GexResult,
   LevelHistoryRow,
   RegimeResponse,
@@ -70,6 +71,9 @@ import rotationIndustriesRspFixture from './fixtures/scan/rotation_industries_rs
 import rotationAssetsFixture from './fixtures/scan/rotation_assets.json';
 import regimeFixture from './fixtures/scan/regime.json';
 import regimeZeroDteFixture from './fixtures/scan/regime_zero_dte.json';
+import flows5Fixture from './fixtures/scan/flows_5.json';
+import flows20Fixture from './fixtures/scan/flows_20.json';
+import flows60Fixture from './fixtures/scan/flows_60.json';
 import crossAssetFixture from './fixtures/scan/cross_asset.json';
 
 // T47 added 23 more `Underlying` members (sector/industry ETFs), none of which has a mock
@@ -508,6 +512,18 @@ export const handlers = [
   }),
 
   http.get('*/api/health/capture', () => HttpResponse.json(healthCaptureFixture as CaptureHealth)),
+
+  // T53: `/flows`. Three fixtures, one per supported window -- see `fixtures/scan/README.md`'s
+  // "Flows fixtures" section. All three carry the same live-recorded content today (the
+  // window doesn't change which stored rows exist, only how many are required to compute a
+  // number), which is itself the honest current state, not a handler bug.
+  http.get('*/api/scan/flows', ({ request }) => {
+    const url = new URL(request.url);
+    const window = url.searchParams.get('window');
+    if (window === '5') return HttpResponse.json(flows5Fixture as FlowsResponse);
+    if (window === '60') return HttpResponse.json(flows60Fixture as FlowsResponse);
+    return HttpResponse.json(flows20Fixture as FlowsResponse);
+  }),
 
   // T54: `RegimeStrip`. One snapshot, no query params -- see `fixtures/scan/README.md`'s
   // "Cross-asset regime strip fixtures" section for how this was recorded (in-process against

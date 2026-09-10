@@ -10,6 +10,7 @@ import type {
   ChainResponse,
   CrossAssetResponse,
   ExpiryFilter,
+  FlowsResponse,
   GexResult,
   LevelHistoryRow,
   RegimeResponse,
@@ -243,5 +244,11 @@ export const apiClient = {
 
   crossAsset(): Promise<CrossAssetResponse> {
     return apiFetch<CrossAssetResponse>('/api/scan/cross-asset');
+  },
+
+  /** T53's `/flows` page. `window` must be one of `5 | 20 | 60` -- `useScanParams`'s own
+   * validator already enforces that before this is ever called. */
+  flows(window: number): Promise<FlowsResponse> {
+    return apiFetch<FlowsResponse>('/api/scan/flows', { window });
   },
 };

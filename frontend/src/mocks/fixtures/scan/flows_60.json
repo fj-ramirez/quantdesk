@@ -1,0 +1,194 @@
+{
+  "window": 60,
+  "symbols": [
+    {
+      "symbol": "DIA",
+      "flow": null,
+      "flow_pct": null,
+      "history_since": null,
+      "message": "no data yet"
+    },
+    {
+      "symbol": "EEM",
+      "flow": null,
+      "flow_pct": null,
+      "history_since": null,
+      "message": "no data yet"
+    },
+    {
+      "symbol": "FXI",
+      "flow": null,
+      "flow_pct": null,
+      "history_since": null,
+      "message": "no data yet"
+    },
+    {
+      "symbol": "GLD",
+      "flow": null,
+      "flow_pct": null,
+      "history_since": null,
+      "message": "no data yet"
+    },
+    {
+      "symbol": "HYG",
+      "flow": null,
+      "flow_pct": null,
+      "history_since": null,
+      "message": "no data yet"
+    },
+    {
+      "symbol": "IWM",
+      "flow": null,
+      "flow_pct": null,
+      "history_since": null,
+      "message": "no data yet"
+    },
+    {
+      "symbol": "KRE",
+      "flow": null,
+      "flow_pct": null,
+      "history_since": null,
+      "message": "no data yet"
+    },
+    {
+      "symbol": "SLV",
+      "flow": null,
+      "flow_pct": null,
+      "history_since": null,
+      "message": "no data yet"
+    },
+    {
+      "symbol": "SPY",
+      "flow": null,
+      "flow_pct": null,
+      "history_since": null,
+      "message": "no data yet"
+    },
+    {
+      "symbol": "TLT",
+      "flow": null,
+      "flow_pct": null,
+      "history_since": null,
+      "message": "no data yet"
+    },
+    {
+      "symbol": "XBI",
+      "flow": null,
+      "flow_pct": null,
+      "history_since": null,
+      "message": "no data yet"
+    },
+    {
+      "symbol": "XLB",
+      "flow": null,
+      "flow_pct": null,
+      "history_since": null,
+      "message": "no data yet"
+    },
+    {
+      "symbol": "XLC",
+      "flow": null,
+      "flow_pct": null,
+      "history_since": null,
+      "message": "no data yet"
+    },
+    {
+      "symbol": "XLE",
+      "flow": null,
+      "flow_pct": null,
+      "history_since": null,
+      "message": "no data yet"
+    },
+    {
+      "symbol": "XLF",
+      "flow": null,
+      "flow_pct": null,
+      "history_since": null,
+      "message": "no data yet"
+    },
+    {
+      "symbol": "XLI",
+      "flow": null,
+      "flow_pct": null,
+      "history_since": null,
+      "message": "no data yet"
+    },
+    {
+      "symbol": "XLK",
+      "flow": null,
+      "flow_pct": null,
+      "history_since": "2026-09-08",
+      "message": "history since 2026-09-08"
+    },
+    {
+      "symbol": "XLP",
+      "flow": null,
+      "flow_pct": null,
+      "history_since": null,
+      "message": "no data yet"
+    },
+    {
+      "symbol": "XLRE",
+      "flow": null,
+      "flow_pct": null,
+      "history_since": null,
+      "message": "no data yet"
+    },
+    {
+      "symbol": "XLU",
+      "flow": null,
+      "flow_pct": null,
+      "history_since": null,
+      "message": "no data yet"
+    },
+    {
+      "symbol": "XLV",
+      "flow": null,
+      "flow_pct": null,
+      "history_since": null,
+      "message": "no data yet"
+    },
+    {
+      "symbol": "XLY",
+      "flow": null,
+      "flow_pct": null,
+      "history_since": null,
+      "message": "no data yet"
+    },
+    {
+      "symbol": "XOP",
+      "flow": null,
+      "flow_pct": null,
+      "history_since": null,
+      "message": "no data yet"
+    }
+  ],
+  "no_flow_data": [
+    {
+      "symbol": "SMH",
+      "reason": "no supported shares-outstanding source (see docs/etf-flows-sources.md)"
+    },
+    {
+      "symbol": "GDX",
+      "reason": "no supported shares-outstanding source (see docs/etf-flows-sources.md)"
+    },
+    {
+      "symbol": "QQQ",
+      "reason": "no supported shares-outstanding source (see docs/etf-flows-sources.md)"
+    },
+    {
+      "symbol": "USO",
+      "reason": "no supported shares-outstanding source (see docs/etf-flows-sources.md)"
+    }
+  ],
+  "sources": [
+    {
+      "family": "spdr",
+      "last_as_of_date": "2026-09-08"
+    },
+    {
+      "family": "ishares",
+      "last_as_of_date": "2026-09-09"
+    }
+  ]
+}

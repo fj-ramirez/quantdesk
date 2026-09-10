@@ -671,7 +671,7 @@ all pass.
 
 The user's assets are fading breakouts; they want to see which markets have continuation and
 where money rotates between sectors. Full specs live in `plans/continuation/` (one file per
-tool, same block shape as here). IDs T42–T56 are reserved. T57 (rotation in-progress week label) was filed on 2026-09-09; next free ID is **T58**.
+tool, same block shape as here). IDs T42–T56 are reserved. T57 (rotation in-progress week label) and T58 (daily flow series endpoint) were filed on 2026-09-09/10; next free ID is **T59**.
 
 UI added 2026-09-09: the page tasks were too thin to dispatch, so `07-ui.md` now carries the
 full specs for every page, a shared UI kit (T55) that all pages build on, and an overview page
@@ -764,3 +764,42 @@ are unchanged from today's (assert against the existing fixtures); `uv run pytes
 `rs_momentum_approx` were recomputed by hand from `/api/bars` for XLK, XLE, XLU and XLRE over
 the last three weeks and matched the API to **1.3e-13** on both coordinates, including the
 `ddof=0` convention `_rolling_zscore` documents. This task is about the label, not the number.
+
+---
+
+## T58 · Sonnet · T52, T53
+**Daily flow series endpoint, so the flows sparkline is the one 07-ui.md specifies**
+
+Found while reviewing T53 (2026-09-10). `07-ui.md`'s `/flows` spec asks for "a sparkline of
+**cumulative flow over 60 days** per fund". The only endpoint that exists,
+`GET /api/scan/flows?window=`, returns **one aggregate per window** — there is no daily series
+behind it, and building one is backend work, which T53 was scoped out of.
+
+T53 shipped `FlowSparkline` plotting the three real window aggregates (5d/20d/60d) instead,
+documented in its own docstring and flagged in its report rather than passed off as the
+specified widget. That is the right call for a frontend-only task and the wrong end state: three
+points spaced by window length is a different object from a 60-point cumulative series, and it
+cannot show *when* money arrived, which is the whole point of the sparkline.
+
+**Do:** add a daily series to the flows API — `GET /api/scan/flows/{symbol}/series?days=60`, or a
+`series` field on the existing response, whichever fits `app/api/scan.py`'s existing shape better
+— returning per-day `flow` and cumulative flow from `etf_shares_outstanding`. `app/scan/flows.py`
+already computes per-day flows internally on the way to its aggregates (`flow_t = (SO_t −
+SO_{t−1}) × NAV_t`); this is largely exposing what it already derives, not new math. Then point
+`FlowSparkline` at it.
+
+**The honest constraint that shapes this:** there is no backfill. The table accumulates from the
+day T52's job first ran (2026-09-09), so a 60-day series will not exist until roughly December
+2026, and until then the endpoint must return what it has with `history_since` rather than
+padding. Do not build this expecting full sparklines on day one — build it so the sparkline fills
+in correctly as history accrues, and so the short-history case is what it renders today.
+
+Paths: `backend/app/scan/flows.py`, `backend/app/api/scan.py`, `frontend/src/components/flows/
+FlowSparkline.tsx`, `frontend/src/api/types.ts`/`queries.ts`/`client.ts`, MSW fixtures, tests both
+sides, `docs/validation-scan.md`.
+
+Acceptance: the series endpoint returns per-day and cumulative flow for a symbol with history and
+an honest short-history response for one without; `FlowSparkline` renders a real cumulative series
+where one exists and the short-history state otherwise, never a padded or interpolated line; a
+hand-built fixture's cumulative values match a hand computation; `uv run pytest`, `ruff check .`,
+`npm test`, `npm run lint` and `tsc -b` all pass.

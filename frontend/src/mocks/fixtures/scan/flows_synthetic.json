@@ -1,0 +1,195 @@
+{
+  "_provenance": "SYNTHESIZED BY HAND on 2026-09-10, starting from the real live response of `GET /api/scan/flows?window=20` (see flows_20.json, recorded the same day). Every field is copied from that real response UNCHANGED except: the `flow`, `flow_pct`, `history_since` and `message` fields of exactly six symbols -- SPY, GLD, IWM, HYG, XLF, XLE -- which were hand-authored (plausible dollar/percent magnitudes for funds of that rough size, invented, not measured) so FlowBars has real-shaped non-null data to draw actual diverging bars against, which the live table cannot yet produce (docs/etf-flows-sources.md: the shares-outstanding history only started accumulating recently, so as of this recording every symbol's real flow is still null). XLK's row (flow=null, history_since='2026-09-08') is the genuine, unedited short-history case from the live response -- not synthetic. `no_flow_data` and `sources` are unedited. Do not treat any number in this file as real market data.",
+  "window": 20,
+  "symbols": [
+    {
+      "symbol": "DIA",
+      "flow": null,
+      "flow_pct": null,
+      "history_since": null,
+      "message": "no data yet"
+    },
+    {
+      "symbol": "EEM",
+      "flow": null,
+      "flow_pct": null,
+      "history_since": null,
+      "message": "no data yet"
+    },
+    {
+      "symbol": "FXI",
+      "flow": null,
+      "flow_pct": null,
+      "history_since": null,
+      "message": "no data yet"
+    },
+    {
+      "symbol": "GLD",
+      "flow": -380000000.0,
+      "flow_pct": -0.0054,
+      "history_since": "2026-06-01",
+      "message": null
+    },
+    {
+      "symbol": "HYG",
+      "flow": -210000000.0,
+      "flow_pct": -0.0132,
+      "history_since": "2026-06-01",
+      "message": null
+    },
+    {
+      "symbol": "IWM",
+      "flow": 615000000.0,
+      "flow_pct": 0.0102,
+      "history_since": "2026-06-01",
+      "message": null
+    },
+    {
+      "symbol": "KRE",
+      "flow": null,
+      "flow_pct": null,
+      "history_since": null,
+      "message": "no data yet"
+    },
+    {
+      "symbol": "SLV",
+      "flow": null,
+      "flow_pct": null,
+      "history_since": null,
+      "message": "no data yet"
+    },
+    {
+      "symbol": "SPY",
+      "flow": 2150000000.0,
+      "flow_pct": 0.0039,
+      "history_since": "2026-06-01",
+      "message": null
+    },
+    {
+      "symbol": "TLT",
+      "flow": null,
+      "flow_pct": null,
+      "history_since": null,
+      "message": "no data yet"
+    },
+    {
+      "symbol": "XBI",
+      "flow": null,
+      "flow_pct": null,
+      "history_since": null,
+      "message": "no data yet"
+    },
+    {
+      "symbol": "XLB",
+      "flow": null,
+      "flow_pct": null,
+      "history_since": null,
+      "message": "no data yet"
+    },
+    {
+      "symbol": "XLC",
+      "flow": null,
+      "flow_pct": null,
+      "history_since": null,
+      "message": "no data yet"
+    },
+    {
+      "symbol": "XLE",
+      "flow": -95000000.0,
+      "flow_pct": -0.0027,
+      "history_since": "2026-06-01",
+      "message": null
+    },
+    {
+      "symbol": "XLF",
+      "flow": 145000000.0,
+      "flow_pct": 0.0032,
+      "history_since": "2026-06-01",
+      "message": null
+    },
+    {
+      "symbol": "XLI",
+      "flow": null,
+      "flow_pct": null,
+      "history_since": null,
+      "message": "no data yet"
+    },
+    {
+      "symbol": "XLK",
+      "flow": null,
+      "flow_pct": null,
+      "history_since": "2026-09-08",
+      "message": "history since 2026-09-08"
+    },
+    {
+      "symbol": "XLP",
+      "flow": null,
+      "flow_pct": null,
+      "history_since": null,
+      "message": "no data yet"
+    },
+    {
+      "symbol": "XLRE",
+      "flow": null,
+      "flow_pct": null,
+      "history_since": null,
+      "message": "no data yet"
+    },
+    {
+      "symbol": "XLU",
+      "flow": null,
+      "flow_pct": null,
+      "history_since": null,
+      "message": "no data yet"
+    },
+    {
+      "symbol": "XLV",
+      "flow": null,
+      "flow_pct": null,
+      "history_since": null,
+      "message": "no data yet"
+    },
+    {
+      "symbol": "XLY",
+      "flow": null,
+      "flow_pct": null,
+      "history_since": null,
+      "message": "no data yet"
+    },
+    {
+      "symbol": "XOP",
+      "flow": null,
+      "flow_pct": null,
+      "history_since": null,
+      "message": "no data yet"
+    }
+  ],
+  "no_flow_data": [
+    {
+      "symbol": "SMH",
+      "reason": "no supported shares-outstanding source (see docs/etf-flows-sources.md)"
+    },
+    {
+      "symbol": "GDX",
+      "reason": "no supported shares-outstanding source (see docs/etf-flows-sources.md)"
+    },
+    {
+      "symbol": "QQQ",
+      "reason": "no supported shares-outstanding source (see docs/etf-flows-sources.md)"
+    },
+    {
+      "symbol": "USO",
+      "reason": "no supported shares-outstanding source (see docs/etf-flows-sources.md)"
+    }
+  ],
+  "sources": [
+    {
+      "family": "spdr",
+      "last_as_of_date": "2026-09-08"
+    },
+    {
+      "family": "ishares",
+      "last_as_of_date": "2026-09-09"
+    }
+  ]
+}

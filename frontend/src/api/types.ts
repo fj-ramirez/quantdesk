@@ -556,13 +556,42 @@ export interface SymbolCaptureHealth {
   stale: boolean;
 }
 
-/** `GET /api/health/capture` response. `bars` (T42) and `extended` (T47) are additive to the
- * original `generated_at`/`symbols` shape (T29); nothing here narrows or removes a field. */
+/** T53 addition to `CaptureHealth` -- one symbol's ETF-flows freshness, mirrors
+ * `app.api.health.SymbolFlowsHealth`. Keyed on `symbol` (the flows universe, not necessarily
+ * an `Underlying` with an option chain), same convention `SymbolBarsHealth` already uses. */
+export interface SymbolFlowsHealth {
+  symbol: string;
+  last_as_of_date: string | null;
+}
+
+/** One supported fund family's freshness -- mirrors `app.api.health.FlowsFamilyHealth`.
+ * `last_as_of_date` is the max of the *stored rows'* own as-of dates, not the last time the
+ * job merely ran (docs/etf-flows-sources.md's corrected freshness rule) -- a fetch that
+ * succeeds but returns a stale file must not read as "fresh" here. */
+export interface FlowsFamilyHealth {
+  family: string;
+  last_as_of_date: string | null;
+  symbols: SymbolFlowsHealth[];
+}
+
+/** T53 addition to `CaptureHealth`, mirrors `app.api.health.FlowsHealthBlock`.
+ * `unsupported_symbols` names the four symbols with no working shares-outstanding source at
+ * all (docs/etf-flows-sources.md) -- listed here so `/flows`'s banner never has to
+ * cross-reference the provider module to know which funds those are. */
+export interface FlowsHealthBlock {
+  families: FlowsFamilyHealth[];
+  unsupported_symbols: string[];
+}
+
+/** `GET /api/health/capture` response. `bars` (T42), `extended` (T47) and `flows` (T52) are
+ * additive to the original `generated_at`/`symbols` shape (T29); nothing here narrows or
+ * removes a field. */
 export interface CaptureHealth {
   generated_at: string;
   symbols: SymbolCaptureHealth[];
   bars: BarsHealthBlock;
   extended: SymbolCaptureHealth[];
+  flows: FlowsHealthBlock;
 }
 
 // ---------------------------------------------------------------------------------------
@@ -1004,4 +1033,55 @@ export interface Report {
   alerts: RiskAlert[];
   summary: string[];
   cfd: CfdTranslation | null;
+}
+
+// ---------------------------------------------------------------------------------------
+// T53: `/flows` -- `GET /api/scan/flows?window=`. Hand-written, mirrored from
+// `backend/app/api/scan.py`'s `FlowSymbolOut`/`NoFlowDataOut`/`FlowsFamilySourceOut`/
+// `FlowsResponse`, verified against the live backend on 2026-09-10 -- see
+// `mocks/fixtures/scan/README.md`'s "Flows fixtures" section for the exact curls.
+//
+// **`flow`/`flow_pct` are `null` far more often than not today** -- every supported symbol
+// except one currently has zero stored shares-outstanding rows (no backfill exists;
+// docs/etf-flows-sources.md), so `message`/`history_since` are the common rendering, not a
+// rare edge case. Never coerce a `null` here to `0` or a zero-width/zero-value bar.
+// ---------------------------------------------------------------------------------------
+
+export type FlowWindow = 5 | 20 | 60;
+
+/** One fund's net flow (dollars and percent of AUM) over the requested window, mirrors
+ * `FlowSymbolOut`. `flow`/`flow_pct` are `null` -- with `message` explaining why -- whenever
+ * fewer than `window + 1` days of paired shares-outstanding/NAV history exist yet;
+ * `history_since` (the earliest paired observation, if any) is present even then, so a caller
+ * can render "history since <date>" instead of a bare dash. */
+export interface FlowSymbol {
+  symbol: string;
+  flow: number | null;
+  flow_pct: number | null;
+  history_since: string | null;
+  message: string | null;
+}
+
+/** A symbol with no supported shares-outstanding source at all, mirrors `NoFlowDataOut` --
+ * the plan's "no flow data" list, never drawn as a zero bar. */
+export interface NoFlowData {
+  symbol: string;
+  reason: string;
+}
+
+/** One supported family's data-source banner entry, mirrors `FlowsFamilySourceOut` --
+ * field-for-field the same shape (and, per that backend model's own docstring, the same
+ * value) as `FlowsFamilyHealth` above, so `/flows`'s own response and
+ * `/api/health/capture`'s `flows` block can never disagree. */
+export interface FlowsFamilySource {
+  family: string;
+  last_as_of_date: string | null;
+}
+
+/** `GET /api/scan/flows?window=` response, mirrors `FlowsResponse`. */
+export interface FlowsResponse {
+  window: number;
+  symbols: FlowSymbol[];
+  no_flow_data: NoFlowData[];
+  sources: FlowsFamilySource[];
 }

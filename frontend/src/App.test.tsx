@@ -131,16 +131,16 @@ describe('T55 scan-family nav and stub routes', () => {
     }
   });
 
-  // T44 replaced /scan, T49 replaced /regime and T51 replaced /rotation with real pages, so
-  // none of the three is in this list any more. The remaining two stay stubs until T53 lands
-  // ("last tab" T56/Overview remains a stub too, until T44/T49/T51/T53/T54 all land).
-  it.each([
-    ['/flows', 'Flows'],
-    ['/overview', 'Overview'],
-  ])('%s renders a one-line "not built yet" empty state, not a crash', async (path, label) => {
-    renderApp(path);
-    expect(await screen.findByRole('region', { name: `${label} is not built yet` })).toBeInTheDocument();
-  });
+  // T44 replaced /scan, T49 replaced /regime, T51 replaced /rotation and T53 replaced /flows
+  // with real pages, so none of the four is in this list any more. Only the "last tab"
+  // (T56/Overview) remains a stub.
+  it.each([['/overview', 'Overview']])(
+    '%s renders a one-line "not built yet" empty state, not a crash',
+    async (path, label) => {
+      renderApp(path);
+      expect(await screen.findByRole('region', { name: `${label} is not built yet` })).toBeInTheDocument();
+    },
+  );
 
   it('/scan renders the real scan page (T44), not a stub', async () => {
     renderApp('/scan');
@@ -158,6 +158,12 @@ describe('T55 scan-family nav and stub routes', () => {
     renderApp('/rotation');
     expect(await screen.findByRole('group', { name: 'Group' })).toBeInTheDocument();
     expect(screen.queryByRole('region', { name: 'Rotation is not built yet' })).not.toBeInTheDocument();
+  });
+
+  it('/flows renders the real flows page (T53), not a stub', async () => {
+    renderApp('/flows');
+    expect(await screen.findByRole('group', { name: 'Window' })).toBeInTheDocument();
+    expect(screen.queryByRole('region', { name: 'Flows is not built yet' })).not.toBeInTheDocument();
   });
 
   it('the TopBar drops the asset dropdown on /scan and shows it again after navigating back to /', async () => {

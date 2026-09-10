@@ -10,6 +10,7 @@ import { GexByStrikeDemo } from './pages/demo/GexByStrikeDemo';
 import { Scan } from './pages/Scan';
 import { Rotation } from './pages/Rotation';
 import { Regime } from './pages/Regime';
+import { Flows } from './pages/Flows';
 
 /**
  * T55: a placeholder for a scan-family route whose real page hasn't landed yet (T44/T49/T51/
@@ -34,13 +35,12 @@ export function App() {
         <Route path="history" element={<History />} />
         <Route path="report" element={<Report />} />
         <Route path="settings" element={<Settings />} />
-        {/* T44, T49 and T51 replaced the Scan, Regime and Rotation stubs with real pages. The
-            rest remain stubs -- see 07-ui.md's "Pages" section for each (T53 Flows,
-            T56 Overview). */}
+        {/* T44, T49, T51 and T53 replaced the Scan, Regime, Rotation and Flows stubs with real
+            pages. The rest remain stubs -- see 07-ui.md's "Pages" section (T56 Overview). */}
         <Route path="scan" element={<Scan />} />
         <Route path="regime" element={<Regime />} />
         <Route path="rotation" element={<Rotation />} />
-        <Route path="flows" element={<NotBuiltYetPage page="Flows" />} />
+        <Route path="flows" element={<Flows />} />
         <Route path="overview" element={<NotBuiltYetPage page="Overview" />} />
         {/* Standalone chart demos. Dashboard assembly is T16's job. */}
         <Route path="demo/gamma-profile" element={<GammaProfileDemo />} />

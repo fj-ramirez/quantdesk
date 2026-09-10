@@ -225,3 +225,15 @@ export function useCrossAsset() {
     queryFn: () => apiClient.crossAsset(),
   });
 }
+
+// ---------------------------------------------------------------------------------------
+// T53: `/flows`. `window` comes straight from `useScanParams`, already validated against
+// `5 | 20 | 60`.
+// ---------------------------------------------------------------------------------------
+
+export function useFlows(window: number) {
+  return useQuery({
+    queryKey: ['scan-flows', window] as const,
+    queryFn: () => apiClient.flows(window),
+  });
+}

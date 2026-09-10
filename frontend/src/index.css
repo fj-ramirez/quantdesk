@@ -735,3 +735,67 @@ code {
   opacity: 0.6;
   cursor: help;
 }
+
+/* ---------------------------------------------------------------------------
+   T53 -- /flows page. Same token discipline as every scan-family page above: no literal
+   colours here; FlowBars/FlowSparkline read theme/vizPalette.ts directly for their diverging
+   bar fills.
+   --------------------------------------------------------------------------- */
+
+.flows-page { padding: 16px; display: flex; flex-direction: column; gap: 12px; }
+
+.flows-banner {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 8px 12px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+}
+
+.flows-banner__lag {
+  margin: 0;
+  font-size: 12px;
+  color: var(--text);
+  opacity: 0.85;
+  max-width: 72ch;
+}
+
+.flows-banner__list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 20px;
+  margin: 0;
+  font-size: 12px;
+  font-family: var(--mono);
+}
+
+.flows-banner__entry { display: flex; gap: 6px; }
+.flows-banner__entry dt { color: var(--text); opacity: 0.6; }
+.flows-banner__entry dd { margin: 0; color: var(--text-h); }
+
+.flows-banner__unsupported {
+  margin: 0;
+  font-size: 12px;
+  color: var(--text);
+  opacity: 0.85;
+}
+
+.flows-chart-section { display: flex; flex-direction: column; gap: 8px; }
+
+.flows-no-data {
+  font-size: 12px;
+  color: var(--text);
+}
+.flows-no-data ul { margin: 4px 0 0 16px; padding: 0; }
+
+.flow-sparkline {
+  display: inline-block;
+  width: 100%;
+  min-width: 60px;
+}
+
+.flow-sparkline--empty {
+  color: var(--text);
+  opacity: 0.6;
+}

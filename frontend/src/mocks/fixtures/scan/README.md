@@ -133,3 +133,45 @@ its own hand-built unit tests.
   real route's own behavior in this state by `backend/tests/test_scan_cross_asset_api.py
   ::test_get_cross_asset_empty_when_nothing_seeded`, not merely assumed. Exercises
   `RegimeStrip`'s "n/a tiles with the reason, never a fabricated number" contract.
+
+## Flows fixtures (T53)
+
+Recorded 2026-09-10 against the live backend:
+
+```
+curl -s "http://localhost:8001/api/scan/flows?window=5"   > flows_5.json
+curl -s "http://localhost:8001/api/scan/flows?window=20"  > flows_20.json
+curl -s "http://localhost:8001/api/scan/flows?window=60"  > flows_60.json
+curl -s "http://localhost:8001/api/health/capture"         > health_capture.json
+```
+
+All four are the live response, byte-for-byte (only re-indented) — nothing hand-edited.
+`health_capture.json` is **re-recorded from the T55 fixture** (T52's `flows` block didn't exist
+when T55 first curled it on 2026-09-09; this is additive to the shape T55 recorded, nothing
+existing was removed or renamed) — `health_capture_stale.json` was regenerated from this new
+base with the same single edit T55's own README section above describes (first
+`bars.symbols[]` entry's `stale` flipped `true`, `bars.stale_count: 1`), so both fixtures stay
+on the same base data and both now type-check against `CaptureHealth`'s additive `flows` field.
+
+**The live state today is the page's normal case, not an edge case.** All three `flows_*.json`
+files carry the same content regardless of window (`window` accumulates from the day T52's job
+first ran, and no window changes that): 22 of 23 supported symbols read `flow: null,
+flow_pct: null, history_since: null, message: "no data yet"` (zero stored rows yet); the
+23rd, `XLK`, reads `flow: null, history_since: "2026-09-08", message: "history since
+2026-09-08"` (exactly one stored row — not enough for even a one-day flow). `no_flow_data`
+names the same four unsupported symbols (`SMH`, `GDX`, `QQQ`, `USO`) in every file, and
+`sources` names both supported families' newest stored row date (`spdr: 2026-09-08`,
+`ishares: 2026-09-09`). This is precisely the state `Flows.tsx`'s empty/short-history rendering
+exists for — see that file's own docstring.
+
+- **`flows_synthetic.json`** — hand-built from `flows_20.json`, tagged with a top-level
+  `_provenance` field naming exactly what was changed (the repo's `backend/tests/fixtures/
+  marketdata/*_synthetic.json` convention for a fabricated fixture, carried over here since the
+  live data cannot yet produce a single non-null flow to test `FlowBars` actually drawing a bar
+  against). Six symbols' `flow`/`flow_pct`/`history_since`/`message` were invented (SPY, GLD,
+  IWM, HYG, XLF, XLE — three positive, three negative, plausible magnitudes for funds of roughly
+  that size, not measured); `XLK`'s real short-history row, every other symbol's real "no data
+  yet" row, `no_flow_data` and `sources` are all copied unedited from the live response. Used
+  only in `FlowBars`'s own test and one `Flows.test.tsx` case exercising the non-empty chart —
+  never wired as a default MSW handler response, so the app's default dev/test state stays the
+  honest, all-null live one.
