@@ -671,7 +671,7 @@ all pass.
 
 The user's assets are fading breakouts; they want to see which markets have continuation and
 where money rotates between sectors. Full specs live in `plans/continuation/` (one file per
-tool, same block shape as here). IDs T42–T56 are reserved; next free ID is **T57**.
+tool, same block shape as here). IDs T42–T56 are reserved. T57 (rotation in-progress week label) was filed on 2026-09-09; next free ID is **T58**.
 
 UI added 2026-09-09: the page tasks were too thin to dispatch, so `07-ui.md` now carries the
 full specs for every page, a shared UI kit (T55) that all pages build on, and an overview page
@@ -725,3 +725,42 @@ same shape as `capture_extended_job` itself) or convincing whoever owns T47's gu
 extending the existing safety net is safe. Left for a future task rather than guessed at here.
 
 Sequencing note (2026-09-04): T29 and T30 run before T11. A dashboard over a dataset with silent holes is worth less than a smaller dataset that can be trusted, and T30 is cheapest while nothing reads `parquet_path` yet. Do not run two Opus agents concurrently — it exhausts the session rate limit.
+
+---
+
+## T57 · Sonnet · T50, T51
+**Label the in-progress week on the rotation page**
+
+Found while verifying T50 live on 2026-09-09 (a Wednesday). `/api/scan/rotation`'s newest
+trail point is dated **`2026-09-11`** — the coming Friday, a date that has not happened — and
+its value is computed from Wednesday's close. `weekly_closes` resamples `W-FRI` and labels each
+bin with its week-*ending* Friday, which is correct for a completed week and becomes a
+future-dated, partial-week point for the current one.
+
+Nothing in the response or the page says so. Grepping `rotation.py`, `api/scan.py` and
+`Rotation.tsx` for "partial", "in-progress" or "to date" finds only unrelated matches about
+rolling-window warm-up.
+
+An RRG tail whose head moves during the week is normal and *should* keep updating — the bug is
+not the value, it is presenting it under a future date with no marker. Nor should it be dropped:
+the current week is the most decision-relevant point on the chart.
+
+**Do:** carry a per-point (or per-response) flag saying the newest week is still open, and in
+the UI render that week's label as the week's own range or "week to date" rather than a bare
+future Friday. Reuse T34's freshness vocabulary rather than inventing a second one; the same
+question ("as of when, honestly?") already has an answer in this codebase.
+
+Paths: `backend/app/scan/rotation.py` (the flag, still pure — derive it from the data's own last
+daily date versus the bin's Friday, never from `datetime.now()` inside a pure module),
+`backend/app/api/scan.py`, `frontend/src/pages/Rotation.tsx`, `frontend/src/api/types.ts`, tests
+both sides, `docs/validation-scan.md`.
+
+Acceptance: a fixture whose last daily bar is a Wednesday marks that week open and renders it as
+a range/"to date"; a fixture ending on a Friday close marks nothing open; the numbers themselves
+are unchanged from today's (assert against the existing fixtures); `uv run pytest`,
+`ruff check .`, `npm test`, `npm run lint` and `tsc -b` all pass.
+
+**Verified while filing this (2026-09-09):** T50's math itself is correct. `rs_ratio_approx` and
+`rs_momentum_approx` were recomputed by hand from `/api/bars` for XLK, XLE, XLU and XLRE over
+the last three weeks and matched the API to **1.3e-13** on both coordinates, including the
+`ddof=0` convention `_rolling_zscore` documents. This task is about the label, not the number.
