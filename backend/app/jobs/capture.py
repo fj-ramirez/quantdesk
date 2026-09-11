@@ -26,6 +26,7 @@ from app.models.chain import ChainSnapshot
 from app.models.db import Snapshot, get_engine, get_sessionmaker
 from app.providers import get_provider
 from app.providers.base import OptionChainProvider, ProviderError
+from app.storage.fingerprint import chain_fingerprint
 from app.storage.parquet import write_snapshot
 from app.storage.repository import SnapshotRepository
 
@@ -65,6 +66,13 @@ class CaptureResult:
     snapshot_id: int | None = None
     parquet_path: str | None = None
     skipped_duplicate: bool = False
+    duplicate_reason: str | None = None
+    """Why the write was skipped, when `skipped_duplicate` is True (T71). `"captured_at"` is a
+    re-fire of the same request -- the same vendor timestamp already indexed. `"content"` is
+    the case intraday polling introduces: a *new* vendor timestamp over a chain byte-identical
+    to the last one stored, i.e. the feed had not refreshed. The two are distinguished in the
+    structured log because they mean different things operationally -- the first says a job
+    fired twice, the second says the upstream is not moving."""
     error: str | None = None
 
 
@@ -152,7 +160,7 @@ async def capture_snapshot(
     # levels a few lines later.
     effective_session_factory = session_factory or get_session_factory()
     try:
-        parquet_path, row, skipped_duplicate = await asyncio.to_thread(
+        parquet_path, row, skipped_duplicate, duplicate_reason = await asyncio.to_thread(
             _persist_sync, snapshot, is_eod, effective_session_factory, data_dir
         )
     except Exception as exc:  # noqa: BLE001 - a storage failure must not crash the scheduler
@@ -176,6 +184,7 @@ async def capture_snapshot(
         snapshot_id=row.id,
         parquet_path=parquet_path,
         skipped_duplicate=skipped_duplicate,
+        duplicate_reason=duplicate_reason,
     )
     _log_result(result)
 
@@ -213,7 +222,7 @@ def _persist_sync(
     is_eod: bool,
     session_factory: sessionmaker[Session],
     data_dir: str | Path | None,
-) -> tuple[str, Snapshot, bool]:
+) -> tuple[str, Snapshot, bool, str | None]:
     """Write Parquet + index row. Runs off the event loop via `asyncio.to_thread`.
 
     `SnapshotRepository` is synchronous and commits inside `add()` (see its own module
@@ -223,24 +232,34 @@ def _persist_sync(
     entire write to a worker thread (rather than, say, only the DB half) also keeps the
     Parquet file write -- itself blocking disk I/O -- off the loop.
 
-    Duplicate-capture decision (see T05 brief): Cboe's `timestamp` advances continuously
-    (verified 2026-09-04: three separate calls returned strictly increasing timestamps), so
-    an exact `(underlying, captured_at)` match found here means a genuine retry or a
-    double-fired job, not normal quantization. There is no DB uniqueness constraint on that
-    pair (T04 shipped without one, and adding one is a schema change out of scope for T05 --
-    see the task's file restrictions). Rather than either (a) trusting the constraint to not
-    exist and overwriting the Parquet file in place -- silently repointing the existing index
-    row's file out from under it if the payload differs even slightly -- or (b) adding a
-    migration here, this function checks first and **skips** the write+insert when the exact
-    instant is already indexed, returning the existing row instead. This is an
-    application-level check, not a hard constraint, so a genuine race (two captures for the
-    same underlying resolving to the identical vendor timestamp, in flight at once) could
-    still both pass the check before either commits -- accepted here because this is a
-    single-user app whose only two triggers (the daily cron and a manual API call) are never
-    both in flight for the same symbol in practice, and the failure mode of a lost race is
-    merely a redundant Parquet file, not corrupted data.
+    Duplicate captures are caught on **two** independent keys, because neither alone is
+    sufficient once T18 polls every 15 minutes:
+
+    1. `(underlying, captured_at)` -- the same vendor timestamp already indexed. This means a
+       genuine retry or a double-fired job. As of T71 this pair also carries a DB uniqueness
+       constraint (`uq_snapshots_underlying_captured_at`), so the check below is now a way to
+       skip the redundant Parquet write and return the existing row gracefully rather than the
+       only thing standing between the app and a duplicate; a lost race raises at commit
+       instead of silently inserting.
+
+    2. **Content** -- `app.storage.fingerprint.chain_fingerprint` of the incoming chain equals
+       the fingerprint of the last row stored for this underlying. This is the case check 1
+       cannot see, and the one polling introduces. T34 established that Cboe's `timestamp` is
+       payload-*generation* time: it keeps advancing while the quotes underneath are frozen, so
+       a slot polled before the feed refreshes arrives with a **new** timestamp over
+       **identical** data. Writing it would add a Parquet file, an index row and a set of level
+       rows describing an instant that never happened, and T20's timeline would plot it as a
+       real reading. Compared against the most recent row only, deliberately: a chain that
+       returns to a byte-identical earlier state hours later is not a duplicate capture, it is
+       a genuine (astonishing) market observation, and suppressing it would lose real data.
+
+    Either way the write is **skipped**, never overwritten -- repointing an existing index row's
+    Parquet file out from under it, when the payload may differ in ways the check did not
+    consider, is the one outcome worse than a redundant file.
     """
+    fingerprint = chain_fingerprint(snapshot)
     with session_factory() as session:
+        duplicate_reason: str | None = None
         existing = session.execute(
             select(Snapshot).where(
                 Snapshot.underlying == snapshot.underlying.value,
@@ -248,6 +267,7 @@ def _persist_sync(
             )
         ).scalar_one_or_none()
         if existing is not None:
+            duplicate_reason = "captured_at"
             logger.warning(
                 "capture: %s at %s already indexed (snapshot id=%d) -- skipping duplicate "
                 "write, not overwriting %s",
@@ -256,25 +276,49 @@ def _persist_sync(
                 existing.id,
                 existing.parquet_path,
             )
+        else:
+            latest = session.execute(
+                select(Snapshot)
+                .where(Snapshot.underlying == snapshot.underlying.value)
+                .order_by(Snapshot.captured_at.desc())
+                .limit(1)
+            ).scalar_one_or_none()
+            # `content_hash is None` means the row predates T71, not that it has no contracts:
+            # comparing against it would be guessing, so an un-fingerprinted predecessor simply
+            # never matches and the capture proceeds. Worst case is one redundant snapshot on
+            # the first capture after the migration.
+            if latest is not None and latest.content_hash is not None and latest.content_hash == fingerprint:
+                existing = latest
+                duplicate_reason = "content"
+                logger.warning(
+                    "capture: %s payload at %s is byte-identical to snapshot id=%d at %s "
+                    "(vendor timestamp advanced but the chain did not) -- skipping duplicate "
+                    "write",
+                    snapshot.underlying.value,
+                    snapshot.captured_at.isoformat(),
+                    latest.id,
+                    latest.captured_at.isoformat(),
+                )
+
+        if existing is not None:
             if is_eod and not existing.is_eod:
-                # The duplicate is the 16:20 EOD job landing on the same vendor timestamp a
-                # manual capture already stored (Cboe's delayed timestamp only advances every
-                # ~15 min, so this is reachable, not theoretical). Skipping without promoting
-                # the flag would leave the day with *no* is_eod row at all -- an invisible,
-                # permanent hole in every eod_only query, for a day whose data is actually on
-                # disk. Promotion is monotonic: an EOD row is never demoted by a later manual
-                # capture.
+                # The duplicate is the 16:20 EOD job landing on data a 16:15 intraday poll (or
+                # a manual capture) already stored -- reachable on both keys, since Cboe's
+                # delayed chain only refreshes every ~15 min and is frozen outright after the
+                # close. Skipping without promoting the flag would leave the day with *no*
+                # is_eod row at all -- an invisible, permanent hole in every eod_only query,
+                # T29's catch-up guard and GET /api/health/capture, for a day whose data is
+                # actually on disk. Promotion is monotonic: an EOD row is never demoted by a
+                # later manual capture.
                 existing.is_eod = True
                 session.commit()
-                logger.info(
-                    "capture: promoted snapshot id=%d to is_eod=True", existing.id
-                )
-            return existing.parquet_path, existing, True
+                logger.info("capture: promoted snapshot id=%d to is_eod=True", existing.id)
+            return existing.parquet_path, existing, True, duplicate_reason
 
         path = write_snapshot(snapshot, data_dir=data_dir)
         repo = SnapshotRepository(session)
-        row = repo.add(snapshot, path, is_eod=is_eod)
-        return Path(path).as_posix(), row, False
+        row = repo.add(snapshot, path, is_eod=is_eod, content_hash=fingerprint)
+        return Path(path).as_posix(), row, False, None
 
 
 async def capture_all_symbols(

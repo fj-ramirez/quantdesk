@@ -43,6 +43,7 @@ class SnapshotRepository:
         *,
         is_eod: bool,
         data_dir: str | Path | None = None,
+        content_hash: str | None = None,
     ) -> Snapshot:
         """Index a snapshot just written to Parquet. Returns the persisted row (with `id`).
 
@@ -54,6 +55,12 @@ class SnapshotRepository:
         `data_dir` should be the same value passed to `write_snapshot` for this `parquet_path`
         -- it defaults to `settings.DATA_DIR`, matching `write_snapshot`'s own default, so a
         caller that didn't override one doesn't need to override the other.
+
+        `content_hash` (T71) is `app.storage.fingerprint.chain_fingerprint(snapshot)` when the
+        caller has computed it. It defaults to `None` rather than being computed here on
+        demand: hashing a 28,650-contract SPX chain is real work, the capture path already
+        needs the value *before* this call (to decide whether to write the Parquet file at
+        all), and silently recomputing it would double that cost on every capture.
         """
         row = Snapshot(
             underlying=snapshot.underlying.value,
@@ -63,6 +70,7 @@ class SnapshotRepository:
             contract_count=len(snapshot),
             parquet_path=to_data_dir_relative_path(parquet_path, data_dir),
             is_eod=is_eod,
+            content_hash=content_hash,
         )
         self._session.add(row)
         self._session.commit()

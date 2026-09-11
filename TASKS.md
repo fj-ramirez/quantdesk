@@ -1043,6 +1043,16 @@ on "an is_eod row exists for today".
 Acceptance: calling `capture_snapshot` twice against the same fixture payload leaves exactly
 one `snapshots` row, one Parquet file, and one set of `gex_levels` rows.
 
+**Done 2026-09-11.** `app/storage/fingerprint.py` (new), the `content_hash` column,
+`uq_snapshots_underlying_captured_at` replacing the old non-unique index, a two-key duplicate
+check with `duplicate_reason` in the structured log, and migration `c7a1e93b5d02`. 25 new
+tests; backend suite 914 passed. Migration run live against the real Postgres and round-tripped
+both directions; a duplicating insert is now rejected with `IntegrityError`. Found while
+implementing that `is_eod` promotion already existed from T05 for the timestamp key -- T71
+extended it to the content key rather than inventing it, and the plan file is corrected to say
+so. See the Result section in
+[01-capture-integrity.md](plans/continuous-feed/01-capture-integrity.md).
+
 ### T72 · Sonnet · T19
 **Live-spot overlay against a frozen surface**
 

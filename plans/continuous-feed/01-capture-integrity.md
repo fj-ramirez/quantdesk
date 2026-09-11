@@ -129,12 +129,18 @@ Parquet file, do not insert, log a structured `capture_duplicate` line and retur
 They very likely will match — the market closed at 16:00 and the feed is 15 minutes delayed,
 so both readings reflect roughly the same settled chain. Silently skipping the EOD write would
 be wrong: `T29`'s catch-up, `GET /api/health/capture` and the whole history view all key on
-"an `is_eod = true` row exists for today". **Recommended resolution: promote, don't insert.**
-On a content match where the incoming capture is `is_eod = true` and the matched row is not,
-update the existing row's `is_eod` to `true` and return a distinct result state. The stored
-`captured_at` then reflects 16:15 rather than 16:20, which is if anything the more honest
-instant. The agent must verify that catch-up and the capture-health endpoint both accept a
-promoted row.
+"an `is_eod = true` row exists for today". **Resolution: promote, don't insert.** On a match
+where the incoming capture is `is_eod = true` and the matched row is not, update the existing
+row's `is_eod` to `true`. The stored `captured_at` then reflects 16:15 rather than 16:20, which
+is if anything the more honest instant.
+
+> **Correction, 2026-09-11, found while implementing.** This plan originally specified
+> promotion as new work. It is not: `_persist_sync` has done exactly this since T05, monotonic
+> and commented, for the `captured_at` key. What T71 actually had to do was extend the existing
+> promotion to the new content key, not invent it. The residual work was smaller than this
+> section implied — the constraint and the content hash — and the plan is corrected here rather
+> than quietly, because a spec that tells an agent to add something that exists wastes a
+> dispatch.
 
 **Order the constraint after the cleanup.** Adding `UniqueConstraint("underlying",
 "captured_at")` will fail the migration if duplicates already exist. The migration must
@@ -191,3 +197,47 @@ one `snapshots` row, one Parquet file, and one set of `gex_levels` rows.
 
 Deleting the orphaned `backend/data/` Parquet files — that is the state review's own item and
 carries its own risk of deleting something the index still points at.
+
+---
+
+## Result — T71, shipped 2026-09-11
+
+`app/storage/fingerprint.py` (new), `app/models/db.py`, `app/storage/repository.py`,
+`app/jobs/capture.py`, migration `c7a1e93b5d02`, and 25 new tests across
+`tests/test_capture_dedupe.py` and `tests/test_migration_t71_duplicates.py`. Backend suite
+914 passed (was 889), `ruff check .` clean.
+
+**What was already there.** The `(underlying, captured_at)` skip and the monotonic `is_eod`
+promotion both date from T05, complete with a docstring conceding the missing constraint and
+the check-then-commit race. The plan above is corrected accordingly. The genuinely new pieces
+were the content key and the constraint.
+
+**What shipped.**
+
+- `chain_fingerprint` — SHA-256 over underlying, spot, and the sorted per-contract tuple of
+  identity, strike, right, expiry, bid, ask, IV and open interest. Excludes every timestamp
+  (the point) and vendor greeks (the engine computes its own from IV, so a greek refresh over
+  unchanged quotes is not a reason to store another snapshot). Version-tagged, so a future
+  change to the hashed field set can never compare equal across the change.
+- `_token` gives `None`, `0` and `0.0` three distinct encodings, so invariant 3 survives
+  hashing: a chain whose OI resolves from unknown to zero is a real change, not a duplicate.
+- The capture path now checks two keys in order — exact timestamp, then content against the
+  **most recent** row for that underlying — and `CaptureResult` carries `duplicate_reason`
+  (`"captured_at"` vs `"content"`) into the structured log, because the two mean different
+  things operationally: a job fired twice, versus the upstream is not moving.
+- `uq_snapshots_underlying_captured_at` replaces the old non-unique composite index (same
+  columns, same order, so no query loses its index) and makes the T05 race structurally
+  impossible rather than merely unlikely.
+
+**Verified live, not just in tests.** The migration ran against the real Postgres (89
+snapshots, 0 duplicate pairs) and was round-tripped `upgrade → downgrade → upgrade`. After the
+upgrade, an attempt to insert a duplicating row was rejected with `IntegrityError`, and the
+schema showed the constraint, its backing index, and `content_hash` present. Because the real
+database had no duplicates, the deletion branch went unexercised there — so it is covered
+separately in `test_migration_t71_duplicates.py` against a SQLite table built from
+**pre-migration** DDL, which is the only way to hold rows the current model forbids.
+
+**Deliberately not done.** The deleted duplicates' Parquet files are left on disk. Unpicking
+which files are still referenced is the state review's own orphaned-file item, and on a source
+with no history an orphaned file costs a megabyte while a wrongly deleted one costs a day that
+cannot be re-fetched.

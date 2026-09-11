@@ -121,12 +121,31 @@ class Snapshot(Base):
     contract_count: Mapped[int] = mapped_column(Integer, nullable=False)
     parquet_path: Mapped[str] = mapped_column(String(512), nullable=False)
     is_eod: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    content_hash: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    """SHA-256 of everything in the chain that can move GEX -- see
+    `app.storage.fingerprint.chain_fingerprint` (T71). Nullable because every row written
+    before that task predates it; readers must treat `None` as "unknown", never as "empty
+    chain", and the duplicate check skips comparison rather than guessing."""
 
     __table_args__ = (
-        # The dominant query shape (T05's GET /api/snapshots, T09's compute_and_store,
-        # `SnapshotRepository.latest`/`list`) is "this underlying, ordered by time" -- a
-        # composite index on exactly that pair serves all of them without a separate scan.
-        Index("ix_snapshots_underlying_captured_at", "underlying", "captured_at"),
+        # T71. The dominant query shape (T05's GET /api/snapshots, T09's compute_and_store,
+        # `SnapshotRepository.latest`/`list`) is "this underlying, ordered by time", and this
+        # constraint's backing index serves all of them exactly as the plain composite index
+        # it replaced did -- same columns, same order -- while also making a double-write
+        # structurally impossible rather than merely unlikely.
+        #
+        # `app.jobs.capture._persist_sync` has always checked for an existing row at this pair
+        # before writing, but that is an application-level check with a real (if narrow) race
+        # between the check and the commit; its own docstring conceded the gap and deferred the
+        # migration as out of scope for T05. At one capture a day the race was theoretical. At
+        # T18's 27 captures a day, plus a startup catch-up, plus the window during T70's host
+        # migration when two stacks may briefly both be running, it stops being theoretical --
+        # so the constraint lands here before T18 does.
+        UniqueConstraint("underlying", "captured_at", name="uq_snapshots_underlying_captured_at"),
+        # Looks up "the last thing I stored for this symbol, and what was in it" in one hit,
+        # for the content-duplicate check that catches a frozen vendor payload arriving under a
+        # fresh timestamp -- the case `captured_at` uniqueness alone cannot see.
+        Index("ix_snapshots_underlying_content_hash", "underlying", "content_hash"),
     )
 
     def __repr__(self) -> str:  # pragma: no cover - debugging aid only
