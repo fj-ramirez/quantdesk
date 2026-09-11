@@ -14,4 +14,4 @@ EXPOSE 8001
 # idempotent, so this is safe on every start -- without it a fresh volume yields an empty
 # schema and every request 500s on "relation snapshots does not exist". Single-user local
 # app: auto-migrating on boot is the right trade here, unlike a shared deployment.
-CMD ["sh", "-c", "uv run alembic upgrade head && exec uv run uvicorn app.main:app --host 0.0.0.0 --port 8001"]
+CMD ["sh", "-c", "uv run alembic upgrade head && exec uv run uvicorn app.main:app --host 0.0.0.0 --port 8001 --reload --reload-dir app"]
