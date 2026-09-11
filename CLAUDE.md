@@ -72,4 +72,4 @@ Reference documents (long, load deliberately):
 | [docs/validation.md](docs/validation.md) | engine validated against public vendor GEX figures; every difference attributed |
 | [docs/supervision-report.md](docs/supervision-report.md) | retrospective on the agent-delegated build |
 | [docs/state-review-2026-09-05.md](docs/state-review-2026-09-05.md) | current known gaps and the prioritized fix list |
-| [plans/README.md](plans/README.md) | per-tool design plans for multi-task initiatives; `plans/continuation/` holds T42–T56 |
+| [plans/README.md](plans/README.md) | per-tool design plans for multi-task initiatives; `continuation/` T42–T56, `ui-ux-refresh/` T62–T69, `continuous-feed/` T70–T72 (and the re-specs of T18–T23, T32) |

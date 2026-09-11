@@ -12,9 +12,11 @@ first-contact failures. `TASKS.md` keeps a one-line pointer per task so IDs neve
 The first such initiative is `plans/continuation/` (T42–T56, 2026-09-09).
 
 Current position: Phases 0–3 are built (ingestion, engine, read API, dashboard). Phase 4
-(15-minute intraday polling + SSE) is next. Phase 5 (real-time) is blocked on a Tradier
-account. `docs/state-review-2026-09-05.md` §4 is the live prioritized list of what to do next
-and what is known-broken.
+(15-minute intraday polling + SSE) is next and is now planned in detail in
+`plans/continuous-feed/` — read that before touching T18–T20, and note that it gates them on
+T32, T71 and an always-on host (T70). Phase 5 (real-time) is blocked on a Tradier account.
+`docs/state-review-2026-09-05.md` §4 is the live prioritized list of what to do next and what
+is known-broken.
 
 When a review or a user report produces new work, **append it to `TASKS.md`** as a new
 numbered task with the same block shape rather than fixing it silently — that file is the

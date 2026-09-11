@@ -57,6 +57,8 @@ Two facts drive the source choice:
 | **Tradier Brokerage account** | $0 data with funded account; Tradier Pro $10/mo | **Real-time** (WebSocket) | Yes | IV/Greeks hourly (ORATS) | No | Cheapest real-time path. Must open a brokerage account. Compute gamma locally |
 | ThetaData Options Value | $40/mo | Real-time | Yes | IV only | 1-min from 2020 | |
 | **ThetaData Options Standard** | $80/mo | Real-time, 10k streamed contracts | Yes | 1st/2nd/3rd order | Tick from 2016 | Best research-grade option. Retail/personal license |
+| Alpaca Basic (indicative) | $0 | 15 min, derived quotes | **No** (market data API omits OI; trading API's `/v2/options/contracts` carries it separately) | Yes | Feb 2024+ | Evaluated 2026-09-11. Free paper account. Two-API join for OI. Index-option market-data coverage undocumented |
+| Alpaca Algo Trader Plus | $99/mo | Real-time (OPRA) | **No**, same split as above | Yes | Feb 2024+ | Over budget, and loses to ThetaData Standard at $80. See `plans/continuous-feed/04-realtime-paid.md` |
 | Massive Options Advanced | $199/mo | Real-time | Yes | Yes | Yes | |
 | Databento OPRA Standard | $199/mo | Real-time | No (trades/quotes only) | No | PAYG history | Raw feed, overkill here |
 | Cboe DataShop EOD | $400/request | EOD | Yes | Optional | 2018+ | Institutional pricing |
@@ -69,6 +71,14 @@ The Cboe endpoint returns exactly the fields the GEX engine needs for all three 
 
 **Paid, within budget (phase 5): Tradier brokerage account, $0–10/month.**
 Real-time options quotes over WebSocket are included for account holders. That is the only real-time OPRA path under $50. Trade-off: Greeks are refreshed hourly, so the app computes gamma itself from live quotes and IV (which it should do anyway for the gamma profile). Eligibility confirmed: Tradier's permitted-countries list includes the Dominican Republic.
+
+**Rejected as a primary source (2026-09-11): Alpaca.** Its market data API does not return open
+interest at all — OI lives on the trading API's contracts endpoint, so a provider would be a
+two-API join, and under invariant 3 a partial join failure deflates GEX silently rather than
+failing loudly. Real OPRA is $99/month, double the budget and worse value than ThetaData
+Standard at $80. Index-option market-data coverage is undocumented and SPX is the headline
+symbol. Retained only as a possible second *free delayed* source; full finding and the two
+questions a spike would have to answer are in `plans/continuous-feed/04-realtime-paid.md`.
 
 **Paid, worth it if budget grows: ThetaData Options Standard, $80/month.**
 Real-time streaming plus tick history to 2016 with full Greeks. This is what unlocks backtesting GEX levels against realized moves and building intraday gamma-profile history without waiting months of self-capture. Not needed until you want research, not just a dashboard.

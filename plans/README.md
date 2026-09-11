@@ -17,6 +17,17 @@ plans/
     05-etf-flows.md                 T52, T53
     06-cross-asset-regime.md        T54
     07-ui.md                        T55, T56, and the full specs for T44, T49, T51, T53
+  ui-ux-refresh/                    workbench redesign (2026-09-10), T62-T69 — complete
+    README.md                       task specs, dependencies, and the Result section
+    01-ux-baseline.md               T62 read-only inventory and wireframes
+    02-first-pass-review/           the user's own live-build review that produced T69
+  continuous-feed/                  from one capture a day to a live picture (2026-09-11)
+    README.md                       the two-feed model, tiers, dependency graph, dispatch order
+    00-always-on-host.md            T70  the precondition: a backend that is actually always on
+    01-capture-integrity.md         T32, T71  retention and idempotency, both gating T18
+    02-intraday-polling.md          T18, T19, T20  the free 15-minute tier
+    03-live-spot-overlay.md         T72  free live spot against a frozen surface
+    04-realtime-paid.md             T21-T23 status and the 2026-09-11 vendor re-survey
 ```
 
 ## Conventions
@@ -25,8 +36,14 @@ plans/
   *Design decisions* (judgment calls, named as such), *Tasks* (in the `ID · Model · Depends`
   block shape used by `TASKS.md`), *Verified facts* (measured by the supervisor, not assumed),
   *Acceptance*, *Likely first-contact failures*, *Out of scope*.
-- Task IDs are allocated here and reserved in `TASKS.md` before dispatch. Next free ID after
-  this initiative: **T57**.
+- Task IDs are allocated here and reserved in `TASKS.md` before dispatch. Next free ID as of
+  2026-09-11: **T73**. (The continuation initiative ended at T56; T57-T61 were filed directly
+  in `TASKS.md`; T62-T69 went to `ui-ux-refresh/`; T70-T72 to `continuous-feed/`.)
+- An initiative may adopt an **existing** ID rather than allocate a new one. `continuous-feed/`
+  does this for `T18`-`T20`, `T21`-`T23` and `T32`: those were specified in `TASKS.md` in 2026-09-04
+  and never built, so the plan file carries the full spec and the `TASKS.md` block stays as the
+  numbered index pointing here. Renumbering shipped-or-specified work would break every
+  reference to it.
 - Model choice follows the project rule: Opus for new pure-math modules and new subsystems,
   Sonnet for views, ingestion against a spec, and additive wiring.
 - The standing prompt preamble applies to every task: *"Read PLAN.md first. Work only inside

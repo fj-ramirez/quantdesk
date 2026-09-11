@@ -206,7 +206,15 @@ Review API/frontend contract consistency, error handling, and whether URL state 
 
 ## Phase 4 — Delayed intraday
 
-### T18 · Sonnet · T05, T09
+> **Superseded 2026-09-11 by [plans/continuous-feed/](plans/continuous-feed/README.md).** T18,
+> T19 and T20 keep their IDs; their full specs, design decisions, verified facts and likely
+> first-contact failures now live in
+> [02-intraday-polling.md](plans/continuous-feed/02-intraday-polling.md). Dispatch from there,
+> not from the three blocks below. T18's dependencies changed: it now depends on **T32 and
+> T71** (retention and capture idempotency), and the whole tier's value depends on **T70**, an
+> always-on host — a missed intraday slot is unrecoverable on this source.
+
+### T18 · Sonnet · T32, T71 (was T05, T09)
 **Intraday polling job**
 
 Add scheduler job `capture_intraday`: every 15 minutes from 09:45 to 16:15 NY on trading days, all symbols, `is_eod=False`, compute levels after each capture. Ensure the EOD job still runs at 16:20 and that the polling cadence never exceeds one request per symbol per 15 minutes (this is the free source's informal limit). Config flag `INTRADAY_ENABLED`.
@@ -224,6 +232,13 @@ Page `/intraday`: for a chosen date, a chart of flip point, call wall, put wall 
 ---
 
 ## Phase 5 — Real-time (Tradier)
+
+> Status and the 2026-09-11 vendor re-survey (including why Alpaca was evaluated and rejected
+> as a primary source) are in
+> [plans/continuous-feed/04-realtime-paid.md](plans/continuous-feed/04-realtime-paid.md). The
+> three specs below are unchanged. Still blocked on a funded Tradier account — and the trigger
+> for opening one is now empirical: measure, from T18's own captured series, how far the
+> 15-minute-lagged flip point sits from where it actually was.
 
 ### T21 · Opus · T07, T08, T18
 **Real-time recompute design**
@@ -312,8 +327,13 @@ Providers skip-and-log unparseable contracts, which is the right policy, but the
 - Carry `skipped` and `listed` out of the provider on the snapshot and into `CaptureResult`, the structured log line and the `snapshots` row.
 - Log at ERROR when skipped exceeds a small threshold (e.g. 1 %), and flag any capture whose contract count deviates more than ~30 % from that symbol's trailing median.
 
-### T32 · Sonnet · T09, T18
+### T32 · Opus · T09  — full spec: [plans/continuous-feed/01-capture-integrity.md](plans/continuous-feed/01-capture-integrity.md)
 **Retention policy for `gex_by_strike`**
+
+> Re-scoped 2026-09-11. The dependency direction was backwards: T32 **gates** T18, it does not
+> follow it. Model raised to Opus — this is a data-retention judgment call, not wiring. The
+> plan file carries measured volumes (~216k rows/day at 27 captures), the recommended policy,
+> and the reason pruning is safe (`gex_by_strike` is a cache recomputable from Parquet).
 
 Flagged by T09: `gex_by_strike` is the volume driver at ~800 rows per filter per capture (2 non-empty filters × 3 symbols today). T18's 15-minute intraday polling multiplies that by ~26 sessions-worth per day per symbol. Nothing partitions or prunes it. Decide a retention rule — e.g. keep EOD strike detail forever, drop intraday strike detail after N days while keeping the `gex_levels` summary row — and implement it before T18 ships, not after the table is large.
 
@@ -672,7 +692,8 @@ all pass.
 The user's assets are fading breakouts; they want to see which markets have continuation and
 where money rotates between sectors. Full specs live in `plans/continuation/` (one file per
 tool, same block shape as here). IDs T42–T56 are reserved. T57 (rotation in-progress week label), T58 (daily flow series endpoint) and T59 (VanEck/Invesco/USCF flow sources) were filed on 2026-09-09/10; T60 (decision engine) and T61 (decision track record) on 2026-09-10;
-next free ID is **T62**.
+T62–T69 (UI/UX refresh) on 2026-09-10 in `plans/ui-ux-refresh/`; T70–T72 (continuous feed) on
+2026-09-11 in `plans/continuous-feed/`. Next free ID is **T73**.
 
 UI added 2026-09-09: the page tasks were too thin to dispatch, so `07-ui.md` now carries the
 full specs for every page, a shared UI kit (T55) that all pages build on, and an overview page
@@ -958,4 +979,85 @@ Acceptance (all run): `uv run pytest` (889 passed), `uv run ruff check .`, `npm 
 
 ## T62–T68 · Sonnet · proposed UI/UX refresh
 
-The user asked on 2026-09-10 to retain the tool’s information while substantially improving its UI/UX. The proposed workbench redesign, task specifications, dependencies, invariants, and acceptance criteria are in plans/ui-ux-refresh/README.md. T62 is the approval-gated UX baseline; T63–T68 implement the shell, primitives, Today/Analyze/Review workspaces, and final visual/accessibility QA. No task has been dispatched.
+The user asked on 2026-09-10 to retain the tool’s information while substantially improving its UI/UX. The proposed workbench redesign, task specifications, dependencies, invariants, and acceptance criteria are in plans/ui-ux-refresh/README.md. T62 is the approval-gated UX baseline; T63–T68 implement the shell, primitives, Today/Analyze/Review workspaces, and final visual/accessibility QA.
+
+T62 done 2026-09-10 (read-only inventory + wireframes; no screenshot tool available in this environment, substituted with code inspection — see plans/ui-ux-refresh/01-ux-baseline.md). Wireframes approved by the user 2026-09-10, unchanged. T63 done 2026-09-10 (shell/nav rebuild, verified independently — see plans/ui-ux-refresh/README.md Result section). T64 done 2026-09-10 (shared UI primitives + Decisions/Opportunities migrated as the representative page, verified independently). T65 done 2026-09-10 (Overview + Opportunities polish, verified independently). T66 done 2026-09-10 (GEX Explorer/Scan/Regime/Rotation/Flows migrated, KeyLevels' 9 inline-style clusters rebuilt, verified independently). T67 done 2026-09-10 (Report's 82 inline-style clusters rebuilt, duplicated selects removed, History/Settings polished; found and documented that the plan's "History capture action" acceptance line was a wrong premise — History never had one — verified independently). T68 done 2026-09-10 (real Playwright+axe rendered pass across all 11 routes; found and fixed a broken production build, page-level horizontal-overflow bugs on 3 pages, and several accessibility violations; measured bundle-size delta ~+6 kB gzip, no new dependency; verified independently). T62-T68 complete — see plans/ui-ux-refresh/README.md's Result section for full detail.
+
+T69 done 2026-09-10: compact-first density pass on Overview/GEX Explorer/Report after the user's own live-build review (plans/ui-ux-refresh/02-first-pass-review) — freshness collapsed to one status line, RegimeStrip split into a compact Overview variant, Dashboard lost its redundant tip/metric and gained a narrow-width chart toggle, Report's five heavy sections became collapsed-by-default disclosures. Verified independently. Plan T62-T69 complete — see plans/ui-ux-refresh/README.md's Result section for full detail.
+
+---
+
+## T70-T72 · continuous feed (2026-09-11)
+
+The user asked "what would be the approach to have a continuous data feed?". Full plan in
+[plans/continuous-feed/](plans/continuous-feed/README.md): the two-feed model (OI is published
+once a day by OCC and no vendor sells it intraday, so "continuous GEX" means re-pricing a
+frozen surface), three tiers cheapest-first, and the dependency graph.
+
+Most of this work already had numbers. Phase 4's T18-T20 and Phase 5's T21-T23 keep theirs and
+are re-specified in the plan files; T32 is re-scoped there and its dependency direction
+corrected. Only three tasks are new.
+
+| ID | Model | Depends on | Task | Plan |
+|---|---|---|---|---|
+| T70 | user decision, then Sonnet | - | Always-on host for the scheduler; private git remote first | [00-always-on-host.md](plans/continuous-feed/00-always-on-host.md) |
+| T71 | Sonnet | T05 | Capture idempotency: content hash, unique constraint, EOD promotion | [01-capture-integrity.md](plans/continuous-feed/01-capture-integrity.md) |
+| T72 | Sonnet | T19 | Live-spot overlay against a frozen surface (free, no new vendor) | [03-live-spot-overlay.md](plans/continuous-feed/03-live-spot-overlay.md) |
+
+Dispatch order: **T70** first and independently - it gates the *value* of everything else
+without gating any of the code, because a missed intraday slot is unrecoverable on the free
+source. Then **T32** and **T71** in parallel, both gating **T18**, then **T19** and **T20**,
+then **T72**.
+
+### T70 · user decision, then Sonnet · -
+**Always-on host for the scheduler**
+
+APScheduler's job store is in-memory, so jobs fire only while the process lives. T29's
+catch-up rescues a missed daily EOD because Cboe still serves the settled chain that evening;
+nothing can rescue a missed intraday slot, because the endpoint serves only "now". A laptop
+closed at 11:00 is a permanent hole in that session.
+
+Judgment call for the user: small VPS (~$4-6/mo), a Pi/spare box on the LAN, or status quo.
+Hosting cost is not data spend, so it does not touch the $50/month guardrail - say so
+explicitly either way. Hard prerequisite: **there is no git remote**; you cannot deploy what
+you cannot push, and creating one also closes state-review P0. Requirement, not suggestion:
+the app has no auth and holds single-user-licensed market data, so it must not be exposed
+publicly - loopback plus Tailscale/WireGuard or an SSH tunnel.
+
+Acceptance: the host survives a reboot unattended; a capture fires on a day the user's laptop
+was never opened; `GET /api/health/capture` answers from the host.
+
+### T71 · Sonnet · T05
+**Capture idempotency and content dedupe**
+
+Two defects that are harmless at one capture a day and daily events at 27. First, `snapshots`
+has no uniqueness at all - only a non-unique index - so a re-fire, a catch-up overlap or two
+stacks running during T70's migration each write a full duplicate row and Parquet file.
+Second, and subtler: T34 established that Cboe's `timestamp` is payload-generation time, not
+data-effective time, so **you cannot dedupe on it** - it is exactly the field that keeps
+advancing when the data underneath is frozen. Dedupe on a content hash instead, stored on the
+snapshot row. On an EOD capture that matches an earlier intraday row, promote the existing
+row's `is_eod` rather than inserting - T29's catch-up and the capture-health endpoint both key
+on "an is_eod row exists for today".
+
+Acceptance: calling `capture_snapshot` twice against the same fixture payload leaves exactly
+one `snapshots` row, one Parquet file, and one set of `gex_levels` rows.
+
+### T72 · Sonnet · T19
+**Live-spot overlay against a frozen surface**
+
+The increment the original roadmap missed, and the best value-per-hour in the initiative: free,
+no vendor, no account, no licence. OI is fixed for the session by construction and IV moves
+slowly; spot is the fast input, and spot is not OPRA data. So freeze the whole surface at the
+last 15-minute capture and move only spot, giving a live answer to "how far am I from the flip
+point right now". Distance-to-level is arithmetic on `gex_levels` rows that already exist; net
+GEX at live spot interpolates the 201-point `gamma_profile` that `compute_all` already computes
+and currently discards - cached in process, never recomputed on a tick.
+
+The decision the task turns on: **two clocks, shown as two clocks** ("spot 14:32:05 ·
+structure 14:15"). A smoothly moving marker invites the reading that the walls are live too,
+and they are not - which matters most on exactly the fast tape where the view is most wanted.
+
+Acceptance: feeding a changed spot moves the marker and the distance readouts without a new
+capture, the structure stamp does not move, and killing the quote source drops back to the
+captured spot with a visible reason.
