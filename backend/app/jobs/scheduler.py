@@ -23,10 +23,12 @@ from app.jobs.bars import update_bars_job
 from app.jobs.calendar import is_trading_day
 from app.jobs.capture import capture_all_symbols
 from app.jobs.catchup import catch_up_missed_eod
+from app.jobs.decisions import record_decisions_job
 from app.jobs.flows import update_flows_job
 
 __all__ = [
     "BARS_JOB_ID",
+    "DECISIONS_JOB_ID",
     "EOD_JOB_ID",
     "EXTENDED_JOB_ID",
     "FLOWS_JOB_ID",
@@ -36,6 +38,7 @@ __all__ = [
     "capture_eod_job",
     "capture_eod_safety_net_job",
     "capture_extended_job",
+    "decisions_update_job",
     "flows_update_job",
 ]
 
@@ -46,6 +49,7 @@ SAFETY_NET_JOB_ID = "capture_eod_safety_net"
 BARS_JOB_ID = "bars_update"
 EXTENDED_JOB_ID = "capture_extended"
 FLOWS_JOB_ID = "flows_update"
+DECISIONS_JOB_ID = "decisions_update"
 
 # `settings.TZ` (default "America/New_York") drives both the trigger's wall-clock time and
 # the weekday/holiday check inside the job -- if this were ever pointed at another zone, both
@@ -181,6 +185,20 @@ async def flows_update_job() -> None:
         logger.exception("flows_update_job: unexpected top-level failure")
 
 
+async def decisions_update_job() -> None:
+    """17:45 ET decision-engine record-and-score (T61), fifteen minutes after the 17:30 bars
+    job so today's bar is stored before today's opportunities are written and yesterday's are
+    scored against it. Same P0 guardrail wording as `bars_update_job`: `record_decisions_job`
+    already never raises, and this wrapper is the belt to those braces -- a bug here must not
+    be able to deregister the capture jobs. No trading-day guard: on a holiday the pipeline
+    finds no new snapshot, `record_decisions` inserts nothing, and evaluation is a no-op.
+    """
+    try:
+        await record_decisions_job()
+    except Exception:  # must never take the scheduler thread down with it
+        logger.exception("decisions_update_job: unexpected top-level failure")
+
+
 def build_scheduler() -> AsyncIOScheduler:
     """Construct (but do not start) the scheduler with `capture_eod` registered.
 
@@ -268,6 +286,18 @@ def build_scheduler() -> AsyncIOScheduler:
         trigger=CronTrigger(day_of_week="mon-fri", hour=18, minute=30, timezone=_TZ),
         id=FLOWS_JOB_ID,
         name="ETF shares-outstanding flows update",
+        coalesce=True,
+        misfire_grace_time=None,
+        max_instances=1,
+        replace_existing=True,
+    )
+    # T61: same misfire/coalesce policy. A run hours late still records that day's levels
+    # (the snapshot is already stored) and scores whatever bars have arrived since.
+    scheduler.add_job(
+        decisions_update_job,
+        trigger=CronTrigger(day_of_week="mon-fri", hour=17, minute=45, timezone=_TZ),
+        id=DECISIONS_JOB_ID,
+        name="Decision engine record and score",
         coalesce=True,
         misfire_grace_time=None,
         max_instances=1,

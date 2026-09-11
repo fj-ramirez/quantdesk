@@ -30,6 +30,10 @@ All routers are included in `main.py` with `prefix="/api"`, each carrying its ow
 | GET | `/api/gex/{underlying}/snapshots/{snapshot_id}?filter=` | same, for a specific snapshot |
 | GET | `/api/gex/{underlying}/levels/history?filter=&start=&end=&eod_only=` | level time series |
 | GET | `/api/chains/{underlying}/latest?expiry=` | raw contracts for one expiry |
+| GET | `/api/decisions?filter=&min_score=` | T60 decision engine: ranked opportunities (entry/stop/target, thesis, invalidation) across the optioned universe, plus per-symbol rows and no-trade reasons |
+| GET | `/api/decisions/{underlying}?filter=` | one symbol's opportunities; same 404 contract as `/api/gex` |
+| GET | `/api/decisions/history?underlying=&outcome=&limit=` | T61 track record: stored opportunities newest first plus hit/win rates and R by setup and grade |
+| POST | `/api/decisions/record?filter=` | 201; runs the 17:45 ET record-and-score job now |
 
 Response models live in `api/schemas.py`. A symbol that has never been captured returns a
 **clean 404 with a specific `detail`** — that is the contract the frontend's empty state
@@ -37,7 +41,7 @@ depends on (T37); do not turn it into a 500 or a bare body.
 
 ## Database
 
-Three tables, all defined in `models/db.py`:
+Tables, all defined in `models/db.py` (the original three plus `daily_bars`, `etf_shares_outstanding`, `decisions`):
 
 - **`snapshots`** — index of Parquet files. Thin on purpose: anything queryable without
   opening the file (underlying, `captured_at`, source, spot, contract count, `is_eod`,
@@ -46,6 +50,11 @@ Three tables, all defined in `models/db.py`:
   nullable on purpose**: `key_levels` legitimately returns `None` when a filter admits no
   contracts (the everyday case is `ZERO_DTE` on a 16:20 EOD capture) or when the ±10 % profile
   never changes sign. Unique on `(snapshot_id, filter)`.
+- **`decisions`** (T61) — one row per emitted opportunity per `(snapshot_id, filter, key)`:
+  the levels as suggested, the full opportunity as JSON `payload`, and the outcome columns
+  `app.scan.outcomes.evaluate` fills in from later bars (`outcome`, `fill`, `result_r` in R,
+  `mfe_r`/`mae_r`, `mark_r` while pending). Insert-when-unseen, never upsert: a recorded level
+  is a commitment the track record scores.
 - **`gex_by_strike`** — per-strike series; the volume driver. Never null here: a strike only
   gets a row if contracts contributed to it. Unique on `(snapshot_id, filter, strike)`.
 

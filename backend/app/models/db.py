@@ -28,6 +28,7 @@ from sqlalchemy import (
     Index,
     Integer,
     String,
+    Text,
     UniqueConstraint,
     create_engine,
 )
@@ -40,6 +41,7 @@ from app.config import settings
 __all__ = [
     "Base",
     "DailyBar",
+    "Decision",
     "EtfSharesOutstanding",
     "GexByStrike",
     "GexLevel",
@@ -382,3 +384,73 @@ def get_sessionmaker(engine: Engine) -> sessionmaker[Session]:
     round trip.
     """
     return sessionmaker(bind=engine, expire_on_commit=False)
+
+
+class Decision(Base):
+    """One opportunity the decision engine emitted, frozen at the moment it was recorded, plus
+    what the bars that followed said about it (T61).
+
+    **Why a table at all, when every other scan route computes on request.** The engine's
+    suggestions are only calibratable against what happened *afterwards*, and "afterwards" is
+    the one thing a recompute can never reproduce: tomorrow's chain gives tomorrow's levels,
+    not today's. So the levels are written down once per `(snapshot, filter, key)` -- the
+    unique constraint below makes a second run on the same snapshot a no-op rather than a
+    duplicate -- and the outcome columns are filled in by `app.jobs.decisions` as bars arrive.
+
+    `decided_on` is the *trading date* of the chain the suggestion came from (`effective_at`
+    in New York), not the run date: the bars that score it are those strictly after this
+    date. `payload` is the full `Opportunity.to_dict()` as JSON text (thesis, invalidation,
+    score breakdown -- everything the row's scalar columns do not repeat), so a later
+    calibration pass can ask "which thesis lines were present on the winners" without a
+    schema change; `Text` rather than a JSON column so it round-trips identically on SQLite.
+
+    `outcome` vocabulary and the R-unit fields are `app.scan.outcomes.Outcome`'s, column for
+    column; `outcome_note` is that record's `note`. `result_r` is `None` until resolved, and
+    `mark_r` is the unrealized R while `pending` -- never collapsed into one column, for the
+    same None-vs-zero discipline the rest of the schema keeps.
+    """
+
+    __tablename__ = "decisions"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    underlying: Mapped[str] = mapped_column(String(16), nullable=False)
+    filter: Mapped[str] = mapped_column(String(32), nullable=False)
+    snapshot_id: Mapped[int] = mapped_column(Integer, ForeignKey("snapshots.id"), nullable=False)
+    key: Mapped[str] = mapped_column(String(32), nullable=False)
+    decided_on: Mapped[dt.date] = mapped_column(Date, nullable=False)
+    as_of: Mapped[dt.datetime] = mapped_column(UTCDateTime, nullable=False)
+    setup: Mapped[str] = mapped_column(String(16), nullable=False)
+    side: Mapped[str] = mapped_column(String(8), nullable=False)
+    status: Mapped[str] = mapped_column(String(16), nullable=False)
+    score: Mapped[int] = mapped_column(Integer, nullable=False)
+    grade: Mapped[str] = mapped_column(String(1), nullable=False)
+    entry: Mapped[float] = mapped_column(Float, nullable=False)
+    stop: Mapped[float] = mapped_column(Float, nullable=False)
+    target: Mapped[float] = mapped_column(Float, nullable=False)
+    target_2: Mapped[float | None] = mapped_column(Float, nullable=True)
+    spot: Mapped[float] = mapped_column(Float, nullable=False)
+    atr14: Mapped[float | None] = mapped_column(Float, nullable=True)
+    payload: Mapped[str] = mapped_column(Text, nullable=False)
+    outcome: Mapped[str] = mapped_column(String(16), nullable=False, default="pending")
+    fill: Mapped[float | None] = mapped_column(Float, nullable=True)
+    triggered_on: Mapped[dt.date | None] = mapped_column(Date, nullable=True)
+    resolved_on: Mapped[dt.date | None] = mapped_column(Date, nullable=True)
+    bars_held: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    mfe_r: Mapped[float | None] = mapped_column(Float, nullable=True)
+    mae_r: Mapped[float | None] = mapped_column(Float, nullable=True)
+    result_r: Mapped[float | None] = mapped_column(Float, nullable=True)
+    mark_r: Mapped[float | None] = mapped_column(Float, nullable=True)
+    evaluated_through: Mapped[dt.date | None] = mapped_column(Date, nullable=True)
+    outcome_note: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+    __table_args__ = (
+        UniqueConstraint("snapshot_id", "filter", "key", name="uq_decisions_snapshot_filter_key"),
+        Index("ix_decisions_underlying_decided_on", "underlying", "decided_on"),
+        Index("ix_decisions_outcome", "outcome"),
+    )
+
+    def __repr__(self) -> str:  # pragma: no cover - debugging aid only
+        return (
+            f"<Decision id={self.id} {self.underlying} {self.key} decided_on={self.decided_on} "
+            f"outcome={self.outcome!r}>"
+        )

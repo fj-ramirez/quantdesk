@@ -15,6 +15,7 @@ Dev server on **5173**, API on **8001**.
 | `/` | `Dashboard` |
 | `/history` | `History` |
 | `/settings` | `Settings` |
+| `/decisions` | `Decisions` (T60: ranked opportunities with a detail panel; `min_score` in the URL) |
 | `/demo/gamma-profile`, `/demo/gex-by-strike` | component sandboxes (`pages/demo/`) |
 
 ## Data layer — three files, three jobs

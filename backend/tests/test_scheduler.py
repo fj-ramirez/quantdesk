@@ -15,6 +15,7 @@ from zoneinfo import ZoneInfo
 from app.jobs import scheduler as scheduler_module
 from app.jobs.scheduler import (
     BARS_JOB_ID,
+    DECISIONS_JOB_ID,
     EOD_JOB_ID,
     EXTENDED_JOB_ID,
     FLOWS_JOB_ID,
@@ -24,6 +25,7 @@ from app.jobs.scheduler import (
     capture_eod_job,
     capture_eod_safety_net_job,
     capture_extended_job,
+    decisions_update_job,
     flows_update_job,
 )
 
@@ -212,6 +214,7 @@ def test_build_scheduler_still_registers_the_two_option_capture_jobs_unchanged()
         BARS_JOB_ID,
         EXTENDED_JOB_ID,
         FLOWS_JOB_ID,
+        DECISIONS_JOB_ID,
     }
 
 
@@ -309,6 +312,7 @@ def test_build_scheduler_adding_the_extended_job_leaves_the_other_three_untouche
         BARS_JOB_ID,
         EXTENDED_JOB_ID,
         FLOWS_JOB_ID,
+        DECISIONS_JOB_ID,
     }
 
 
@@ -459,6 +463,7 @@ def test_build_scheduler_adding_the_flows_job_leaves_the_other_four_untouched():
         BARS_JOB_ID,
         EXTENDED_JOB_ID,
         FLOWS_JOB_ID,
+        DECISIONS_JOB_ID,
     }
 
 
@@ -490,3 +495,27 @@ async def test_flows_update_job_survives_an_unexpected_exception(monkeypatch, ca
         await flows_update_job()  # must not raise
 
     assert any("unexpected top-level failure" in r.message for r in caplog.records)
+
+
+# --- T61: decisions job ---------------------------------------------------------------------
+
+
+def test_build_scheduler_registers_decisions_job_at_1745_ny():
+    scheduler = build_scheduler()
+    job = scheduler.get_job(DECISIONS_JOB_ID)
+    assert job is not None
+    assert job.max_instances == 1
+    assert job.misfire_grace_time is None
+    assert job.coalesce is True
+    fields = {f.name: str(f) for f in job.trigger.fields}
+    assert (fields["hour"], fields["minute"], fields["day_of_week"]) == ("17", "45", "mon-fri")
+
+
+async def test_decisions_update_job_survives_an_unexpected_exception(monkeypatch, caplog):
+    async def boom():
+        raise RuntimeError("kaboom")
+
+    monkeypatch.setattr("app.jobs.scheduler.record_decisions_job", boom)
+    with caplog.at_level("ERROR"):
+        await decisions_update_job()  # must not raise
+    assert "decisions_update_job: unexpected top-level failure" in caplog.text

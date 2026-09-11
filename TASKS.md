@@ -671,7 +671,8 @@ all pass.
 
 The user's assets are fading breakouts; they want to see which markets have continuation and
 where money rotates between sectors. Full specs live in `plans/continuation/` (one file per
-tool, same block shape as here). IDs T42–T56 are reserved. T57 (rotation in-progress week label), T58 (daily flow series endpoint) and T59 (VanEck/Invesco/USCF flow sources) were filed on 2026-09-09/10; next free ID is **T60**.
+tool, same block shape as here). IDs T42–T56 are reserved. T57 (rotation in-progress week label), T58 (daily flow series endpoint) and T59 (VanEck/Invesco/USCF flow sources) were filed on 2026-09-09/10; T60 (decision engine) and T61 (decision track record) on 2026-09-10;
+next free ID is **T62**.
 
 UI added 2026-09-09: the page tasks were too thin to dispatch, so `07-ui.md` now carries the
 full specs for every page, a shared UI kit (T55) that all pages build on, and an overview page
@@ -857,3 +858,98 @@ Acceptance: for every family that gains a fetcher, a live run inserts a row with
 as-of date and a second run inserts nothing; each fetcher parses its recorded fixture and reports
 a named per-symbol failure on a body missing the value; any family that stays unsupported has its
 evidence written up; `uv run pytest` and `ruff check .` pass.
+
+---
+
+## T60 · Opus · T48, T45, T43
+**Decision engine: opportunities with entry, stop, target, thesis and invalidation**
+
+The user asked for this on 2026-09-10: "create a decision engine based on provided data to
+suggest opportunities, include entry point, sl, tp, thesis and invalidation." Built and
+verified live the same day.
+
+What shipped:
+
+- `backend/app/scan/decisions.py` — pure module on the same contract as `app.scan.regime`.
+  Consumes a `RegimeRow`, the persisted by-strike ladder, the trend composite and the breakout
+  summary; emits `Opportunity` records (`fade` at a wall under long gamma, `continuation` at
+  spot under short gamma or next to the flip) with entry/stop/target/target_2, reward/risk,
+  thesis and invalidation sentences, a structure hint read off IV/RV, warnings, and a 0–100
+  score whose five components (regime alignment 35, positioning conviction 20, reward/risk 20,
+  trend 15, breakout base rate 10) are listed on the record. Status `active`/`watch`/`rejected`;
+  `DecisionResult.no_trade_reasons` is non-empty exactly when no opportunity is emitted (stale
+  chain, noise-dominated GEX, no ATR, no walls, no direction). Every ATR multiple is a named
+  constant with no live calibration yet — see the module docstring.
+- `backend/app/api/decisions.py` — `GET /api/decisions?filter=&min_score=` and
+  `GET /api/decisions/{underlying}`. Runs on `app.api.scan.build_regime_rows`, the `/regime`
+  pipeline factored out for reuse (the `/regime` route now consumes it too), so the regime a
+  suggestion cites is byte-identical to the board. Breakout summaries come from the bars that
+  pipeline already fetched.
+- `frontend` — `/decisions` page: ranked table over the shared `ScanTable`, detail panel with
+  the levels and their labels, thesis, invalidation, structure, warnings and score breakdown;
+  a "No trade" aside listing the declined symbols with their reasons verbatim; `min_score` in
+  the URL via `useScanParams`. Live fixture recorded in-process (`fixtures/scan/README.md`).
+
+Verified live (2026-09-10, in-process against the dev Postgres): 25 opportunities across the
+28 optioned symbols in ~10 s (the same IV-lookup cost `/regime` pays); most of the universe
+read short gamma with a negative 5-day return, so 15 of the 25 were `CONTINUATION_DOWN`;
+four stale sector chains and one noise-dominated (EEM) correctly produced no trade.
+
+Known gaps, deliberately left: no calibration of any threshold (the engine needs a few weeks
+of stored rows first — a natural T61: persist `DecisionResult` per capture and score outcomes
+against subsequent bars); max pain is not an input (it lives only in Parquet, which this route
+never opens); no intraday refresh (Phase 4).
+
+Paths: `backend/app/scan/decisions.py`, `backend/app/api/decisions.py`, `backend/app/api/scan.py`
+(`build_regime_rows` refactor only), `backend/app/main.py`, `backend/tests/test_scan_decisions.py`,
+`backend/tests/test_decisions_api.py`, `frontend/src/pages/Decisions.tsx` (+ test),
+`frontend/src/components/decisions/*`, `frontend/src/api/{types,client,queries}.ts`,
+`frontend/src/state/urlState.ts`, `frontend/src/theme/vizPalette.ts`, `frontend/src/mocks/*`,
+`context/backend.md`, `context/frontend.md`, `CLAUDE.md`.
+
+Acceptance (all run): `uv run pytest` (869 passed), `uv run ruff check .`, `npm test`,
+`npm run lint`, `tsc -b`; the live in-process run above.
+
+---
+
+## T61 · Opus · T60
+**Decision track record: persist every opportunity and score it against later bars**
+
+The user asked on 2026-09-10, right after T60 landed: "did you include an opportunity status?
+like if it went to profit or loss? we might need that record to sharpen the engine later."
+T60 had not; this adds it.
+
+What shipped:
+
+- `decisions` table (Alembic `b2d4f6a8c0e1`, `models/db.py::Decision`): one row per emitted
+  opportunity per `(snapshot_id, filter, key)`, the suggested levels frozen, the full
+  opportunity as JSON, and the outcome columns. Insert-when-unseen, never upsert.
+- `app/scan/outcomes.py` — pure evaluator. A fade fills when its wall is touched within 5 bars
+  (gap-through fills at the open); a continuation fills at the next open, never the recorded
+  spot. Stop is checked before target on every bar; an ambiguous bar is a stop. Gaps through
+  the stop exit at the open. Expired at the close after 10 bars. Everything in R (multiples of
+  `|entry - stop|`), with MFE/MAE tracked for later calibration. `summarize_outcomes` gives
+  hit/win rates (withheld below five resolved) and avg/total R overall, by setup, by grade.
+- `app/jobs/decisions.py` + scheduler job at **17:45 ET** (after the 17:30 bars job): record
+  today, score every pending row. Never raises; ~10 s in a worker thread.
+- `GET /api/decisions/history`, `POST /api/decisions/record`; a Track record block on
+  `/decisions` with the summary, the ledger and a Record now button.
+
+Verified live 2026-09-10: migration applied to the dev Postgres, first run recorded 25 rows,
+all pending (no bars after the decision date exist yet). The first real outcomes appear after
+the 2026-09-11 bars land.
+
+Calibration is the point of this table and is still to come (T62 candidate): once ~100 rows
+are resolved, re-fit `FADE_STOP_BUFFER_ATR`, `VOLATILITY_STOP_ATR`, `MAX_HOLD_BARS` and the
+score weights against `result_r`, `mfe_r`, `mae_r`. Until then no threshold moves.
+
+Paths: `backend/app/scan/outcomes.py`, `backend/app/storage/decisions_repository.py`,
+`backend/app/jobs/decisions.py`, `backend/app/jobs/scheduler.py`, `backend/app/api/decisions.py`,
+`backend/app/api/scan.py` (snapshot_id on `RegimeBuild`), `backend/app/models/db.py`,
+`backend/alembic/versions/b2d4f6a8c0e1_*`, tests (`test_scan_outcomes.py`, `test_decisions_job.py`,
+`test_decisions_api.py`, `test_scheduler.py`), `frontend/src/components/decisions/TrackRecord.tsx`,
+`frontend/src/pages/Decisions.tsx` (+ test), `frontend/src/api/*`, `frontend/src/mocks/*`,
+`context/backend.md`, `context/data-and-ops.md`.
+
+Acceptance (all run): `uv run pytest` (889 passed), `uv run ruff check .`, `npm test`,
+`npm run lint`, `tsc -b`; the live in-process run above.

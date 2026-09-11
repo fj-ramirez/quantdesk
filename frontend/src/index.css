@@ -851,3 +851,63 @@ code {
   opacity: 0.75;
   max-width: 80ch;
 }
+
+/* ---------------------------------------------------------------------------
+   T60 -- /decisions page. Same token discipline as every scan-family block above:
+   no literal colours; chip colours come from theme/vizPalette.ts via StatusChip.
+   --------------------------------------------------------------------------- */
+
+.decisions-page { padding: 16px; display: flex; flex-direction: column; gap: 12px; }
+
+.decisions-side { font-family: var(--mono); font-size: 12px; font-weight: 600; letter-spacing: 0.04em; }
+.decisions-side--long { color: var(--accent); }
+.decisions-side--short { color: var(--text); opacity: 0.85; }
+.decisions-grade { font-family: var(--mono); white-space: nowrap; }
+.decisions-setup { white-space: nowrap; }
+
+.decisions-detail__chips { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.decisions-detail__rejection { margin: 0; font-size: 12px; color: var(--text); opacity: 0.85; }
+.decisions-detail__h {
+  font-size: 11px; text-transform: uppercase; letter-spacing: 0.06em;
+  color: var(--text); opacity: 0.6; margin: 0 0 4px;
+}
+.decisions-detail__list { margin: 0 0 0 16px; padding: 0; font-size: 13px; color: var(--text); max-width: 80ch; }
+.decisions-detail__list li { margin: 2px 0; }
+.decisions-detail__list--warn { opacity: 0.85; }
+.decisions-detail__structure { margin: 0; font-size: 13px; max-width: 80ch; }
+
+.decisions-levels {
+  display: grid; grid-template-columns: auto 1fr; gap: 4px 12px; margin: 0;
+  font-size: 13px;
+}
+.decisions-levels dt { color: var(--text); opacity: 0.6; font-family: var(--mono); }
+.decisions-levels dd { margin: 0; display: flex; flex-wrap: wrap; gap: 4px 10px; align-items: baseline; }
+.decisions-levels__price { font-family: var(--mono); font-weight: 600; color: var(--text-h); }
+.decisions-levels__label { font-size: 12px; color: var(--text); opacity: 0.75; }
+
+.decisions-score { border-collapse: collapse; font-size: 12px; }
+.decisions-score th { text-align: left; font-weight: 500; padding: 2px 10px 2px 0; color: var(--text); opacity: 0.8; }
+.decisions-score__pts { font-family: var(--mono); text-align: right; padding: 2px 10px 2px 0; white-space: nowrap; }
+.decisions-score__note { color: var(--text); opacity: 0.7; }
+
+.decisions-notrade__list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+.decisions-notrade__item { border: 1px solid var(--border); border-radius: 3px; padding: 6px 10px; font-size: 12px; }
+.decisions-notrade__item summary { cursor: pointer; }
+.decisions-notrade__first { color: var(--text); opacity: 0.8; }
+.decisions-notrade__reasons { margin: 6px 0 0 16px; padding: 0; }
+.decisions-notrade__nochain { font-size: 12px; color: var(--text); opacity: 0.7; margin: 8px 0 0; }
+
+/* T61 -- track record block on /decisions. */
+.track-record { display: flex; flex-direction: column; gap: 10px; border-top: 1px solid var(--border); padding-top: 12px; }
+.track-record__head { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; flex-wrap: wrap; }
+.track-record__run { display: flex; align-items: center; gap: 8px; font-size: 12px; }
+.track-record__note { font-size: 12px; color: var(--text); opacity: 0.75; margin: 0; max-width: 90ch; }
+.track-record__stats { border-collapse: collapse; font-size: 12px; }
+.track-record__stats th, .track-record__stats td { padding: 3px 10px 3px 0; text-align: right; font-family: var(--mono); white-space: nowrap; }
+.track-record__stats th[scope="row"], .track-record__stats thead th:first-child { text-align: left; font-family: inherit; font-weight: 500; }
+.track-record__stats thead th { color: var(--text); opacity: 0.6; font-weight: 500; }
+.track-record__group { color: var(--text); opacity: 0.6; font-size: 11px; text-transform: uppercase; letter-spacing: 0.06em; }
+.track-record__r--pos { color: var(--accent); }
+.track-record__r--neg { opacity: 0.85; }
+.track-record__unrealized { font-size: 11px; opacity: 0.6; margin-left: 4px; }
+.track-record__notecell { max-width: 36ch; white-space: normal; font-size: 11px; color: var(--text); opacity: 0.75; }

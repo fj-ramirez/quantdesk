@@ -137,8 +137,24 @@ export function statusChipColor(status: string, palette: VizPalette): string {
     case 'mixed':
     case 'weakening':
       return palette.seriesExZeroDte;
+    // T60: an `active` opportunity (entry reachable now) shares `improving`'s blue -- a
+    // "go" state that is deliberately *not* the red/green verdict pair, since an active fade
+    // and an active continuation are both "active" and neither is a bullish/bearish claim.
+    // `watch` (a fade whose wall is not yet within reach) is "still resolving", the same
+    // reading `pending`/`mixed` already carry in orange (the case above). `rejected` falls
+    // through to the neutral default below with `noise-dominated`: nothing to act on.
     case 'improving':
+    case 'active':
       return palette.divergingPositive;
+    case 'watch':
+      return palette.seriesExZeroDte;
+    // T61: outcome chips on the track record. `target` reuses the green `continued` already
+    // means ("it worked"), `stop` the red `failed` means; `expired`/`untriggered` are the
+    // neutral "nothing to say" grey with `noise-dominated`; `pending` keeps its orange above.
+    case 'target':
+      return palette.levelSupport;
+    case 'stop':
+      return palette.levelResistance;
     case 'stale':
       return palette.seriesAll;
     case 'noise-dominated':

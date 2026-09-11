@@ -1,0 +1,2612 @@
+{
+  "records": [
+    {
+      "id": 12,
+      "underlying": "XLI",
+      "filter": "ALL",
+      "snapshot_id": 71,
+      "key": "CONTINUATION_DOWN",
+      "decided_on": "2026-09-10",
+      "as_of": "2026-09-10T20:02:23Z",
+      "setup": "continuation",
+      "side": "SHORT",
+      "status": "active",
+      "score": 86,
+      "grade": "A",
+      "entry": 170.39,
+      "stop": 172.63785831996373,
+      "target": 165.0,
+      "target_2": null,
+      "spot": 170.39,
+      "atr14": 2.247858319963728,
+      "outcome": "pending",
+      "fill": null,
+      "triggered_on": null,
+      "resolved_on": null,
+      "bars_held": null,
+      "mfe_r": null,
+      "mae_r": null,
+      "result_r": null,
+      "mark_r": null,
+      "evaluated_through": null,
+      "outcome_note": "no bars after the decision date yet",
+      "opportunity": {
+        "key": "CONTINUATION_DOWN",
+        "setup": "continuation",
+        "side": "SHORT",
+        "status": "active",
+        "score": 86,
+        "grade": "A",
+        "entry": 170.39,
+        "entry_label": "current spot; a continuation regime is entered at market, not at a level",
+        "stop": 172.63785831996373,
+        "stop_label": "volatility stop, 1.0 ATR from entry",
+        "target": 165.0,
+        "target_label": "the put wall ahead ($77m of gamma)",
+        "target_2": null,
+        "target_2_label": null,
+        "risk": 2.24785831996374,
+        "reward": 5.389999999999986,
+        "rr": 2.39783795630275,
+        "risk_atr": 1.0000000000000053,
+        "reward_atr": 2.3978379563027623,
+        "thesis": [
+          "Dealers are short gamma (63% of gross): hedging buys strength and sells weakness, so moves extend rather than mean-revert.",
+          "The last five sessions moved -1.29%; the trade follows that direction (down).",
+          "The put wall at 165.00 is 2.40 ATR ahead, past the 2.0-ATR room-to-run floor.",
+          "Trend composite at the 73% percentile of the universe: trending, which supports continuation.",
+          "Over the last 126 bars 6 of 11 resolved range breakouts continued (55%), a base rate that supports chasing the move.",
+          "A downside range breakout through 171.62 on 2026-09-10 is still open (0 bars in)."
+        ],
+        "invalidation": [
+          "A close above 172.64 (volatility stop, 1.0 ATR from entry).",
+          "Net GEX turning positive on the next capture with spot above the flip: hedging flips from chasing to pinning and the continuation thesis is gone.",
+          "The five-day return changing sign: the direction the entry follows is no longer there."
+        ],
+        "structure": "Buy a put debit spread capped at the target (IV/RV 1.49: implied is rich, so cap the vega paid).",
+        "warnings": [
+          "The stop is an ATR multiple, not a computed level: nothing sits within 1.5 ATR behind the entry."
+        ],
+        "score_breakdown": [
+          {
+            "name": "regime alignment",
+            "points": 35,
+            "max_points": 35,
+            "note": "setup matches the continuation verdict"
+          },
+          {
+            "name": "positioning conviction",
+            "points": 20,
+            "max_points": 20,
+            "note": "|net| is 63.3% of gross gamma"
+          },
+          {
+            "name": "reward/risk",
+            "points": 15,
+            "max_points": 20,
+            "note": "reward/risk 2.40 (saturates at 3.0)"
+          },
+          {
+            "name": "trend context",
+            "points": 11,
+            "max_points": 15,
+            "note": "trend composite at the 73% percentile favours continuation"
+          },
+          {
+            "name": "breakout base rate",
+            "points": 5,
+            "max_points": 10,
+            "note": "55% of recent breakouts continued"
+          }
+        ],
+        "rejection_reason": null
+      }
+    },
+    {
+      "id": 14,
+      "underlying": "XLP",
+      "filter": "ALL",
+      "snapshot_id": 73,
+      "key": "CONTINUATION_DOWN",
+      "decided_on": "2026-09-10",
+      "as_of": "2026-09-10T20:01:18Z",
+      "setup": "continuation",
+      "side": "SHORT",
+      "status": "active",
+      "score": 86,
+      "grade": "A",
+      "entry": 83.115,
+      "stop": 84.02071430751255,
+      "target": 78.0,
+      "target_2": null,
+      "spot": 83.115,
+      "atr14": 0.9057143075125558,
+      "outcome": "pending",
+      "fill": null,
+      "triggered_on": null,
+      "resolved_on": null,
+      "bars_held": null,
+      "mfe_r": null,
+      "mae_r": null,
+      "result_r": null,
+      "mark_r": null,
+      "evaluated_through": null,
+      "outcome_note": "no bars after the decision date yet",
+      "opportunity": {
+        "key": "CONTINUATION_DOWN",
+        "setup": "continuation",
+        "side": "SHORT",
+        "status": "active",
+        "score": 86,
+        "grade": "A",
+        "entry": 83.115,
+        "entry_label": "current spot; a continuation regime is entered at market, not at a level",
+        "stop": 84.02071430751255,
+        "stop_label": "volatility stop, 1.0 ATR from entry",
+        "target": 78.0,
+        "target_label": "the put wall ahead ($32m of gamma)",
+        "target_2": null,
+        "target_2_label": null,
+        "risk": 0.9057143075125538,
+        "reward": 5.114999999999995,
+        "rr": 5.647476204773433,
+        "risk_atr": 0.9999999999999978,
+        "reward_atr": 5.647476204773421,
+        "thesis": [
+          "Dealers are short gamma (52% of gross): hedging buys strength and sells weakness, so moves extend rather than mean-revert.",
+          "The last five sessions moved -2.85%; the trade follows that direction (down).",
+          "The put wall at 78.00 is 5.65 ATR ahead, past the 2.0-ATR room-to-run floor.",
+          "Trend composite at the 40% percentile of the universe: choppy, which argues against chasing.",
+          "Over the last 126 bars 2 of 4 resolved range breakouts continued (50%), a base rate that supports chasing the move.",
+          "A downside range breakout through 83.81 on 2026-09-09 is still open (1 bars in)."
+        ],
+        "invalidation": [
+          "A close above 84.02 (volatility stop, 1.0 ATR from entry).",
+          "Net GEX turning positive on the next capture with spot above the flip: hedging flips from chasing to pinning and the continuation thesis is gone.",
+          "The five-day return changing sign: the direction the entry follows is no longer there."
+        ],
+        "structure": "Buy outright puts or trade the underlying; no implied-versus-realized view is available.",
+        "warnings": [
+          "The stop is an ATR multiple, not a computed level: nothing sits within 1.5 ATR behind the entry."
+        ],
+        "score_breakdown": [
+          {
+            "name": "regime alignment",
+            "points": 35,
+            "max_points": 35,
+            "note": "setup matches the continuation verdict"
+          },
+          {
+            "name": "positioning conviction",
+            "points": 20,
+            "max_points": 20,
+            "note": "|net| is 51.9% of gross gamma"
+          },
+          {
+            "name": "reward/risk",
+            "points": 20,
+            "max_points": 20,
+            "note": "reward/risk 5.65 (saturates at 3.0)"
+          },
+          {
+            "name": "trend context",
+            "points": 6,
+            "max_points": 15,
+            "note": "trend composite at the 40% percentile leans against this setup"
+          },
+          {
+            "name": "breakout base rate",
+            "points": 5,
+            "max_points": 10,
+            "note": "50% of recent breakouts continued"
+          }
+        ],
+        "rejection_reason": null
+      }
+    },
+    {
+      "id": 21,
+      "underlying": "HYG",
+      "filter": "ALL",
+      "snapshot_id": 84,
+      "key": "CONTINUATION_DOWN",
+      "decided_on": "2026-09-10",
+      "as_of": "2026-09-10T20:44:18Z",
+      "setup": "continuation",
+      "side": "SHORT",
+      "status": "active",
+      "score": 81,
+      "grade": "A",
+      "entry": 78.8,
+      "stop": 79.05446434020996,
+      "target": 78.0,
+      "target_2": null,
+      "spot": 78.8,
+      "atr14": 0.21785736083984375,
+      "outcome": "pending",
+      "fill": null,
+      "triggered_on": null,
+      "resolved_on": null,
+      "bars_held": null,
+      "mfe_r": null,
+      "mae_r": null,
+      "result_r": null,
+      "mark_r": null,
+      "evaluated_through": null,
+      "outcome_note": "no bars after the decision date yet",
+      "opportunity": {
+        "key": "CONTINUATION_DOWN",
+        "setup": "continuation",
+        "side": "SHORT",
+        "status": "active",
+        "score": 81,
+        "grade": "A",
+        "entry": 78.8,
+        "entry_label": "current spot; a continuation regime is entered at market, not at a level",
+        "stop": 79.05446434020996,
+        "stop_label": "call wall at 79.00 + 0.25 ATR",
+        "target": 78.0,
+        "target_label": "first strike ahead carrying at least 25% of the chain's largest gamma",
+        "target_2": null,
+        "target_2_label": null,
+        "risk": 0.2544643402099638,
+        "reward": 0.7999999999999972,
+        "rr": 3.1438589758388176,
+        "risk_atr": 1.1680318683242996,
+        "reward_atr": 3.6721274732971327,
+        "thesis": [
+          "Dealers are short gamma (37% of gross): hedging buys strength and sells weakness, so moves extend rather than mean-revert.",
+          "The last five sessions moved -0.62%; the trade follows that direction (down).",
+          "No wall sits below spot in this chain: nothing computed stands in the way.",
+          "Trend composite at the 62% percentile of the universe: trending, which supports continuation.",
+          "Over the last 126 bars 2 of 8 resolved range breakouts continued (25%), a base rate that leans against this setup.",
+          "A downside range breakout through 79.06 on 2026-09-09 is still open (1 bars in)."
+        ],
+        "invalidation": [
+          "A close above 79.05 (call wall at 79.00 + 0.25 ATR).",
+          "Net GEX turning positive on the next capture with spot above the flip: hedging flips from chasing to pinning and the continuation thesis is gone.",
+          "The five-day return changing sign: the direction the entry follows is no longer there."
+        ],
+        "structure": "Buy a put debit spread capped at the target (IV/RV 1.49: implied is rich, so cap the vega paid).",
+        "warnings": [],
+        "score_breakdown": [
+          {
+            "name": "regime alignment",
+            "points": 35,
+            "max_points": 35,
+            "note": "setup matches the continuation verdict"
+          },
+          {
+            "name": "positioning conviction",
+            "points": 15,
+            "max_points": 20,
+            "note": "|net| is 37.0% of gross gamma"
+          },
+          {
+            "name": "reward/risk",
+            "points": 20,
+            "max_points": 20,
+            "note": "reward/risk 3.14 (saturates at 3.0)"
+          },
+          {
+            "name": "trend context",
+            "points": 9,
+            "max_points": 15,
+            "note": "trend composite at the 62% percentile favours continuation"
+          },
+          {
+            "name": "breakout base rate",
+            "points": 2,
+            "max_points": 10,
+            "note": "25% of recent breakouts continued"
+          }
+        ],
+        "rejection_reason": null
+      }
+    },
+    {
+      "id": 17,
+      "underlying": "IWM",
+      "filter": "ALL",
+      "snapshot_id": 78,
+      "key": "CONTINUATION_DOWN",
+      "decided_on": "2026-09-10",
+      "as_of": "2026-09-10T20:44:29Z",
+      "setup": "continuation",
+      "side": "SHORT",
+      "status": "active",
+      "score": 78,
+      "grade": "A",
+      "entry": 287.75,
+      "stop": 290.7421428135463,
+      "target": 284.0,
+      "target_2": null,
+      "spot": 287.75,
+      "atr14": 2.968571254185268,
+      "outcome": "pending",
+      "fill": null,
+      "triggered_on": null,
+      "resolved_on": null,
+      "bars_held": null,
+      "mfe_r": null,
+      "mae_r": null,
+      "result_r": null,
+      "mark_r": null,
+      "evaluated_through": null,
+      "outcome_note": "no bars after the decision date yet",
+      "opportunity": {
+        "key": "CONTINUATION_DOWN",
+        "setup": "continuation",
+        "side": "SHORT",
+        "status": "active",
+        "score": 78,
+        "grade": "A",
+        "entry": 287.75,
+        "entry_label": "current spot; a continuation regime is entered at market, not at a level",
+        "stop": 290.7421428135463,
+        "stop_label": "call wall at 290.00 + 0.25 ATR",
+        "target": 284.0,
+        "target_label": "first strike ahead carrying at least 25% of the chain's largest gamma",
+        "target_2": null,
+        "target_2_label": null,
+        "risk": 2.992142813546309,
+        "reward": 3.75,
+        "rr": 1.2532824245629752,
+        "risk_atr": 1.0079403717622775,
+        "reward_atr": 1.2632339529371335,
+        "thesis": [
+          "Dealers are short gamma (54% of gross): hedging buys strength and sells weakness, so moves extend rather than mean-revert.",
+          "The last five sessions moved -2.15%; the trade follows that direction (down).",
+          "No wall sits below spot in this chain: nothing computed stands in the way.",
+          "Trend composite at the 62% percentile of the universe: trending, which supports continuation.",
+          "Over the last 126 bars 8 of 12 resolved range breakouts continued (67%), a base rate that supports chasing the move.",
+          "A downside range breakout through 289.97 on 2026-09-10 is still open (0 bars in)."
+        ],
+        "invalidation": [
+          "A close above 290.74 (call wall at 290.00 + 0.25 ATR).",
+          "Net GEX turning positive on the next capture with spot above the flip: hedging flips from chasing to pinning and the continuation thesis is gone.",
+          "The five-day return changing sign: the direction the entry follows is no longer there."
+        ],
+        "structure": "Buy a put debit spread capped at the target (IV/RV 1.56: implied is rich, so cap the vega paid).",
+        "warnings": [],
+        "score_breakdown": [
+          {
+            "name": "regime alignment",
+            "points": 35,
+            "max_points": 35,
+            "note": "setup matches the continuation verdict"
+          },
+          {
+            "name": "positioning conviction",
+            "points": 20,
+            "max_points": 20,
+            "note": "|net| is 54.3% of gross gamma"
+          },
+          {
+            "name": "reward/risk",
+            "points": 7,
+            "max_points": 20,
+            "note": "reward/risk 1.25 (saturates at 3.0)"
+          },
+          {
+            "name": "trend context",
+            "points": 9,
+            "max_points": 15,
+            "note": "trend composite at the 62% percentile favours continuation"
+          },
+          {
+            "name": "breakout base rate",
+            "points": 7,
+            "max_points": 10,
+            "note": "67% of recent breakouts continued"
+          }
+        ],
+        "rejection_reason": null
+      }
+    },
+    {
+      "id": 13,
+      "underlying": "XLY",
+      "filter": "ALL",
+      "snapshot_id": 72,
+      "key": "CONTINUATION_DOWN",
+      "decided_on": "2026-09-10",
+      "as_of": "2026-09-10T20:01:30Z",
+      "setup": "continuation",
+      "side": "SHORT",
+      "status": "active",
+      "score": 75,
+      "grade": "A",
+      "entry": 111.86,
+      "stop": 113.31035770961216,
+      "target": 110.0,
+      "target_2": 107.5,
+      "spot": 111.86,
+      "atr14": 1.4503577096121651,
+      "outcome": "pending",
+      "fill": null,
+      "triggered_on": null,
+      "resolved_on": null,
+      "bars_held": null,
+      "mfe_r": null,
+      "mae_r": null,
+      "result_r": null,
+      "mark_r": null,
+      "evaluated_through": null,
+      "outcome_note": "no bars after the decision date yet",
+      "opportunity": {
+        "key": "CONTINUATION_DOWN",
+        "setup": "continuation",
+        "side": "SHORT",
+        "status": "active",
+        "score": 75,
+        "grade": "A",
+        "entry": 111.86,
+        "entry_label": "current spot; a continuation regime is entered at market, not at a level",
+        "stop": 113.31035770961216,
+        "stop_label": "volatility stop, 1.0 ATR from entry",
+        "target": 110.0,
+        "target_label": "the put wall ahead ($55m of gamma)",
+        "target_2": 107.5,
+        "target_2_label": "next comparable strike beyond the put wall",
+        "risk": 1.4503577096121631,
+        "reward": 1.8599999999999994,
+        "rr": 1.2824422469525658,
+        "risk_atr": 0.9999999999999987,
+        "reward_atr": 1.282442246952564,
+        "thesis": [
+          "Dealers are short gamma (64% of gross): hedging buys strength and sells weakness, so moves extend rather than mean-revert.",
+          "The last five sessions moved -2.52%; the trade follows that direction (down).",
+          "The put wall at 110.00 is 1.28 ATR ahead, more than an ATR of room before the move meets it.",
+          "Trend composite at the 57% percentile of the universe: trending, which supports continuation.",
+          "Over the last 126 bars 5 of 11 resolved range breakouts continued (45%), a base rate that leans against this setup.",
+          "A downside range breakout through 113.75 on 2026-09-09 is still open (1 bars in)."
+        ],
+        "invalidation": [
+          "A close above 113.31 (volatility stop, 1.0 ATR from entry).",
+          "Net GEX turning positive on the next capture with spot above the flip: hedging flips from chasing to pinning and the continuation thesis is gone.",
+          "The five-day return changing sign: the direction the entry follows is no longer there."
+        ],
+        "structure": "Buy a put debit spread capped at the target (IV/RV 1.20: implied is rich, so cap the vega paid).",
+        "warnings": [
+          "The stop is an ATR multiple, not a computed level: nothing sits within 1.5 ATR behind the entry."
+        ],
+        "score_breakdown": [
+          {
+            "name": "regime alignment",
+            "points": 35,
+            "max_points": 35,
+            "note": "setup matches the continuation verdict"
+          },
+          {
+            "name": "positioning conviction",
+            "points": 20,
+            "max_points": 20,
+            "note": "|net| is 64.2% of gross gamma"
+          },
+          {
+            "name": "reward/risk",
+            "points": 7,
+            "max_points": 20,
+            "note": "reward/risk 1.28 (saturates at 3.0)"
+          },
+          {
+            "name": "trend context",
+            "points": 8,
+            "max_points": 15,
+            "note": "trend composite at the 57% percentile favours continuation"
+          },
+          {
+            "name": "breakout base rate",
+            "points": 5,
+            "max_points": 10,
+            "note": "45% of recent breakouts continued"
+          }
+        ],
+        "rejection_reason": null
+      }
+    },
+    {
+      "id": 15,
+      "underlying": "XLU",
+      "filter": "ALL",
+      "snapshot_id": 74,
+      "key": "CONTINUATION_DOWN",
+      "decided_on": "2026-09-10",
+      "as_of": "2026-09-10T20:01:53Z",
+      "setup": "continuation",
+      "side": "SHORT",
+      "status": "active",
+      "score": 75,
+      "grade": "A",
+      "entry": 42.65,
+      "stop": 43.74393572660872,
+      "target": 40.0,
+      "target_2": null,
+      "spot": 42.65,
+      "atr14": 0.6535709926060268,
+      "outcome": "pending",
+      "fill": null,
+      "triggered_on": null,
+      "resolved_on": null,
+      "bars_held": null,
+      "mfe_r": null,
+      "mae_r": null,
+      "result_r": null,
+      "mark_r": null,
+      "evaluated_through": null,
+      "outcome_note": "no bars after the decision date yet",
+      "opportunity": {
+        "key": "CONTINUATION_DOWN",
+        "setup": "continuation",
+        "side": "SHORT",
+        "status": "active",
+        "score": 75,
+        "grade": "A",
+        "entry": 42.65,
+        "entry_label": "current spot; a continuation regime is entered at market, not at a level",
+        "stop": 43.74393572660872,
+        "stop_label": "gamma flip at 43.58 + 0.25 ATR",
+        "target": 40.0,
+        "target_label": "next comparable strike beyond the put wall (the wall itself at 42.00 is too close to pay for the stop)",
+        "target_2": null,
+        "target_2_label": null,
+        "risk": 1.09393572660872,
+        "reward": 2.6499999999999986,
+        "rr": 2.4224457941557413,
+        "risk_atr": 1.6737825561180397,
+        "reward_atr": 4.054647513399392,
+        "thesis": [
+          "Dealers are short gamma (24% of gross): hedging buys strength and sells weakness, so moves extend rather than mean-revert.",
+          "The last five sessions moved -0.35%; the trade follows that direction (down).",
+          "The put wall at 42.00 is 0.99 ATR ahead, close enough that it is the first place the move can stall.",
+          "Trend composite at the 33% percentile of the universe: choppy, which argues against chasing.",
+          "Over the last 126 bars 6 of 7 resolved range breakouts continued (86%), a base rate that supports chasing the move."
+        ],
+        "invalidation": [
+          "A close above 43.74 (gamma flip at 43.58 + 0.25 ATR).",
+          "Net GEX turning positive on the next capture with spot above the flip: hedging flips from chasing to pinning and the continuation thesis is gone.",
+          "The five-day return changing sign: the direction the entry follows is no longer there."
+        ],
+        "structure": "Buy outright puts or trade the underlying; no implied-versus-realized view is available.",
+        "warnings": [],
+        "score_breakdown": [
+          {
+            "name": "regime alignment",
+            "points": 35,
+            "max_points": 35,
+            "note": "setup matches the continuation verdict"
+          },
+          {
+            "name": "positioning conviction",
+            "points": 10,
+            "max_points": 20,
+            "note": "|net| is 23.8% of gross gamma"
+          },
+          {
+            "name": "reward/risk",
+            "points": 16,
+            "max_points": 20,
+            "note": "reward/risk 2.42 (saturates at 3.0)"
+          },
+          {
+            "name": "trend context",
+            "points": 5,
+            "max_points": 15,
+            "note": "trend composite at the 33% percentile leans against this setup"
+          },
+          {
+            "name": "breakout base rate",
+            "points": 9,
+            "max_points": 10,
+            "note": "86% of recent breakouts continued"
+          }
+        ],
+        "rejection_reason": null
+      }
+    },
+    {
+      "id": 2,
+      "underlying": "SPY",
+      "filter": "ALL",
+      "snapshot_id": 63,
+      "key": "CONTINUATION_DOWN",
+      "decided_on": "2026-09-10",
+      "as_of": "2026-09-10T20:19:27Z",
+      "setup": "continuation",
+      "side": "SHORT",
+      "status": "active",
+      "score": 74,
+      "grade": "B",
+      "entry": 757.76,
+      "stop": 761.3407145908901,
+      "target": 750.0,
+      "target_2": null,
+      "spot": 757.76,
+      "atr14": 5.362858363560268,
+      "outcome": "pending",
+      "fill": null,
+      "triggered_on": null,
+      "resolved_on": null,
+      "bars_held": null,
+      "mfe_r": null,
+      "mae_r": null,
+      "result_r": null,
+      "mark_r": null,
+      "evaluated_through": null,
+      "outcome_note": "no bars after the decision date yet",
+      "opportunity": {
+        "key": "CONTINUATION_DOWN",
+        "setup": "continuation",
+        "side": "SHORT",
+        "status": "active",
+        "score": 74,
+        "grade": "B",
+        "entry": 757.76,
+        "entry_label": "current spot; a continuation regime is entered at market, not at a level",
+        "stop": 761.3407145908901,
+        "stop_label": "call wall at 760.00 + 0.25 ATR",
+        "target": 750.0,
+        "target_label": "first strike ahead carrying at least 25% of the chain's largest gamma",
+        "target_2": null,
+        "target_2_label": null,
+        "risk": 3.580714590890125,
+        "reward": 7.759999999999991,
+        "rr": 2.167165185335518,
+        "risk_atr": 0.6676877046055301,
+        "reward_atr": 1.4469895480976902,
+        "thesis": [
+          "Dealers are short gamma (31% of gross): hedging buys strength and sells weakness, so moves extend rather than mean-revert.",
+          "The last five sessions moved -0.96%; the trade follows that direction (down).",
+          "No wall sits below spot in this chain: nothing computed stands in the way.",
+          "Trend composite at the 43% percentile of the universe: choppy, which argues against chasing.",
+          "Over the last 126 bars 8 of 11 resolved range breakouts continued (73%), a base rate that supports chasing the move.",
+          "A downside range breakout through 759.48 on 2026-09-10 is still open (0 bars in)."
+        ],
+        "invalidation": [
+          "A close above 761.34 (call wall at 760.00 + 0.25 ATR).",
+          "Net GEX turning positive on the next capture with spot above the flip: hedging flips from chasing to pinning and the continuation thesis is gone.",
+          "The five-day return changing sign: the direction the entry follows is no longer there."
+        ],
+        "structure": "Buy a put debit spread capped at the target (IV/RV 1.70: implied is rich, so cap the vega paid).",
+        "warnings": [],
+        "score_breakdown": [
+          {
+            "name": "regime alignment",
+            "points": 35,
+            "max_points": 35,
+            "note": "setup matches the continuation verdict"
+          },
+          {
+            "name": "positioning conviction",
+            "points": 12,
+            "max_points": 20,
+            "note": "|net| is 30.8% of gross gamma"
+          },
+          {
+            "name": "reward/risk",
+            "points": 14,
+            "max_points": 20,
+            "note": "reward/risk 2.17 (saturates at 3.0)"
+          },
+          {
+            "name": "trend context",
+            "points": 6,
+            "max_points": 15,
+            "note": "trend composite at the 43% percentile leans against this setup"
+          },
+          {
+            "name": "breakout base rate",
+            "points": 7,
+            "max_points": 10,
+            "note": "73% of recent breakouts continued"
+          }
+        ],
+        "rejection_reason": null
+      }
+    },
+    {
+      "id": 25,
+      "underlying": "GDX",
+      "filter": "ALL",
+      "snapshot_id": 89,
+      "key": "CONTINUATION_DOWN",
+      "decided_on": "2026-09-10",
+      "as_of": "2026-09-10T20:44:30Z",
+      "setup": "continuation",
+      "side": "SHORT",
+      "status": "active",
+      "score": 72,
+      "grade": "B",
+      "entry": 96.05,
+      "stop": 98.48302242478084,
+      "target": 90.0,
+      "target_2": 85.0,
+      "spot": 96.05,
+      "atr14": 3.521428789411272,
+      "outcome": "pending",
+      "fill": null,
+      "triggered_on": null,
+      "resolved_on": null,
+      "bars_held": null,
+      "mfe_r": null,
+      "mae_r": null,
+      "result_r": null,
+      "mark_r": null,
+      "evaluated_through": null,
+      "outcome_note": "no bars after the decision date yet",
+      "opportunity": {
+        "key": "CONTINUATION_DOWN",
+        "setup": "continuation",
+        "side": "SHORT",
+        "status": "active",
+        "score": 72,
+        "grade": "B",
+        "entry": 96.05,
+        "entry_label": "current spot; a continuation regime is entered at market, not at a level",
+        "stop": 98.48302242478084,
+        "stop_label": "gamma flip at 97.60 + 0.25 ATR",
+        "target": 90.0,
+        "target_label": "the put wall ahead ($37m of gamma)",
+        "target_2": 85.0,
+        "target_2_label": "next comparable strike beyond the put wall",
+        "risk": 2.4330224247808445,
+        "reward": 6.049999999999997,
+        "rr": 2.4866190867702147,
+        "risk_atr": 0.6909191042274655,
+        "reward_atr": 1.7180526319861953,
+        "thesis": [
+          "Dealers are short gamma (12% of gross): hedging buys strength and sells weakness, so moves extend rather than mean-revert.",
+          "The last five sessions moved -1.64%; the trade follows that direction (down).",
+          "The put wall at 90.00 is 1.72 ATR ahead, more than an ATR of room before the move meets it.",
+          "Trend composite at the 58% percentile of the universe: trending, which supports continuation.",
+          "Over the last 126 bars 6 of 9 resolved range breakouts continued (67%), a base rate that supports chasing the move."
+        ],
+        "invalidation": [
+          "A close above 98.48 (gamma flip at 97.60 + 0.25 ATR).",
+          "Net GEX turning positive on the next capture with spot above the flip: hedging flips from chasing to pinning and the continuation thesis is gone.",
+          "The five-day return changing sign: the direction the entry follows is no longer there."
+        ],
+        "structure": "Buy outright puts or the underlying (IV/RV 0.86: implied is cheap versus realized, so long convexity is paid for).",
+        "warnings": [],
+        "score_breakdown": [
+          {
+            "name": "regime alignment",
+            "points": 35,
+            "max_points": 35,
+            "note": "setup matches the continuation verdict"
+          },
+          {
+            "name": "positioning conviction",
+            "points": 5,
+            "max_points": 20,
+            "note": "|net| is 11.6% of gross gamma"
+          },
+          {
+            "name": "reward/risk",
+            "points": 16,
+            "max_points": 20,
+            "note": "reward/risk 2.49 (saturates at 3.0)"
+          },
+          {
+            "name": "trend context",
+            "points": 9,
+            "max_points": 15,
+            "note": "trend composite at the 58% percentile favours continuation"
+          },
+          {
+            "name": "breakout base rate",
+            "points": 7,
+            "max_points": 10,
+            "note": "67% of recent breakouts continued"
+          }
+        ],
+        "rejection_reason": null
+      }
+    },
+    {
+      "id": 7,
+      "underlying": "XLK",
+      "filter": "ALL",
+      "snapshot_id": 67,
+      "key": "CONTINUATION_UP",
+      "decided_on": "2026-09-10",
+      "as_of": "2026-09-10T20:02:13Z",
+      "setup": "continuation",
+      "side": "LONG",
+      "status": "active",
+      "score": 71,
+      "grade": "B",
+      "entry": 185.485,
+      "stop": 182.50857264927456,
+      "target": 200.0,
+      "target_2": null,
+      "spot": 185.485,
+      "atr14": 2.9764273507254466,
+      "outcome": "pending",
+      "fill": null,
+      "triggered_on": null,
+      "resolved_on": null,
+      "bars_held": null,
+      "mfe_r": null,
+      "mae_r": null,
+      "result_r": null,
+      "mark_r": null,
+      "evaluated_through": null,
+      "outcome_note": "no bars after the decision date yet",
+      "opportunity": {
+        "key": "CONTINUATION_UP",
+        "setup": "continuation",
+        "side": "LONG",
+        "status": "active",
+        "score": 71,
+        "grade": "B",
+        "entry": 185.485,
+        "entry_label": "current spot; a continuation regime is entered at market, not at a level",
+        "stop": 182.50857264927456,
+        "stop_label": "volatility stop, 1.0 ATR from entry",
+        "target": 200.0,
+        "target_label": "the call wall ahead ($10m of gamma)",
+        "target_2": null,
+        "target_2_label": null,
+        "risk": 2.9764273507254586,
+        "reward": 14.514999999999986,
+        "rr": 4.876651868039775,
+        "risk_atr": 1.000000000000004,
+        "reward_atr": 4.876651868039795,
+        "thesis": [
+          "Dealers are short gamma (12% of gross): hedging buys strength and sells weakness, so moves extend rather than mean-revert.",
+          "The last five sessions moved +0.88%; the trade follows that direction (up).",
+          "The call wall at 200.00 is 4.88 ATR ahead, past the 2.0-ATR room-to-run floor.",
+          "Trend composite at the 36% percentile of the universe: choppy, which argues against chasing.",
+          "Over the last 126 bars 7 of 12 resolved range breakouts continued (58%), a base rate that supports chasing the move."
+        ],
+        "invalidation": [
+          "A close below 182.51 (volatility stop, 1.0 ATR from entry).",
+          "Net GEX turning positive on the next capture with spot above the flip: hedging flips from chasing to pinning and the continuation thesis is gone.",
+          "The five-day return changing sign: the direction the entry follows is no longer there."
+        ],
+        "structure": "Buy a call debit spread capped at the target (IV/RV 1.30: implied is rich, so cap the vega paid).",
+        "warnings": [
+          "The stop is an ATR multiple, not a computed level: nothing sits within 1.5 ATR behind the entry."
+        ],
+        "score_breakdown": [
+          {
+            "name": "regime alignment",
+            "points": 35,
+            "max_points": 35,
+            "note": "setup matches the continuation verdict"
+          },
+          {
+            "name": "positioning conviction",
+            "points": 5,
+            "max_points": 20,
+            "note": "|net| is 11.6% of gross gamma"
+          },
+          {
+            "name": "reward/risk",
+            "points": 20,
+            "max_points": 20,
+            "note": "reward/risk 4.88 (saturates at 3.0)"
+          },
+          {
+            "name": "trend context",
+            "points": 5,
+            "max_points": 15,
+            "note": "trend composite at the 36% percentile leans against this setup"
+          },
+          {
+            "name": "breakout base rate",
+            "points": 6,
+            "max_points": 10,
+            "note": "58% of recent breakouts continued"
+          }
+        ],
+        "rejection_reason": null
+      }
+    },
+    {
+      "id": 6,
+      "underlying": "DIA",
+      "filter": "ALL",
+      "snapshot_id": 66,
+      "key": "CONTINUATION_DOWN",
+      "decided_on": "2026-09-10",
+      "as_of": "2026-09-10T20:01:08Z",
+      "setup": "continuation",
+      "side": "SHORT",
+      "status": "active",
+      "score": 68,
+      "grade": "B",
+      "entry": 520.565,
+      "stop": 526.8530125620197,
+      "target": 510.0,
+      "target_2": 500.0,
+      "spot": 520.565,
+      "atr14": 4.38214111328125,
+      "outcome": "pending",
+      "fill": null,
+      "triggered_on": null,
+      "resolved_on": null,
+      "bars_held": null,
+      "mfe_r": null,
+      "mae_r": null,
+      "result_r": null,
+      "mark_r": null,
+      "evaluated_through": null,
+      "outcome_note": "no bars after the decision date yet",
+      "opportunity": {
+        "key": "CONTINUATION_DOWN",
+        "setup": "continuation",
+        "side": "SHORT",
+        "status": "active",
+        "score": 68,
+        "grade": "B",
+        "entry": 520.565,
+        "entry_label": "current spot; a continuation regime is entered at market, not at a level",
+        "stop": 526.8530125620197,
+        "stop_label": "gamma flip at 525.76 + 0.25 ATR",
+        "target": 510.0,
+        "target_label": "the put wall ahead ($83m of gamma)",
+        "target_2": 500.0,
+        "target_2_label": "next comparable strike beyond the put wall",
+        "risk": 6.288012562019617,
+        "reward": 10.565000000000055,
+        "rr": 1.680181121744886,
+        "risk_atr": 1.4349178630880037,
+        "reward_atr": 2.410921904814977,
+        "thesis": [
+          "Dealers are short gamma (25% of gross): hedging buys strength and sells weakness, so moves extend rather than mean-revert.",
+          "The last five sessions moved -1.86%; the trade follows that direction (down).",
+          "The put wall at 510.00 is 2.41 ATR ahead, past the 2.0-ATR room-to-run floor.",
+          "Trend composite at the 41% percentile of the universe: choppy, which argues against chasing.",
+          "Over the last 126 bars 7 of 10 resolved range breakouts continued (70%), a base rate that supports chasing the move.",
+          "A downside range breakout through 526.84 on 2026-09-09 is still open (1 bars in)."
+        ],
+        "invalidation": [
+          "A close above 526.85 (gamma flip at 525.76 + 0.25 ATR).",
+          "Net GEX turning positive on the next capture with spot above the flip: hedging flips from chasing to pinning and the continuation thesis is gone.",
+          "The five-day return changing sign: the direction the entry follows is no longer there."
+        ],
+        "structure": "Buy a put debit spread capped at the target (IV/RV 1.41: implied is rich, so cap the vega paid).",
+        "warnings": [],
+        "score_breakdown": [
+          {
+            "name": "regime alignment",
+            "points": 35,
+            "max_points": 35,
+            "note": "setup matches the continuation verdict"
+          },
+          {
+            "name": "positioning conviction",
+            "points": 10,
+            "max_points": 20,
+            "note": "|net| is 24.6% of gross gamma"
+          },
+          {
+            "name": "reward/risk",
+            "points": 10,
+            "max_points": 20,
+            "note": "reward/risk 1.68 (saturates at 3.0)"
+          },
+          {
+            "name": "trend context",
+            "points": 6,
+            "max_points": 15,
+            "note": "trend composite at the 41% percentile leans against this setup"
+          },
+          {
+            "name": "breakout base rate",
+            "points": 7,
+            "max_points": 10,
+            "note": "70% of recent breakouts continued"
+          }
+        ],
+        "rejection_reason": null
+      }
+    },
+    {
+      "id": 9,
+      "underlying": "XLE",
+      "filter": "ALL",
+      "snapshot_id": 69,
+      "key": "FADE_CALL_WALL",
+      "decided_on": "2026-09-10",
+      "as_of": "2026-09-10T20:44:29Z",
+      "setup": "fade",
+      "side": "SHORT",
+      "status": "active",
+      "score": 68,
+      "grade": "B",
+      "entry": 65.0,
+      "stop": 65.6025002343314,
+      "target": 62.5,
+      "target_2": 62.0,
+      "spot": 64.78,
+      "atr14": 1.2050004686628069,
+      "outcome": "pending",
+      "fill": null,
+      "triggered_on": null,
+      "resolved_on": null,
+      "bars_held": null,
+      "mfe_r": null,
+      "mae_r": null,
+      "result_r": null,
+      "mark_r": null,
+      "evaluated_through": null,
+      "outcome_note": "no bars after the decision date yet",
+      "opportunity": {
+        "key": "FADE_CALL_WALL",
+        "setup": "fade",
+        "side": "SHORT",
+        "status": "active",
+        "score": 68,
+        "grade": "B",
+        "entry": 65.0,
+        "entry_label": "resting limit at the call wall",
+        "stop": 65.6025002343314,
+        "stop_label": "call wall + 0.5 ATR",
+        "target": 62.5,
+        "target_label": "first strike back toward the put wall carrying at least 25% of the faded wall's gamma ($38m)",
+        "target_2": 62.0,
+        "target_2_label": "the opposite (put) wall",
+        "risk": 0.6025002343314014,
+        "reward": 2.5,
+        "rr": 4.149375979536782,
+        "risk_atr": 0.49999999999999833,
+        "reward_atr": 2.0746879897683845,
+        "thesis": [
+          "Dealers are long gamma (17% of gross): hedging sells strength and buys weakness, so a move into the call wall at 65.00 meets supply.",
+          "The call wall carries $96m of gamma and sits 0.18 ATR above spot; no comparable strike sits beyond it in this chain.",
+          "The gamma flip is 1.31 ATR below spot: a rejection at the wall plays out inside a long-gamma regime.",
+          "Trend composite at the 81% percentile of the universe: trending, which argues against fading.",
+          "Over the last 126 bars 7 of 10 resolved range breakouts continued (70%), a base rate that leans against this setup."
+        ],
+        "invalidation": [
+          "A close above 65.60 (call wall + 0.5 ATR): the strike's gamma has been absorbed.",
+          "Net GEX turning negative on the next capture: the fade relies on dealers being long gamma, and a short-gamma chain chases the move instead of leaning against it.",
+          "The call wall migrating above on the next capture: the level being faded no longer exists where the entry rests."
+        ],
+        "structure": "Sell a call credit spread with the short strike at the wall (IV/RV 1.48: implied is rich versus realized, so collecting premium is paid for).",
+        "warnings": [],
+        "score_breakdown": [
+          {
+            "name": "regime alignment",
+            "points": 35,
+            "max_points": 35,
+            "note": "setup matches the fade verdict"
+          },
+          {
+            "name": "positioning conviction",
+            "points": 7,
+            "max_points": 20,
+            "note": "|net| is 16.6% of gross gamma"
+          },
+          {
+            "name": "reward/risk",
+            "points": 20,
+            "max_points": 20,
+            "note": "reward/risk 4.15 (saturates at 3.0)"
+          },
+          {
+            "name": "trend context",
+            "points": 3,
+            "max_points": 15,
+            "note": "trend composite at the 81% percentile leans against this setup"
+          },
+          {
+            "name": "breakout base rate",
+            "points": 3,
+            "max_points": 10,
+            "note": "70% of recent breakouts continued"
+          }
+        ],
+        "rejection_reason": null
+      }
+    },
+    {
+      "id": 24,
+      "underlying": "USO",
+      "filter": "ALL",
+      "snapshot_id": 88,
+      "key": "FADE_CALL_WALL",
+      "decided_on": "2026-09-10",
+      "as_of": "2026-09-10T20:44:18Z",
+      "setup": "fade",
+      "side": "SHORT",
+      "status": "active",
+      "score": 68,
+      "grade": "B",
+      "entry": 160.0,
+      "stop": 162.20892906188965,
+      "target": 155.0,
+      "target_2": 140.0,
+      "spot": 158.8,
+      "atr14": 4.417858123779297,
+      "outcome": "pending",
+      "fill": null,
+      "triggered_on": null,
+      "resolved_on": null,
+      "bars_held": null,
+      "mfe_r": null,
+      "mae_r": null,
+      "result_r": null,
+      "mark_r": null,
+      "evaluated_through": null,
+      "outcome_note": "no bars after the decision date yet",
+      "opportunity": {
+        "key": "FADE_CALL_WALL",
+        "setup": "fade",
+        "side": "SHORT",
+        "status": "active",
+        "score": 68,
+        "grade": "B",
+        "entry": 160.0,
+        "entry_label": "resting limit at the call wall",
+        "stop": 162.20892906188965,
+        "stop_label": "call wall + 0.5 ATR",
+        "target": 155.0,
+        "target_label": "first strike back toward the put wall carrying at least 25% of the faded wall's gamma ($15m)",
+        "target_2": 140.0,
+        "target_2_label": "the opposite (put) wall",
+        "risk": 2.2089290618896484,
+        "reward": 5.0,
+        "rr": 2.263540321988749,
+        "risk_atr": 0.5,
+        "reward_atr": 1.1317701609943744,
+        "thesis": [
+          "Dealers are long gamma (33% of gross): hedging sells strength and buys weakness, so a move into the call wall at 160.00 meets supply.",
+          "The call wall carries $22m of gamma and sits 0.27 ATR above spot; the next comparable strike above it is 165.00, so a break has 1.1 ATR of open air.",
+          "The gamma flip is 2.87 ATR below spot: a rejection at the wall plays out inside a long-gamma regime.",
+          "Trend composite at the 77% percentile of the universe: trending, which argues against fading.",
+          "Over the last 126 bars 5 of 7 resolved range breakouts continued (71%), a base rate that leans against this setup.",
+          "A upside range breakout through 146.23 on 2026-09-09 is still open (1 bars in)."
+        ],
+        "invalidation": [
+          "A close above 162.21 (call wall + 0.5 ATR): the strike's gamma has been absorbed.",
+          "Net GEX turning negative on the next capture: the fade relies on dealers being long gamma, and a short-gamma chain chases the move instead of leaning against it.",
+          "The call wall migrating above on the next capture: the level being faded no longer exists where the entry rests."
+        ],
+        "structure": "Sell a call credit spread with the short strike at the wall (IV/RV 1.50: implied is rich versus realized, so collecting premium is paid for).",
+        "warnings": [
+          "An open upside breakout is running into this wall; fading it means betting the breakout fails."
+        ],
+        "score_breakdown": [
+          {
+            "name": "regime alignment",
+            "points": 35,
+            "max_points": 35,
+            "note": "setup matches the fade verdict"
+          },
+          {
+            "name": "positioning conviction",
+            "points": 13,
+            "max_points": 20,
+            "note": "|net| is 33.5% of gross gamma"
+          },
+          {
+            "name": "reward/risk",
+            "points": 14,
+            "max_points": 20,
+            "note": "reward/risk 2.26 (saturates at 3.0)"
+          },
+          {
+            "name": "trend context",
+            "points": 3,
+            "max_points": 15,
+            "note": "trend composite at the 77% percentile leans against this setup"
+          },
+          {
+            "name": "breakout base rate",
+            "points": 3,
+            "max_points": 10,
+            "note": "71% of recent breakouts continued"
+          }
+        ],
+        "rejection_reason": null
+      }
+    },
+    {
+      "id": 16,
+      "underlying": "XLB",
+      "filter": "ALL",
+      "snapshot_id": 75,
+      "key": "CONTINUATION_DOWN",
+      "decided_on": "2026-09-10",
+      "as_of": "2026-09-10T20:02:33Z",
+      "setup": "continuation",
+      "side": "SHORT",
+      "status": "active",
+      "score": 67,
+      "grade": "B",
+      "entry": 50.74,
+      "stop": 51.56285717555455,
+      "target": 48.0,
+      "target_2": null,
+      "spot": 50.74,
+      "atr14": 0.822857175554548,
+      "outcome": "pending",
+      "fill": null,
+      "triggered_on": null,
+      "resolved_on": null,
+      "bars_held": null,
+      "mfe_r": null,
+      "mae_r": null,
+      "result_r": null,
+      "mark_r": null,
+      "evaluated_through": null,
+      "outcome_note": "no bars after the decision date yet",
+      "opportunity": {
+        "key": "CONTINUATION_DOWN",
+        "setup": "continuation",
+        "side": "SHORT",
+        "status": "active",
+        "score": 67,
+        "grade": "B",
+        "entry": 50.74,
+        "entry_label": "current spot; a continuation regime is entered at market, not at a level",
+        "stop": 51.56285717555455,
+        "stop_label": "volatility stop, 1.0 ATR from entry",
+        "target": 48.0,
+        "target_label": "the put wall ahead ($8m of gamma)",
+        "target_2": null,
+        "target_2_label": null,
+        "risk": 0.822857175554546,
+        "reward": 2.740000000000002,
+        "rr": 3.3298609787943345,
+        "risk_atr": 0.9999999999999976,
+        "reward_atr": 3.3298609787943265,
+        "thesis": [
+          "Dealers are long gamma in aggregate but spot is only 0.23 ATR from the flip at 50.55: a push through it turns hedging from pinning to chasing.",
+          "The last five sessions moved -4.14%; the trade follows that direction (down).",
+          "The put wall at 48.00 is 3.33 ATR ahead, past the 2.0-ATR room-to-run floor.",
+          "Trend composite at the 44% percentile of the universe: choppy, which argues against chasing.",
+          "Over the last 126 bars 2 of 6 resolved range breakouts continued (33%), a base rate that leans against this setup.",
+          "A downside range breakout through 51.75 on 2026-09-09 is still open (1 bars in)."
+        ],
+        "invalidation": [
+          "A close above 51.56 (volatility stop, 1.0 ATR from entry).",
+          "Spot failing to cross the flip at 50.55 and net GEX staying positive: the pinning regime holds and the move stalls.",
+          "The five-day return changing sign: the direction the entry follows is no longer there."
+        ],
+        "structure": "Buy a put debit spread capped at the target (IV/RV 1.19: implied is rich, so cap the vega paid).",
+        "warnings": [
+          "The stop is an ATR multiple, not a computed level: nothing sits within 1.5 ATR behind the entry."
+        ],
+        "score_breakdown": [
+          {
+            "name": "regime alignment",
+            "points": 35,
+            "max_points": 35,
+            "note": "setup matches the continuation verdict"
+          },
+          {
+            "name": "positioning conviction",
+            "points": 2,
+            "max_points": 20,
+            "note": "|net| is 4.9% of gross gamma"
+          },
+          {
+            "name": "reward/risk",
+            "points": 20,
+            "max_points": 20,
+            "note": "reward/risk 3.33 (saturates at 3.0)"
+          },
+          {
+            "name": "trend context",
+            "points": 7,
+            "max_points": 15,
+            "note": "trend composite at the 44% percentile leans against this setup"
+          },
+          {
+            "name": "breakout base rate",
+            "points": 3,
+            "max_points": 10,
+            "note": "33% of recent breakouts continued"
+          }
+        ],
+        "rejection_reason": null
+      }
+    },
+    {
+      "id": 18,
+      "underlying": "SMH",
+      "filter": "ALL",
+      "snapshot_id": 79,
+      "key": "CONTINUATION_UP",
+      "decided_on": "2026-09-10",
+      "as_of": "2026-09-10T20:44:27Z",
+      "setup": "continuation",
+      "side": "LONG",
+      "status": "active",
+      "score": 66,
+      "grade": "B",
+      "entry": 560.9,
+      "stop": 546.5399976457868,
+      "target": 600.0,
+      "target_2": 615.0,
+      "spot": 560.9,
+      "atr14": 13.840009416852679,
+      "outcome": "pending",
+      "fill": null,
+      "triggered_on": null,
+      "resolved_on": null,
+      "bars_held": null,
+      "mfe_r": null,
+      "mae_r": null,
+      "result_r": null,
+      "mark_r": null,
+      "evaluated_through": null,
+      "outcome_note": "no bars after the decision date yet",
+      "opportunity": {
+        "key": "CONTINUATION_UP",
+        "setup": "continuation",
+        "side": "LONG",
+        "status": "active",
+        "score": 66,
+        "grade": "B",
+        "entry": 560.9,
+        "entry_label": "current spot; a continuation regime is entered at market, not at a level",
+        "stop": 546.5399976457868,
+        "stop_label": "put wall at 550.00 - 0.25 ATR",
+        "target": 600.0,
+        "target_label": "the call wall ahead ($76m of gamma)",
+        "target_2": 615.0,
+        "target_2_label": "next comparable strike beyond the call wall",
+        "risk": 14.36000235421318,
+        "reward": 39.10000000000002,
+        "rr": 2.7228407792376306,
+        "risk_atr": 1.0375717184648239,
+        "reward_atr": 2.8251425864196884,
+        "thesis": [
+          "Dealers are short gamma (9% of gross): hedging buys strength and sells weakness, so moves extend rather than mean-revert.",
+          "The last five sessions moved +1.78%; the trade follows that direction (up).",
+          "The call wall at 600.00 is 2.83 ATR ahead, past the 2.0-ATR room-to-run floor.",
+          "Trend composite at the 24% percentile of the universe: choppy, which argues against chasing.",
+          "Over the last 126 bars 6 of 11 resolved range breakouts continued (55%), a base rate that supports chasing the move."
+        ],
+        "invalidation": [
+          "A close below 546.54 (put wall at 550.00 - 0.25 ATR).",
+          "Net GEX turning positive on the next capture with spot above the flip: hedging flips from chasing to pinning and the continuation thesis is gone.",
+          "The five-day return changing sign: the direction the entry follows is no longer there."
+        ],
+        "structure": "Buy a call debit spread capped at the target (IV/RV 1.13: implied is rich, so cap the vega paid).",
+        "warnings": [],
+        "score_breakdown": [
+          {
+            "name": "regime alignment",
+            "points": 35,
+            "max_points": 35,
+            "note": "setup matches the continuation verdict"
+          },
+          {
+            "name": "positioning conviction",
+            "points": 4,
+            "max_points": 20,
+            "note": "|net| is 8.9% of gross gamma"
+          },
+          {
+            "name": "reward/risk",
+            "points": 18,
+            "max_points": 20,
+            "note": "reward/risk 2.72 (saturates at 3.0)"
+          },
+          {
+            "name": "trend context",
+            "points": 4,
+            "max_points": 15,
+            "note": "trend composite at the 24% percentile leans against this setup"
+          },
+          {
+            "name": "breakout base rate",
+            "points": 5,
+            "max_points": 10,
+            "note": "55% of recent breakouts continued"
+          }
+        ],
+        "rejection_reason": null
+      }
+    },
+    {
+      "id": 8,
+      "underlying": "XLF",
+      "filter": "ALL",
+      "snapshot_id": 68,
+      "key": "CONTINUATION_DOWN",
+      "decided_on": "2026-09-10",
+      "as_of": "2026-09-10T20:44:20Z",
+      "setup": "continuation",
+      "side": "SHORT",
+      "status": "active",
+      "score": 63,
+      "grade": "B",
+      "entry": 56.92,
+      "stop": 57.924279373272825,
+      "target": 55.0,
+      "target_2": null,
+      "spot": 56.92,
+      "atr14": 0.6635644095284599,
+      "outcome": "pending",
+      "fill": null,
+      "triggered_on": null,
+      "resolved_on": null,
+      "bars_held": null,
+      "mfe_r": null,
+      "mae_r": null,
+      "result_r": null,
+      "mark_r": null,
+      "evaluated_through": null,
+      "outcome_note": "no bars after the decision date yet",
+      "opportunity": {
+        "key": "CONTINUATION_DOWN",
+        "setup": "continuation",
+        "side": "SHORT",
+        "status": "active",
+        "score": 63,
+        "grade": "B",
+        "entry": 56.92,
+        "entry_label": "current spot; a continuation regime is entered at market, not at a level",
+        "stop": 57.924279373272825,
+        "stop_label": "gamma flip at 57.76 + 0.25 ATR",
+        "target": 55.0,
+        "target_label": "next comparable strike beyond the put wall (the wall itself at 56.00 is too close to pay for the stop)",
+        "target_2": null,
+        "target_2_label": null,
+        "risk": 1.0042793732728228,
+        "reward": 1.9200000000000017,
+        "rr": 1.9118186145185458,
+        "risk_atr": 1.5134617813310403,
+        "reward_atr": 2.89346440591108,
+        "thesis": [
+          "Dealers are short gamma (8% of gross): hedging buys strength and sells weakness, so moves extend rather than mean-revert.",
+          "The last five sessions moved -1.37%; the trade follows that direction (down).",
+          "The put wall at 56.00 is 1.39 ATR ahead, more than an ATR of room before the move meets it.",
+          "Trend composite at the 27% percentile of the universe: choppy, which argues against chasing.",
+          "Over the last 126 bars 7 of 8 resolved range breakouts continued (88%), a base rate that supports chasing the move.",
+          "A upside range breakout through 58.41 on 2026-09-03 is still open (4 bars in)."
+        ],
+        "invalidation": [
+          "A close above 57.92 (gamma flip at 57.76 + 0.25 ATR).",
+          "Net GEX turning positive on the next capture with spot above the flip: hedging flips from chasing to pinning and the continuation thesis is gone.",
+          "The five-day return changing sign: the direction the entry follows is no longer there."
+        ],
+        "structure": "Buy a put debit spread capped at the target (IV/RV 1.27: implied is rich, so cap the vega paid).",
+        "warnings": [
+          "An open upside breakout points the other way from this entry."
+        ],
+        "score_breakdown": [
+          {
+            "name": "regime alignment",
+            "points": 35,
+            "max_points": 35,
+            "note": "setup matches the continuation verdict"
+          },
+          {
+            "name": "positioning conviction",
+            "points": 3,
+            "max_points": 20,
+            "note": "|net| is 8.4% of gross gamma"
+          },
+          {
+            "name": "reward/risk",
+            "points": 12,
+            "max_points": 20,
+            "note": "reward/risk 1.91 (saturates at 3.0)"
+          },
+          {
+            "name": "trend context",
+            "points": 4,
+            "max_points": 15,
+            "note": "trend composite at the 27% percentile leans against this setup"
+          },
+          {
+            "name": "breakout base rate",
+            "points": 9,
+            "max_points": 10,
+            "note": "88% of recent breakouts continued"
+          }
+        ],
+        "rejection_reason": null
+      }
+    },
+    {
+      "id": 20,
+      "underlying": "TLT",
+      "filter": "ALL",
+      "snapshot_id": 83,
+      "key": "CONTINUATION_DOWN",
+      "decided_on": "2026-09-10",
+      "as_of": "2026-09-10T20:44:20Z",
+      "setup": "continuation",
+      "side": "SHORT",
+      "status": "active",
+      "score": 61,
+      "grade": "B",
+      "entry": 80.68,
+      "stop": 81.6472454228805,
+      "target": 79.0,
+      "target_2": null,
+      "spot": 80.68,
+      "atr14": 0.6417852129255023,
+      "outcome": "pending",
+      "fill": null,
+      "triggered_on": null,
+      "resolved_on": null,
+      "bars_held": null,
+      "mfe_r": null,
+      "mae_r": null,
+      "result_r": null,
+      "mark_r": null,
+      "evaluated_through": null,
+      "outcome_note": "no bars after the decision date yet",
+      "opportunity": {
+        "key": "CONTINUATION_DOWN",
+        "setup": "continuation",
+        "side": "SHORT",
+        "status": "active",
+        "score": 61,
+        "grade": "B",
+        "entry": 80.68,
+        "entry_label": "current spot; a continuation regime is entered at market, not at a level",
+        "stop": 81.6472454228805,
+        "stop_label": "gamma flip at 81.49 + 0.25 ATR",
+        "target": 79.0,
+        "target_label": "next comparable strike beyond the put wall (the wall itself at 80.00 is too close to pay for the stop)",
+        "target_2": null,
+        "target_2_label": null,
+        "risk": 0.9672454228804952,
+        "reward": 1.6800000000000068,
+        "rr": 1.7368911346170037,
+        "risk_atr": 1.5071170282522106,
+        "reward_atr": 2.617698205201589,
+        "thesis": [
+          "Dealers are short gamma (13% of gross): hedging buys strength and sells weakness, so moves extend rather than mean-revert.",
+          "The last five sessions moved -1.43%; the trade follows that direction (down).",
+          "The put wall at 80.00 is 1.06 ATR ahead, more than an ATR of room before the move meets it.",
+          "Trend composite at the 39% percentile of the universe: choppy, which argues against chasing.",
+          "Over the last 126 bars 4 of 9 resolved range breakouts continued (44%), a base rate that leans against this setup.",
+          "A downside range breakout through 81.17 on 2026-09-10 is still open (0 bars in)."
+        ],
+        "invalidation": [
+          "A close above 81.65 (gamma flip at 81.49 + 0.25 ATR).",
+          "Net GEX turning positive on the next capture with spot above the flip: hedging flips from chasing to pinning and the continuation thesis is gone.",
+          "The five-day return changing sign: the direction the entry follows is no longer there."
+        ],
+        "structure": "Buy a put debit spread capped at the target (IV/RV 1.12: implied is rich, so cap the vega paid).",
+        "warnings": [],
+        "score_breakdown": [
+          {
+            "name": "regime alignment",
+            "points": 35,
+            "max_points": 35,
+            "note": "setup matches the continuation verdict"
+          },
+          {
+            "name": "positioning conviction",
+            "points": 5,
+            "max_points": 20,
+            "note": "|net| is 12.7% of gross gamma"
+          },
+          {
+            "name": "reward/risk",
+            "points": 11,
+            "max_points": 20,
+            "note": "reward/risk 1.74 (saturates at 3.0)"
+          },
+          {
+            "name": "trend context",
+            "points": 6,
+            "max_points": 15,
+            "note": "trend composite at the 39% percentile leans against this setup"
+          },
+          {
+            "name": "breakout base rate",
+            "points": 4,
+            "max_points": 10,
+            "note": "44% of recent breakouts continued"
+          }
+        ],
+        "rejection_reason": null
+      }
+    },
+    {
+      "id": 22,
+      "underlying": "FXI",
+      "filter": "ALL",
+      "snapshot_id": 86,
+      "key": "CONTINUATION_DOWN",
+      "decided_on": "2026-09-10",
+      "as_of": "2026-09-10T20:44:28Z",
+      "setup": "continuation",
+      "side": "SHORT",
+      "status": "active",
+      "score": 61,
+      "grade": "B",
+      "entry": 34.35,
+      "stop": 35.0465821863693,
+      "target": 33.5071420942034,
+      "target_2": null,
+      "spot": 34.35,
+      "atr14": 0.421428952898298,
+      "outcome": "pending",
+      "fill": null,
+      "triggered_on": null,
+      "resolved_on": null,
+      "bars_held": null,
+      "mfe_r": null,
+      "mae_r": null,
+      "result_r": null,
+      "mark_r": null,
+      "evaluated_through": null,
+      "outcome_note": "no bars after the decision date yet",
+      "opportunity": {
+        "key": "CONTINUATION_DOWN",
+        "setup": "continuation",
+        "side": "SHORT",
+        "status": "active",
+        "score": 61,
+        "grade": "B",
+        "entry": 34.35,
+        "entry_label": "current spot; a continuation regime is entered at market, not at a level",
+        "stop": 35.0465821863693,
+        "stop_label": "gamma flip at 34.94 + 0.25 ATR",
+        "target": 33.5071420942034,
+        "target_label": "2.0 ATR from entry (no computed level ahead)",
+        "target_2": null,
+        "target_2_label": null,
+        "risk": 0.696582186369298,
+        "reward": 0.842857905796599,
+        "rr": 1.2099906117176413,
+        "risk_atr": 1.6529053867293304,
+        "reward_atr": 2.000000000000007,
+        "thesis": [
+          "Dealers are short gamma (11% of gross): hedging buys strength and sells weakness, so moves extend rather than mean-revert.",
+          "The last five sessions moved -3.35%; the trade follows that direction (down).",
+          "No wall sits below spot in this chain: nothing computed stands in the way.",
+          "Trend composite at the 50% percentile of the universe: trending, which supports continuation.",
+          "Over the last 126 bars 6 of 9 resolved range breakouts continued (67%), a base rate that supports chasing the move.",
+          "A downside range breakout through 34.79 on 2026-09-09 is still open (1 bars in)."
+        ],
+        "invalidation": [
+          "A close above 35.05 (gamma flip at 34.94 + 0.25 ATR).",
+          "Net GEX turning positive on the next capture with spot above the flip: hedging flips from chasing to pinning and the continuation thesis is gone.",
+          "The five-day return changing sign: the direction the entry follows is no longer there."
+        ],
+        "structure": "Buy a put debit spread capped at the target (IV/RV 1.16: implied is rich, so cap the vega paid).",
+        "warnings": [],
+        "score_breakdown": [
+          {
+            "name": "regime alignment",
+            "points": 35,
+            "max_points": 35,
+            "note": "setup matches the continuation verdict"
+          },
+          {
+            "name": "positioning conviction",
+            "points": 4,
+            "max_points": 20,
+            "note": "|net| is 10.8% of gross gamma"
+          },
+          {
+            "name": "reward/risk",
+            "points": 7,
+            "max_points": 20,
+            "note": "reward/risk 1.21 (saturates at 3.0)"
+          },
+          {
+            "name": "trend context",
+            "points": 8,
+            "max_points": 15,
+            "note": "trend composite at the 50% percentile favours continuation"
+          },
+          {
+            "name": "breakout base rate",
+            "points": 7,
+            "max_points": 10,
+            "note": "67% of recent breakouts continued"
+          }
+        ],
+        "rejection_reason": null
+      }
+    },
+    {
+      "id": 1,
+      "underlying": "SPX",
+      "filter": "ALL",
+      "snapshot_id": 62,
+      "key": "CONTINUATION_DOWN",
+      "decided_on": "2026-09-10",
+      "as_of": "2026-09-10T20:19:38Z",
+      "setup": "continuation",
+      "side": "SHORT",
+      "status": "active",
+      "score": 60,
+      "grade": "B",
+      "entry": 7591.75,
+      "stop": 7665.2027558290765,
+      "target": 7500.0,
+      "target_2": 7450.0,
+      "spot": 7591.75,
+      "atr14": 54.261265345982146,
+      "outcome": "pending",
+      "fill": null,
+      "triggered_on": null,
+      "resolved_on": null,
+      "bars_held": null,
+      "mfe_r": null,
+      "mae_r": null,
+      "result_r": null,
+      "mark_r": null,
+      "evaluated_through": null,
+      "outcome_note": "no bars after the decision date yet",
+      "opportunity": {
+        "key": "CONTINUATION_DOWN",
+        "setup": "continuation",
+        "side": "SHORT",
+        "status": "active",
+        "score": 60,
+        "grade": "B",
+        "entry": 7591.75,
+        "entry_label": "current spot; a continuation regime is entered at market, not at a level",
+        "stop": 7665.2027558290765,
+        "stop_label": "gamma flip at 7,651.64 + 0.25 ATR",
+        "target": 7500.0,
+        "target_label": "the put wall ahead ($30.99bn of gamma)",
+        "target_2": 7450.0,
+        "target_2_label": "next comparable strike beyond the put wall",
+        "risk": 73.45275582907652,
+        "reward": 91.75,
+        "rr": 1.2491022149461743,
+        "risk_atr": 1.353686748009378,
+        "reward_atr": 1.6908931152817976,
+        "thesis": [
+          "Dealers are short gamma (7% of gross): hedging buys strength and sells weakness, so moves extend rather than mean-revert.",
+          "The last five sessions moved -0.98%; the trade follows that direction (down).",
+          "The put wall at 7,500.00 is 1.69 ATR ahead, more than an ATR of room before the move meets it.",
+          "Trend composite at the 44% percentile of the universe: choppy, which argues against chasing.",
+          "Over the last 126 bars 9 of 12 resolved range breakouts continued (75%), a base rate that supports chasing the move.",
+          "A downside range breakout through 7,611.20 on 2026-09-10 is still open (0 bars in)."
+        ],
+        "invalidation": [
+          "A close above 7,665.20 (gamma flip at 7,651.64 + 0.25 ATR).",
+          "Net GEX turning positive on the next capture with spot above the flip: hedging flips from chasing to pinning and the continuation thesis is gone.",
+          "The five-day return changing sign: the direction the entry follows is no longer there."
+        ],
+        "structure": "Buy a put debit spread capped at the target (IV/RV 1.66: implied is rich, so cap the vega paid).",
+        "warnings": [],
+        "score_breakdown": [
+          {
+            "name": "regime alignment",
+            "points": 35,
+            "max_points": 35,
+            "note": "setup matches the continuation verdict"
+          },
+          {
+            "name": "positioning conviction",
+            "points": 3,
+            "max_points": 20,
+            "note": "|net| is 7.3% of gross gamma"
+          },
+          {
+            "name": "reward/risk",
+            "points": 7,
+            "max_points": 20,
+            "note": "reward/risk 1.25 (saturates at 3.0)"
+          },
+          {
+            "name": "trend context",
+            "points": 7,
+            "max_points": 15,
+            "note": "trend composite at the 44% percentile leans against this setup"
+          },
+          {
+            "name": "breakout base rate",
+            "points": 8,
+            "max_points": 10,
+            "note": "75% of recent breakouts continued"
+          }
+        ],
+        "rejection_reason": null
+      }
+    },
+    {
+      "id": 3,
+      "underlying": "QQQ",
+      "filter": "ALL",
+      "snapshot_id": 64,
+      "key": "CONTINUATION_DOWN",
+      "decided_on": "2026-09-10",
+      "as_of": "2026-09-10T20:19:18Z",
+      "setup": "continuation",
+      "side": "SHORT",
+      "status": "active",
+      "score": 60,
+      "grade": "B",
+      "entry": 708.5,
+      "stop": 721.689997905079,
+      "target": 695.0,
+      "target_2": null,
+      "spot": 708.5,
+      "atr14": 7.618216378348214,
+      "outcome": "pending",
+      "fill": null,
+      "triggered_on": null,
+      "resolved_on": null,
+      "bars_held": null,
+      "mfe_r": null,
+      "mae_r": null,
+      "result_r": null,
+      "mark_r": null,
+      "evaluated_through": null,
+      "outcome_note": "no bars after the decision date yet",
+      "opportunity": {
+        "key": "CONTINUATION_DOWN",
+        "setup": "continuation",
+        "side": "SHORT",
+        "status": "active",
+        "score": 60,
+        "grade": "B",
+        "entry": 708.5,
+        "entry_label": "current spot; a continuation regime is entered at market, not at a level",
+        "stop": 721.689997905079,
+        "stop_label": "gamma flip at 719.79 + 0.25 ATR",
+        "target": 695.0,
+        "target_label": "next comparable strike beyond the put wall (the wall itself at 700.00 is too close to pay for the stop)",
+        "target_2": null,
+        "target_2_label": null,
+        "risk": 13.189997905079053,
+        "reward": 13.5,
+        "rr": 1.0235028160847224,
+        "risk_atr": 1.7313761187679622,
+        "reward_atr": 1.7720683332608462,
+        "thesis": [
+          "Dealers are short gamma (21% of gross): hedging buys strength and sells weakness, so moves extend rather than mean-revert.",
+          "The last five sessions moved -0.08%; the trade follows that direction (down).",
+          "The put wall at 700.00 is 1.12 ATR ahead, more than an ATR of room before the move meets it.",
+          "Trend composite at the 30% percentile of the universe: choppy, which argues against chasing.",
+          "Over the last 126 bars 8 of 12 resolved range breakouts continued (67%), a base rate that supports chasing the move."
+        ],
+        "invalidation": [
+          "A close above 721.69 (gamma flip at 719.79 + 0.25 ATR).",
+          "Net GEX turning positive on the next capture with spot above the flip: hedging flips from chasing to pinning and the continuation thesis is gone.",
+          "The five-day return changing sign: the direction the entry follows is no longer there."
+        ],
+        "structure": "Buy a put debit spread capped at the target (IV/RV 1.55: implied is rich, so cap the vega paid).",
+        "warnings": [],
+        "score_breakdown": [
+          {
+            "name": "regime alignment",
+            "points": 35,
+            "max_points": 35,
+            "note": "setup matches the continuation verdict"
+          },
+          {
+            "name": "positioning conviction",
+            "points": 8,
+            "max_points": 20,
+            "note": "|net| is 21.1% of gross gamma"
+          },
+          {
+            "name": "reward/risk",
+            "points": 5,
+            "max_points": 20,
+            "note": "reward/risk 1.02 (saturates at 3.0)"
+          },
+          {
+            "name": "trend context",
+            "points": 5,
+            "max_points": 15,
+            "note": "trend composite at the 30% percentile leans against this setup"
+          },
+          {
+            "name": "breakout base rate",
+            "points": 7,
+            "max_points": 10,
+            "note": "67% of recent breakouts continued"
+          }
+        ],
+        "rejection_reason": null
+      }
+    },
+    {
+      "id": 4,
+      "underlying": "GLD",
+      "filter": "ALL",
+      "snapshot_id": 65,
+      "key": "FADE_PUT_WALL",
+      "decided_on": "2026-09-10",
+      "as_of": "2026-09-10T20:19:21Z",
+      "setup": "fade",
+      "side": "LONG",
+      "status": "active",
+      "score": 60,
+      "grade": "B",
+      "entry": 393.0,
+      "stop": 388.96646009172713,
+      "target": 400.0,
+      "target_2": 415.0,
+      "spot": 396.2,
+      "atr14": 8.067079816545759,
+      "outcome": "pending",
+      "fill": null,
+      "triggered_on": null,
+      "resolved_on": null,
+      "bars_held": null,
+      "mfe_r": null,
+      "mae_r": null,
+      "result_r": null,
+      "mark_r": null,
+      "evaluated_through": null,
+      "outcome_note": "no bars after the decision date yet",
+      "opportunity": {
+        "key": "FADE_PUT_WALL",
+        "setup": "fade",
+        "side": "LONG",
+        "status": "active",
+        "score": 60,
+        "grade": "B",
+        "entry": 393.0,
+        "entry_label": "resting limit at the put wall",
+        "stop": 388.96646009172713,
+        "stop_label": "put wall - 0.5 ATR",
+        "target": 400.0,
+        "target_label": "first strike back toward the call wall carrying at least 25% of the faded wall's gamma ($729m)",
+        "target_2": 415.0,
+        "target_2_label": "the opposite (call) wall",
+        "risk": 4.033539908272871,
+        "reward": 7.0,
+        "rr": 1.735448305753182,
+        "risk_atr": 0.499999999999999,
+        "reward_atr": 0.8677241528765893,
+        "thesis": [
+          "Dealers are long gamma (12% of gross): hedging sells strength and buys weakness, so a move into the put wall at 393.00 meets demand.",
+          "The put wall carries $244m of gamma and sits 0.40 ATR below spot; the next comparable strike below it is 390.00, so a break has 0.4 ATR of open air.",
+          "The gamma flip is 1.10 ATR below spot: a rejection at the wall plays out inside a long-gamma regime.",
+          "Trend composite at the 52% percentile of the universe: trending, which argues against fading.",
+          "Over the last 126 bars 8 of 10 resolved range breakouts continued (80%), a base rate that leans against this setup.",
+          "A downside range breakout through 396.45 on 2026-09-10 is still open (0 bars in)."
+        ],
+        "invalidation": [
+          "A close below 388.97 (put wall - 0.5 ATR): the strike's gamma has been absorbed.",
+          "Net GEX turning negative on the next capture: the fade relies on dealers being long gamma, and a short-gamma chain chases the move instead of leaning against it.",
+          "The put wall migrating below on the next capture: the level being faded no longer exists where the entry rests.",
+          "Spot trading below the flip at 387.31: the demand at the put wall is only there while dealers are long gamma above the flip."
+        ],
+        "structure": "Fade the level in the underlying or CFD, or with a credit spread whose short strike sits at the wall; no implied-versus-realized view is available.",
+        "warnings": [
+          "An open downside breakout is running into this wall; fading it means betting the breakout fails."
+        ],
+        "score_breakdown": [
+          {
+            "name": "regime alignment",
+            "points": 35,
+            "max_points": 35,
+            "note": "setup matches the fade verdict"
+          },
+          {
+            "name": "positioning conviction",
+            "points": 5,
+            "max_points": 20,
+            "note": "|net| is 12.2% of gross gamma"
+          },
+          {
+            "name": "reward/risk",
+            "points": 11,
+            "max_points": 20,
+            "note": "reward/risk 1.74 (saturates at 3.0)"
+          },
+          {
+            "name": "trend context",
+            "points": 7,
+            "max_points": 15,
+            "note": "trend composite at the 52% percentile leans against this setup"
+          },
+          {
+            "name": "breakout base rate",
+            "points": 2,
+            "max_points": 10,
+            "note": "80% of recent breakouts continued"
+          }
+        ],
+        "rejection_reason": null
+      }
+    },
+    {
+      "id": 19,
+      "underlying": "XOP",
+      "filter": "ALL",
+      "snapshot_id": 82,
+      "key": "FADE_CALL_WALL",
+      "decided_on": "2026-09-10",
+      "as_of": "2026-09-10T20:03:43Z",
+      "setup": "fade",
+      "side": "SHORT",
+      "status": "active",
+      "score": 60,
+      "grade": "B",
+      "entry": 200.0,
+      "stop": 202.09917613438196,
+      "target": 195.0,
+      "target_2": 165.0,
+      "spot": 196.27,
+      "atr14": 4.1983522687639505,
+      "outcome": "pending",
+      "fill": null,
+      "triggered_on": null,
+      "resolved_on": null,
+      "bars_held": null,
+      "mfe_r": null,
+      "mae_r": null,
+      "result_r": null,
+      "mark_r": null,
+      "evaluated_through": null,
+      "outcome_note": "no bars after the decision date yet",
+      "opportunity": {
+        "key": "FADE_CALL_WALL",
+        "setup": "fade",
+        "side": "SHORT",
+        "status": "active",
+        "score": 60,
+        "grade": "B",
+        "entry": 200.0,
+        "entry_label": "resting limit at the call wall",
+        "stop": 202.09917613438196,
+        "stop_label": "call wall + 0.5 ATR",
+        "target": 195.0,
+        "target_label": "first strike back toward the put wall carrying at least 25% of the faded wall's gamma ($6m)",
+        "target_2": 165.0,
+        "target_2_label": "the opposite (put) wall",
+        "risk": 2.0991761343819633,
+        "reward": 5.0,
+        "rr": 2.381886835557081,
+        "risk_atr": 0.49999999999999717,
+        "reward_atr": 1.1909434177785336,
+        "thesis": [
+          "Dealers are long gamma (15% of gross): hedging sells strength and buys weakness, so a move into the call wall at 200.00 meets supply.",
+          "The call wall carries $9m of gamma and sits 0.89 ATR above spot; the next comparable strike above it is 210.00, so a break has 2.4 ATR of open air.",
+          "The gamma flip is 1.23 ATR below spot: a rejection at the wall plays out inside a long-gamma regime.",
+          "Trend composite at the 80% percentile of the universe: trending, which argues against fading.",
+          "Over the last 126 bars 6 of 7 resolved range breakouts continued (86%), a base rate that leans against this setup."
+        ],
+        "invalidation": [
+          "A close above 202.10 (call wall + 0.5 ATR): the strike's gamma has been absorbed.",
+          "Net GEX turning negative on the next capture: the fade relies on dealers being long gamma, and a short-gamma chain chases the move instead of leaning against it.",
+          "The call wall migrating above on the next capture: the level being faded no longer exists where the entry rests."
+        ],
+        "structure": "Sell a call credit spread with the short strike at the wall (IV/RV 2.02: implied is rich versus realized, so collecting premium is paid for).",
+        "warnings": [],
+        "score_breakdown": [
+          {
+            "name": "regime alignment",
+            "points": 35,
+            "max_points": 35,
+            "note": "setup matches the fade verdict"
+          },
+          {
+            "name": "positioning conviction",
+            "points": 6,
+            "max_points": 20,
+            "note": "|net| is 14.9% of gross gamma"
+          },
+          {
+            "name": "reward/risk",
+            "points": 15,
+            "max_points": 20,
+            "note": "reward/risk 2.38 (saturates at 3.0)"
+          },
+          {
+            "name": "trend context",
+            "points": 3,
+            "max_points": 15,
+            "note": "trend composite at the 80% percentile leans against this setup"
+          },
+          {
+            "name": "breakout base rate",
+            "points": 1,
+            "max_points": 10,
+            "note": "86% of recent breakouts continued"
+          }
+        ],
+        "rejection_reason": null
+      }
+    },
+    {
+      "id": 10,
+      "underlying": "XLE",
+      "filter": "ALL",
+      "snapshot_id": 69,
+      "key": "FADE_PUT_WALL",
+      "decided_on": "2026-09-10",
+      "as_of": "2026-09-10T20:44:29Z",
+      "setup": "fade",
+      "side": "LONG",
+      "status": "watch",
+      "score": 58,
+      "grade": "C",
+      "entry": 62.0,
+      "stop": 61.3974997656686,
+      "target": 63.0,
+      "target_2": 65.0,
+      "spot": 64.78,
+      "atr14": 1.2050004686628069,
+      "outcome": "pending",
+      "fill": null,
+      "triggered_on": null,
+      "resolved_on": null,
+      "bars_held": null,
+      "mfe_r": null,
+      "mae_r": null,
+      "result_r": null,
+      "mark_r": null,
+      "evaluated_through": null,
+      "outcome_note": "no bars after the decision date yet",
+      "opportunity": {
+        "key": "FADE_PUT_WALL",
+        "setup": "fade",
+        "side": "LONG",
+        "status": "watch",
+        "score": 58,
+        "grade": "C",
+        "entry": 62.0,
+        "entry_label": "resting limit at the put wall",
+        "stop": 61.3974997656686,
+        "stop_label": "put wall - 0.5 ATR",
+        "target": 63.0,
+        "target_label": "first strike back toward the call wall carrying at least 25% of the faded wall's gamma ($21m)",
+        "target_2": 65.0,
+        "target_2_label": "the opposite (call) wall",
+        "risk": 0.6025002343314014,
+        "reward": 1.0,
+        "rr": 1.6597503918147132,
+        "risk_atr": 0.49999999999999833,
+        "reward_atr": 0.8298751959073538,
+        "thesis": [
+          "Dealers are long gamma (17% of gross): hedging sells strength and buys weakness, so a move into the put wall at 62.00 meets demand.",
+          "The put wall carries $16m of gamma and sits 2.31 ATR below spot; the next comparable strike below it is 61.00, so a break has 0.8 ATR of open air.",
+          "The gamma flip is 1.31 ATR below spot: a rejection at the wall plays out inside a long-gamma regime.",
+          "Trend composite at the 81% percentile of the universe: trending, which argues against fading.",
+          "Over the last 126 bars 7 of 10 resolved range breakouts continued (70%), a base rate that leans against this setup."
+        ],
+        "invalidation": [
+          "A close below 61.40 (put wall - 0.5 ATR): the strike's gamma has been absorbed.",
+          "Net GEX turning negative on the next capture: the fade relies on dealers being long gamma, and a short-gamma chain chases the move instead of leaning against it.",
+          "The put wall migrating below on the next capture: the level being faded no longer exists where the entry rests.",
+          "Spot trading below the flip at 63.20: the demand at the put wall is only there while dealers are long gamma above the flip."
+        ],
+        "structure": "Sell a put credit spread with the short strike at the wall (IV/RV 1.48: implied is rich versus realized, so collecting premium is paid for).",
+        "warnings": [],
+        "score_breakdown": [
+          {
+            "name": "regime alignment",
+            "points": 35,
+            "max_points": 35,
+            "note": "setup matches the fade verdict"
+          },
+          {
+            "name": "positioning conviction",
+            "points": 7,
+            "max_points": 20,
+            "note": "|net| is 16.6% of gross gamma"
+          },
+          {
+            "name": "reward/risk",
+            "points": 10,
+            "max_points": 20,
+            "note": "reward/risk 1.66 (saturates at 3.0)"
+          },
+          {
+            "name": "trend context",
+            "points": 3,
+            "max_points": 15,
+            "note": "trend composite at the 81% percentile leans against this setup"
+          },
+          {
+            "name": "breakout base rate",
+            "points": 3,
+            "max_points": 10,
+            "note": "70% of recent breakouts continued"
+          }
+        ],
+        "rejection_reason": null
+      }
+    },
+    {
+      "id": 5,
+      "underlying": "GLD",
+      "filter": "ALL",
+      "snapshot_id": 65,
+      "key": "FADE_CALL_WALL",
+      "decided_on": "2026-09-10",
+      "as_of": "2026-09-10T20:19:21Z",
+      "setup": "fade",
+      "side": "SHORT",
+      "status": "watch",
+      "score": 56,
+      "grade": "C",
+      "entry": 415.0,
+      "stop": 419.03353990827287,
+      "target": 410.0,
+      "target_2": 393.0,
+      "spot": 396.2,
+      "atr14": 8.067079816545759,
+      "outcome": "pending",
+      "fill": null,
+      "triggered_on": null,
+      "resolved_on": null,
+      "bars_held": null,
+      "mfe_r": null,
+      "mae_r": null,
+      "result_r": null,
+      "mark_r": null,
+      "evaluated_through": null,
+      "outcome_note": "no bars after the decision date yet",
+      "opportunity": {
+        "key": "FADE_CALL_WALL",
+        "setup": "fade",
+        "side": "SHORT",
+        "status": "watch",
+        "score": 56,
+        "grade": "C",
+        "entry": 415.0,
+        "entry_label": "resting limit at the call wall",
+        "stop": 419.03353990827287,
+        "stop_label": "call wall + 0.5 ATR",
+        "target": 410.0,
+        "target_label": "first strike back toward the put wall carrying at least 25% of the faded wall's gamma ($242m)",
+        "target_2": 393.0,
+        "target_2_label": "the opposite (put) wall",
+        "risk": 4.033539908272871,
+        "reward": 5.0,
+        "rr": 1.2396059326808444,
+        "risk_atr": 0.499999999999999,
+        "reward_atr": 0.619802966340421,
+        "thesis": [
+          "Dealers are long gamma (12% of gross): hedging sells strength and buys weakness, so a move into the call wall at 415.00 meets supply.",
+          "The call wall carries $388m of gamma and sits 2.33 ATR above spot; the next comparable strike above it is 420.00, so a break has 0.6 ATR of open air.",
+          "The gamma flip is 1.10 ATR below spot: a rejection at the wall plays out inside a long-gamma regime.",
+          "Trend composite at the 52% percentile of the universe: trending, which argues against fading.",
+          "Over the last 126 bars 8 of 10 resolved range breakouts continued (80%), a base rate that leans against this setup.",
+          "A downside range breakout through 396.45 on 2026-09-10 is still open (0 bars in)."
+        ],
+        "invalidation": [
+          "A close above 419.03 (call wall + 0.5 ATR): the strike's gamma has been absorbed.",
+          "Net GEX turning negative on the next capture: the fade relies on dealers being long gamma, and a short-gamma chain chases the move instead of leaning against it.",
+          "The call wall migrating above on the next capture: the level being faded no longer exists where the entry rests."
+        ],
+        "structure": "Fade the level in the underlying or CFD, or with a credit spread whose short strike sits at the wall; no implied-versus-realized view is available.",
+        "warnings": [],
+        "score_breakdown": [
+          {
+            "name": "regime alignment",
+            "points": 35,
+            "max_points": 35,
+            "note": "setup matches the fade verdict"
+          },
+          {
+            "name": "positioning conviction",
+            "points": 5,
+            "max_points": 20,
+            "note": "|net| is 12.2% of gross gamma"
+          },
+          {
+            "name": "reward/risk",
+            "points": 7,
+            "max_points": 20,
+            "note": "reward/risk 1.24 (saturates at 3.0)"
+          },
+          {
+            "name": "trend context",
+            "points": 7,
+            "max_points": 15,
+            "note": "trend composite at the 52% percentile leans against this setup"
+          },
+          {
+            "name": "breakout base rate",
+            "points": 2,
+            "max_points": 10,
+            "note": "80% of recent breakouts continued"
+          }
+        ],
+        "rejection_reason": null
+      }
+    },
+    {
+      "id": 11,
+      "underlying": "XLV",
+      "filter": "ALL",
+      "snapshot_id": 70,
+      "key": "FADE_PUT_WALL",
+      "decided_on": "2026-09-10",
+      "as_of": "2026-09-10T19:58:28Z",
+      "setup": "fade",
+      "side": "LONG",
+      "status": "watch",
+      "score": 55,
+      "grade": "C",
+      "entry": 160.0,
+      "stop": 158.86321367536272,
+      "target": 165.0,
+      "target_2": 175.0,
+      "spot": 165.85,
+      "atr14": 2.2735726492745534,
+      "outcome": "pending",
+      "fill": null,
+      "triggered_on": null,
+      "resolved_on": null,
+      "bars_held": null,
+      "mfe_r": null,
+      "mae_r": null,
+      "result_r": null,
+      "mark_r": null,
+      "evaluated_through": null,
+      "outcome_note": "no bars after the decision date yet",
+      "opportunity": {
+        "key": "FADE_PUT_WALL",
+        "setup": "fade",
+        "side": "LONG",
+        "status": "watch",
+        "score": 55,
+        "grade": "C",
+        "entry": 160.0,
+        "entry_label": "resting limit at the put wall",
+        "stop": 158.86321367536272,
+        "stop_label": "put wall - 0.5 ATR",
+        "target": 165.0,
+        "target_label": "first strike back toward the call wall carrying at least 25% of the faded wall's gamma ($43m)",
+        "target_2": 175.0,
+        "target_2_label": "the opposite (call) wall",
+        "risk": 1.136786324637285,
+        "reward": 5.0,
+        "rr": 4.398363959555331,
+        "risk_atr": 0.5000000000000037,
+        "reward_atr": 2.199181979777681,
+        "thesis": [
+          "Dealers are long gamma (11% of gross): hedging sells strength and buys weakness, so a move into the put wall at 160.00 meets demand.",
+          "The put wall carries $30m of gamma and sits 2.57 ATR below spot; the next comparable strike below it is 157.00, so a break has 1.3 ATR of open air.",
+          "The gamma flip is 1.86 ATR below spot: a rejection at the wall plays out inside a long-gamma regime.",
+          "Trend composite at the 52% percentile of the universe: trending, which argues against fading.",
+          "Over the last 126 bars 6 of 10 resolved range breakouts continued (60%), a base rate that leans against this setup.",
+          "A downside range breakout through 165.76 on 2026-09-10 is still open (0 bars in)."
+        ],
+        "invalidation": [
+          "A close below 158.86 (put wall - 0.5 ATR): the strike's gamma has been absorbed.",
+          "Net GEX turning negative on the next capture: the fade relies on dealers being long gamma, and a short-gamma chain chases the move instead of leaning against it.",
+          "The put wall migrating below on the next capture: the level being faded no longer exists where the entry rests.",
+          "Spot trading below the flip at 161.61: the demand at the put wall is only there while dealers are long gamma above the flip."
+        ],
+        "structure": "Buy a call debit spread from the wall toward the target (IV/RV 0.78: implied is cheap versus realized, so paying premium is cheap).",
+        "warnings": [
+          "An open downside breakout is running into this wall; fading it means betting the breakout fails."
+        ],
+        "score_breakdown": [
+          {
+            "name": "regime alignment",
+            "points": 20,
+            "max_points": 35,
+            "note": "verdict is mixed: neither confirms nor contradicts"
+          },
+          {
+            "name": "positioning conviction",
+            "points": 4,
+            "max_points": 20,
+            "note": "|net| is 10.8% of gross gamma"
+          },
+          {
+            "name": "reward/risk",
+            "points": 20,
+            "max_points": 20,
+            "note": "reward/risk 4.40 (saturates at 3.0)"
+          },
+          {
+            "name": "trend context",
+            "points": 7,
+            "max_points": 15,
+            "note": "trend composite at the 52% percentile leans against this setup"
+          },
+          {
+            "name": "breakout base rate",
+            "points": 4,
+            "max_points": 10,
+            "note": "60% of recent breakouts continued"
+          }
+        ],
+        "rejection_reason": null
+      }
+    },
+    {
+      "id": 23,
+      "underlying": "SLV",
+      "filter": "ALL",
+      "snapshot_id": 87,
+      "key": "FADE_CALL_WALL",
+      "decided_on": "2026-09-10",
+      "as_of": "2026-09-10T20:44:26Z",
+      "setup": "fade",
+      "side": "SHORT",
+      "status": "active",
+      "score": 45,
+      "grade": "C",
+      "entry": 58.0,
+      "stop": 58.94928577968052,
+      "target": 57.0,
+      "target_2": null,
+      "spot": 57.44,
+      "atr14": 1.898571559361049,
+      "outcome": "pending",
+      "fill": null,
+      "triggered_on": null,
+      "resolved_on": null,
+      "bars_held": null,
+      "mfe_r": null,
+      "mae_r": null,
+      "result_r": null,
+      "mark_r": null,
+      "evaluated_through": null,
+      "outcome_note": "no bars after the decision date yet",
+      "opportunity": {
+        "key": "FADE_CALL_WALL",
+        "setup": "fade",
+        "side": "SHORT",
+        "status": "active",
+        "score": 45,
+        "grade": "C",
+        "entry": 58.0,
+        "entry_label": "resting limit at the call wall",
+        "stop": 58.94928577968052,
+        "stop_label": "call wall + 0.5 ATR",
+        "target": 57.0,
+        "target_label": "first strike back toward the put wall carrying at least 25% of the faded wall's gamma ($9m)",
+        "target_2": null,
+        "target_2_label": null,
+        "risk": 0.9492857796805225,
+        "reward": 1.0,
+        "rr": 1.0534235542183568,
+        "risk_atr": 0.49999999999999895,
+        "reward_atr": 0.5267117771091773,
+        "thesis": [
+          "Dealers are long gamma (20% of gross): hedging sells strength and buys weakness, so a move into the call wall at 58.00 meets supply.",
+          "The call wall carries $14m of gamma and sits 0.29 ATR above spot; the next comparable strike above it is 58.50, so a break has 0.3 ATR of open air.",
+          "Trend composite at the 44% percentile of the universe: chop, which favours fading levels.",
+          "Over the last 126 bars 5 of 8 resolved range breakouts continued (62%), a base rate that leans against this setup."
+        ],
+        "invalidation": [
+          "A close above 58.95 (call wall + 0.5 ATR): the strike's gamma has been absorbed.",
+          "Net GEX turning negative on the next capture: the fade relies on dealers being long gamma, and a short-gamma chain chases the move instead of leaning against it.",
+          "The call wall migrating above on the next capture: the level being faded no longer exists where the entry rests."
+        ],
+        "structure": "Fade the level in the underlying or CFD, or with a credit spread whose short strike sits at the wall; no implied-versus-realized view is available.",
+        "warnings": [],
+        "score_breakdown": [
+          {
+            "name": "regime alignment",
+            "points": 20,
+            "max_points": 35,
+            "note": "verdict is mixed: neither confirms nor contradicts"
+          },
+          {
+            "name": "positioning conviction",
+            "points": 8,
+            "max_points": 20,
+            "note": "|net| is 19.7% of gross gamma"
+          },
+          {
+            "name": "reward/risk",
+            "points": 5,
+            "max_points": 20,
+            "note": "reward/risk 1.05 (saturates at 3.0)"
+          },
+          {
+            "name": "trend context",
+            "points": 8,
+            "max_points": 15,
+            "note": "trend composite at the 44% percentile favours mean reversion"
+          },
+          {
+            "name": "breakout base rate",
+            "points": 4,
+            "max_points": 10,
+            "note": "62% of recent breakouts continued"
+          }
+        ],
+        "rejection_reason": null
+      }
+    }
+  ],
+  "summary": {
+    "overall": {
+      "n": 25,
+      "pending": 25,
+      "untriggered": 0,
+      "resolved": 0,
+      "targets": 0,
+      "stops": 0,
+      "expired": 0,
+      "hit_rate": null,
+      "win_rate": null,
+      "avg_r": null,
+      "total_r": null,
+      "best_r": null,
+      "worst_r": null
+    },
+    "by_setup": {
+      "continuation": {
+        "n": 17,
+        "pending": 17,
+        "untriggered": 0,
+        "resolved": 0,
+        "targets": 0,
+        "stops": 0,
+        "expired": 0,
+        "hit_rate": null,
+        "win_rate": null,
+        "avg_r": null,
+        "total_r": null,
+        "best_r": null,
+        "worst_r": null
+      },
+      "fade": {
+        "n": 8,
+        "pending": 8,
+        "untriggered": 0,
+        "resolved": 0,
+        "targets": 0,
+        "stops": 0,
+        "expired": 0,
+        "hit_rate": null,
+        "win_rate": null,
+        "avg_r": null,
+        "total_r": null,
+        "best_r": null,
+        "worst_r": null
+      }
+    },
+    "by_grade": {
+      "A": {
+        "n": 6,
+        "pending": 6,
+        "untriggered": 0,
+        "resolved": 0,
+        "targets": 0,
+        "stops": 0,
+        "expired": 0,
+        "hit_rate": null,
+        "win_rate": null,
+        "avg_r": null,
+        "total_r": null,
+        "best_r": null,
+        "worst_r": null
+      },
+      "B": {
+        "n": 15,
+        "pending": 15,
+        "untriggered": 0,
+        "resolved": 0,
+        "targets": 0,
+        "stops": 0,
+        "expired": 0,
+        "hit_rate": null,
+        "win_rate": null,
+        "avg_r": null,
+        "total_r": null,
+        "best_r": null,
+        "worst_r": null
+      },
+      "C": {
+        "n": 4,
+        "pending": 4,
+        "untriggered": 0,
+        "resolved": 0,
+        "targets": 0,
+        "stops": 0,
+        "expired": 0,
+        "hit_rate": null,
+        "win_rate": null,
+        "avg_r": null,
+        "total_r": null,
+        "best_r": null,
+        "worst_r": null
+      }
+    }
+  },
+  "note": "Outcomes are scored on daily bars after the decision date: a fade fills when its wall is touched within 5 bars, a continuation at the next open; the stop is checked before the target on every bar; trades expire at the close after 10 bars. Results are in R, multiples of the planned entry-to-stop risk. Rates are withheld below 5 resolved trades."
+}

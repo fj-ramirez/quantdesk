@@ -11,6 +11,7 @@ import { Rotation } from './pages/Rotation';
 import { Regime } from './pages/Regime';
 import { Flows } from './pages/Flows';
 import { Overview } from './pages/Overview';
+import { Decisions } from './pages/Decisions';
 
 // T55's `NotBuiltYetPage` stub (07-ui.md: "Nav links to routes that do not exist yet must
 // render and land on a one-line 'not built yet' EmptyState page") is gone -- T56 was the last
@@ -38,6 +39,7 @@ export function App() {
         <Route path="regime" element={<Regime />} />
         <Route path="rotation" element={<Rotation />} />
         <Route path="flows" element={<Flows />} />
+        <Route path="decisions" element={<Decisions />} />
         {/* Standalone chart demos. Dashboard assembly is T16's job. */}
         <Route path="demo/gamma-profile" element={<GammaProfileDemo />} />
         <Route path="demo/gex-by-strike" element={<GexByStrikeDemo />} />

@@ -27,7 +27,8 @@ backend/app/
   providers/   OptionChainProvider ABC + cboe.py (default), marketdata.py
   models/      chain.py (Pydantic wire/domain types), db.py (SQLAlchemy tables)
   gex/         greeks.py, engine.py (pure math), store.py (persist), backfill.py (CLI)
-  api/         routers: snapshots, health, gex, chains — all mounted under /api
+  scan/        pure scan modules: indicators, breakouts, trend, regime, rotation, decisions (T60)
+  api/         routers: snapshots, health, gex, chains, report, bars, scan, symbols, decisions — all under /api
   jobs/        capture, scheduler (APScheduler), calendar, catchup
   storage/     parquet.py (raw chains), repository.py (snapshot index)
 frontend/src/  api/ components/ pages/ state/ theme/ mocks/

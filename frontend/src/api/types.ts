@@ -1085,3 +1085,181 @@ export interface FlowsResponse {
   no_flow_data: NoFlowData[];
   sources: FlowsFamilySource[];
 }
+
+// ---------------------------------------------------------------------------------------
+// T60: decision engine -- `GET /api/decisions?filter=&min_score=`. Mirrors
+// `app.api.decisions.DecisionsResponse` (over `app.scan.decisions.Opportunity` /
+// `DecisionResult`) field for field. Suggestions only: nothing here is routed, and every
+// level is one the backend measured (a wall, the flip, a by-strike ladder rung, or an ATR
+// multiple named as such in its `*_label`).
+// ---------------------------------------------------------------------------------------
+
+export type OpportunitySetup = 'fade' | 'continuation';
+export type OpportunitySide = 'LONG' | 'SHORT';
+/** `active`: the entry is reachable now. `watch`: a fade whose wall is 1.5-3 ATR away, to
+ * pre-plan around. `rejected`: emitted so the user sees *why* the geometry does not pay
+ * (`rejection_reason`), never silently dropped. */
+export type OpportunityStatus = 'active' | 'watch' | 'rejected';
+
+export interface DecisionScoreComponent {
+  name: string;
+  points: number;
+  max_points: number;
+  /** Names the input behind the points, or says it was unavailable -- render verbatim. */
+  note: string;
+}
+
+export interface Opportunity {
+  key: string;
+  setup: OpportunitySetup;
+  side: OpportunitySide;
+  status: OpportunityStatus;
+  /** 0-100; `score_breakdown`'s `points` sum to it and its `max_points` sum to 100. */
+  score: number;
+  grade: 'A' | 'B' | 'C' | 'D';
+  entry: number;
+  entry_label: string;
+  stop: number;
+  stop_label: string;
+  target: number;
+  target_label: string;
+  target_2: number | null;
+  target_2_label: string | null;
+  risk: number;
+  reward: number;
+  rr: number | null;
+  risk_atr: number | null;
+  reward_atr: number | null;
+  /** Ordered sentences; every number in them is also a typed field on this object. */
+  thesis: string[];
+  invalidation: string[];
+  structure: string;
+  warnings: string[];
+  score_breakdown: DecisionScoreComponent[];
+  rejection_reason: string | null;
+}
+
+/** One row of `DecisionsResponse.ranked`: an `Opportunity` plus the symbol it belongs to. */
+export interface RankedOpportunity extends Opportunity {
+  underlying: string;
+  spot: number;
+}
+
+/** One symbol's full decision: its opportunities (possibly empty) and, exactly when they are
+ * empty, the reasons -- a stale chain, noise-dominated net GEX, no ATR, no walls, or a
+ * continuation regime with no direction. Never both empty. */
+export interface SymbolDecision {
+  underlying: string;
+  filter: string;
+  spot: number;
+  atr14: number | null;
+  as_of: string;
+  effective_at: string;
+  stale: boolean;
+  verdict: 'continuation' | 'mixed' | 'fade' | null;
+  positioning_direction: string | null;
+  positioning_ratio: number | null;
+  opportunities: Opportunity[];
+  no_trade_reasons: string[];
+}
+
+export interface DecisionsResponse {
+  filter: string;
+  /** The backend's own one-line disclaimer -- render it, verbatim, on the page. */
+  generated_from: string;
+  /** Cross-universe ranking: `active` before `watch` before `rejected`, then score desc. */
+  ranked: RankedOpportunity[];
+  symbols: SymbolDecision[];
+  /** `Underlying` members with no captured chain at all. */
+  no_chain: string[];
+}
+
+// ---------------------------------------------------------------------------------------
+// T61: the decision track record -- `GET /api/decisions/history` and
+// `POST /api/decisions/record`. Mirrors `app.api.decisions.DecisionsHistoryResponse` over
+// `app.storage.decisions_repository.DecisionRecord` and `app.scan.outcomes.TrackRecord`.
+// ---------------------------------------------------------------------------------------
+
+/** `pending`: still open (or the entry not yet touched). `untriggered`: a fade whose wall was
+ * never touched within the trigger window. `target`/`stop`/`expired`: resolved. `invalid`:
+ * a spec with no risk unit (cannot happen for engine output; kept for completeness). */
+export type DecisionOutcome = 'pending' | 'untriggered' | 'target' | 'stop' | 'expired' | 'invalid';
+
+export interface DecisionRecord {
+  id: number;
+  underlying: string;
+  filter: string;
+  snapshot_id: number;
+  key: string;
+  /** Trading date of the chain the suggestion came from (New York), ISO date. */
+  decided_on: string;
+  as_of: string;
+  setup: OpportunitySetup;
+  side: OpportunitySide;
+  status: OpportunityStatus;
+  score: number;
+  grade: string;
+  entry: number;
+  stop: number;
+  target: number;
+  target_2: number | null;
+  spot: number;
+  atr14: number | null;
+  outcome: DecisionOutcome;
+  fill: number | null;
+  triggered_on: string | null;
+  resolved_on: string | null;
+  bars_held: number | null;
+  /** Excursions and results are in R, multiples of the planned `|entry - stop|` risk. */
+  mfe_r: number | null;
+  mae_r: number | null;
+  /** `null` until resolved. */
+  result_r: number | null;
+  /** Unrealized R at the last close while `pending`; `null` otherwise. */
+  mark_r: number | null;
+  evaluated_through: string | null;
+  /** The evaluator's own sentence -- render verbatim. */
+  outcome_note: string | null;
+  /** The full opportunity as it was recorded, thesis and score breakdown included. */
+  opportunity: Opportunity;
+}
+
+export interface DecisionGroupStats {
+  n: number;
+  pending: number;
+  untriggered: number;
+  resolved: number;
+  targets: number;
+  stops: number;
+  expired: number;
+  /** Targets over resolved; `null` below five resolved trades. */
+  hit_rate: number | null;
+  /** `result_r > 0` over resolved; `null` below five resolved trades. */
+  win_rate: number | null;
+  avg_r: number | null;
+  total_r: number | null;
+  best_r: number | null;
+  worst_r: number | null;
+}
+
+export interface DecisionTrackRecord {
+  overall: DecisionGroupStats;
+  by_setup: Record<string, DecisionGroupStats>;
+  by_grade: Record<string, DecisionGroupStats>;
+}
+
+export interface DecisionsHistoryResponse {
+  /** Newest first, capped by `limit`. */
+  records: DecisionRecord[];
+  /** Summarized over every stored row matching the query, not just `records`. */
+  summary: DecisionTrackRecord;
+  /** The backend's own description of the scoring rules -- render verbatim. */
+  note: string;
+}
+
+export interface DecisionsRecordRun {
+  recorded: number;
+  evaluated: number;
+  resolved: number;
+  errors: string[];
+}

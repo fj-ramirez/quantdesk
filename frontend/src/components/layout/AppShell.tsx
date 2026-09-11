@@ -43,6 +43,10 @@ function NavBar() {
       <NavLink to={{ pathname: '/flows', search: location.search }} className={linkClassName}>
         Flows
       </NavLink>
+      {/* T60: the decision engine -- a universe page like the rest of the scan family. */}
+      <NavLink to={{ pathname: '/decisions', search: location.search }} className={linkClassName}>
+        Decisions
+      </NavLink>
       <NavLink to={{ pathname: '/settings', search: location.search }} className={linkClassName}>
         Settings
       </NavLink>

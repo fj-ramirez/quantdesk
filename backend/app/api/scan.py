@@ -120,6 +120,7 @@ against the live server rather than only `tests/test_scan_api.py`'s offline equi
 from __future__ import annotations
 
 import datetime as dt
+from collections.abc import Sequence
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Annotated
@@ -184,7 +185,7 @@ from app.scan.trend import (
 from app.storage.bars_repository import get_session_factory, read_bars, read_universe_closes
 from app.storage.parquet import read_snapshot, resolve_snapshot_path
 
-__all__ = ["router"]
+__all__ = ["RegimeBuild", "build_regime_rows", "router"]
 
 router = APIRouter(prefix="/scan", tags=["scan"])
 
@@ -979,6 +980,7 @@ class _RegimeGexInputs:
     `gex_by_strike`, never from Parquet.
     """
 
+    snapshot_id: int
     levels: KeyLevels
     by_strike: tuple[StrikeGex, ...]
     zero_dte_by_strike: tuple[StrikeGex, ...]
@@ -1045,6 +1047,7 @@ def _load_gex_inputs(
         # Extract every plain value needed below while the session is still open -- ORM rows
         # are not touched again after this point, so nothing downstream depends on the
         # session staying open (avoids any risk of a detached-instance access).
+        snap_id = snap.id
         snap_source = snap.source
         snap_spot = snap.spot
         snap_captured_at = snap.captured_at
@@ -1118,6 +1121,7 @@ def _load_gex_inputs(
     stale = chain_age_minutes > STALE_THRESHOLD_MINUTES
 
     return _RegimeGexInputs(
+        snapshot_id=snap_id,
         levels=levels,
         by_strike=by_strike,
         zero_dte_by_strike=zero_dte_by_strike,
@@ -1284,6 +1288,56 @@ def get_regime(
     """
     parsed_filter = _validate_regime_filter(filter_)
 
+    rows: list[RegimeRowOut] = []
+    for build in build_regime_rows(parsed_filter):
+        if build.row is None:
+            rows.append(RegimeRowOut.missing(build.symbol, parsed_filter.value, build.trend_pct))
+        else:
+            rows.append(RegimeRowOut.from_row(build.row, build.trend_pct))
+
+    return RegimeResponse(filter=parsed_filter.value, rows=rows)
+
+
+@dataclass(frozen=True, slots=True)
+class RegimeBuild:
+    """One `Underlying` member's regime row plus the inputs it was built from, for a consumer
+    that needs more than the row itself (T60's decision engine wants the by-strike ladder for
+    targets and the bars for a breakout summary, and must not re-fetch either).
+
+    `row` is `None` exactly when the symbol has never been captured (or has no persisted
+    `gex_levels` row for the filter) -- the `RegimeRowOut.missing` case. `bars` is always a
+    frame (possibly empty), never `None`. `by_strike` is empty when `row` is `None`.
+    """
+
+    symbol: str
+    row: RegimeRow | None
+    trend_pct: float | None
+    by_strike: tuple[StrikeGex, ...]
+    bars: pd.DataFrame
+    #: The `snapshots.id` the row was computed from; `None` exactly when `row` is `None`.
+    #: T61's decisions table keys on it so a re-run on the same capture never duplicates.
+    snapshot_id: int | None = None
+
+
+def build_regime_rows(
+    parsed_filter: ExpiryFilter, *, symbols: Sequence[str] | None = None
+) -> list[RegimeBuild]:
+    """The `/regime` pipeline, factored out (T60) so `/decisions` builds on the same rows.
+
+    Trend components (and therefore `iv30`/`rv20`/`trend_pct`) are computed once, up front,
+    across the *full* `settings.scan_universe` -- exactly `/trend`'s own pipeline
+    (`_symbol_components` + `rank_universe`) -- both so `trend_pct` matches what `/trend` shows
+    for the same symbol elsewhere in the app, and so the already-fetched `bars` and
+    already-looked-up `iv30`/`rv20` can be reused for `atr14`/`return_5d`/the regime metrics
+    themselves rather than fetched a second time for every optioned symbol (T45's own
+    `_lookup_iv30` is the dominant cost in that pipeline, ~3s across the universe -- see this
+    module's docstring's T45 timing note -- and this would otherwise pay it twice for every one
+    of the ~28 `Underlying` members that also sit in `SCAN_UNIVERSE`).
+
+    `symbols` narrows the output to those `Underlying` values (the single-symbol decisions
+    route); the trend ranking is still over the whole universe, since a percentile against a
+    universe of one is meaningless. Defaults to every `Underlying` member, in enum order.
+    """
     bars_session_factory = get_session_factory()
     gex_session_factory = get_gex_session_factory()
 
@@ -1297,21 +1351,21 @@ def get_regime(
         row.symbol: row.composite for row in rank_universe(components_by_symbol)
     }
 
-    rows: list[RegimeRowOut] = []
-    for underlying in Underlying:
-        symbol = underlying.value
+    wanted = [u.value for u in Underlying] if symbols is None else list(symbols)
+    builds: list[RegimeBuild] = []
+    for symbol in wanted:
         trend_pct = trend_pct_by_symbol.get(symbol)
 
-        gex_inputs = _load_gex_inputs(symbol, parsed_filter, gex_session_factory)
-        if gex_inputs is None:
-            rows.append(RegimeRowOut.missing(symbol, parsed_filter.value, trend_pct))
-            continue
-
-        components = components_by_symbol.get(symbol)
         bars = bars_by_symbol.get(symbol)
         if bars is None:
             bars = read_bars(symbol, session_factory=bars_session_factory)
 
+        gex_inputs = _load_gex_inputs(symbol, parsed_filter, gex_session_factory)
+        if gex_inputs is None:
+            builds.append(RegimeBuild(symbol, None, trend_pct, (), bars))
+            continue
+
+        components = components_by_symbol.get(symbol)
         if components is not None:
             iv30 = components.iv30
             rv20 = components.rv20
@@ -1341,9 +1395,11 @@ def get_regime(
             chain_age_minutes=gex_inputs.chain_age_minutes,
             stale=gex_inputs.stale,
         )
-        rows.append(RegimeRowOut.from_row(row, trend_pct))
+        builds.append(
+            RegimeBuild(symbol, row, trend_pct, gex_inputs.by_strike, bars, gex_inputs.snapshot_id)
+        )
 
-    return RegimeResponse(filter=parsed_filter.value, rows=rows)
+    return builds
 
 
 # --------------------------------------------------------------------------------------------

@@ -175,3 +175,39 @@ exists for — see that file's own docstring.
   only in `FlowBars`'s own test and one `Flows.test.tsx` case exercising the non-empty chart —
   never wired as a default MSW handler response, so the app's default dev/test state stays the
   honest, all-null live one.
+
+## Decisions fixture (T60)
+
+`decisions.json` is `GET /api/decisions` (default `filter=ALL`, `min_score=0`), recorded
+**in-process** on 2026-09-10 against the real dev Postgres (`DATABASE_URL` from `backend/.env`,
+`DATA_DIR=../data` so the IV lookup could open the Docker-written Parquet files) -- the running
+Docker backend predated the router and, per the project's "never restart a shared process"
+rule, was not restarted to curl it:
+
+```
+cd backend && DATA_DIR=../data uv run python -c "
+from fastapi import FastAPI; from fastapi.testclient import TestClient
+from app.api.decisions import router
+app = FastAPI(); app.include_router(router, prefix='/api')
+print(TestClient(app).get('/api/decisions').text)" > ../frontend/src/mocks/fixtures/scan/decisions.json
+```
+
+Unedited (only re-indented). What the live universe happened to contain that day, which the
+page tests rely on: 25 ranked opportunities across 28 optioned symbols (22 `active`, 3 `watch`,
+no `rejected` -- so the rejected branch is exercised only by the backend's own unit tests),
+grades A/B/C all present, four symbols with no trade for a stale chain (XLRE, XLC, XBI, KRE --
+two of them sharing the identical reason sentence, which is why `Decisions.test.tsx` uses
+`getAllByText` there), one for noise-dominated net GEX (EEM), and an empty `no_chain`. The
+handler ignores `filter` (one recording serves all three) and honours `min_score` so the
+toolbar's threshold visibly trims the table against the mock.
+
+## Decisions history fixture (T61)
+
+`decisions_history.json` is `GET /api/decisions/history`, recorded in-process on 2026-09-10
+right after the first live `record_decisions_job` run (the same in-process recipe as the
+decisions fixture above, `DATA_DIR=../data`). Unedited. It is the honest day-one state: 25
+stored rows, every one `pending` with `outcome_note` "no bars after the decision date yet",
+every rate `null` (withheld below five resolved trades) and every R `null`. Nothing resolved
+exists on the live database yet, so `Decisions.test.tsx` builds a clearly-labelled synthetic
+variant *in the test* (three rows flipped to target/stop/pending-with-mark) to exercise the
+R and rate columns, rather than committing a fabricated recording as if it were live.

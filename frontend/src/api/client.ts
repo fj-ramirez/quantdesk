@@ -9,6 +9,9 @@ import type {
   CaptureHealth,
   ChainResponse,
   CrossAssetResponse,
+  DecisionsHistoryResponse,
+  DecisionsRecordRun,
+  DecisionsResponse,
   ExpiryFilter,
   FlowsResponse,
   GexResult,
@@ -250,5 +253,25 @@ export const apiClient = {
    * validator already enforces that before this is ever called. */
   flows(window: number): Promise<FlowsResponse> {
     return apiFetch<FlowsResponse>('/api/scan/flows', { window });
+  },
+
+  /** T60's `/decisions` page. `filter` is the same persisted three-way filter `/regime`
+   * accepts; `minScore` only trims the cross-universe `ranked` list server-side. */
+  decisions(filter: ExpiryFilter, minScore?: number): Promise<DecisionsResponse> {
+    return apiFetch<DecisionsResponse>('/api/decisions', { filter, min_score: minScore });
+  },
+
+  /** T61's track record: stored opportunities and their outcomes, newest first. */
+  decisionsHistory(opts: { underlying?: string; outcome?: string; limit?: number } = {}): Promise<DecisionsHistoryResponse> {
+    return apiFetch<DecisionsHistoryResponse>('/api/decisions/history', {
+      underlying: opts.underlying,
+      outcome: opts.outcome,
+      limit: opts.limit,
+    });
+  },
+
+  /** Runs the 17:45 ET record-and-score job now (`POST /api/decisions/record`). */
+  recordDecisions(): Promise<DecisionsRecordRun> {
+    return apiPost<DecisionsRecordRun>('/api/decisions/record');
   },
 };

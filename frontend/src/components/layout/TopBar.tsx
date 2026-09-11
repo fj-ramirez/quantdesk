@@ -37,6 +37,7 @@ const SCAN_FAMILY_PATHS: ReadonlySet<string> = new Set([
   '/rotation',
   '/flows',
   '/overview',
+  '/decisions',
 ]);
 
 function ExpiryFilterSelect({

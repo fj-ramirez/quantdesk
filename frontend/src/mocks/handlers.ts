@@ -22,6 +22,8 @@ import type {
   CfdTranslation,
   ChainResponse,
   CrossAssetResponse,
+  DecisionsHistoryResponse,
+  DecisionsResponse,
   ExpiryFilter,
   FlowsResponse,
   GexResult,
@@ -75,6 +77,8 @@ import flows5Fixture from './fixtures/scan/flows_5.json';
 import flows20Fixture from './fixtures/scan/flows_20.json';
 import flows60Fixture from './fixtures/scan/flows_60.json';
 import crossAssetFixture from './fixtures/scan/cross_asset.json';
+import decisionsFixture from './fixtures/scan/decisions.json';
+import decisionsHistoryFixture from './fixtures/scan/decisions_history.json';
 
 // T47 added 23 more `Underlying` members (sector/industry ETFs), none of which has a mock
 // fixture -- these handlers were built and are tested against exactly the original five, and
@@ -531,6 +535,30 @@ export const handlers = [
   // server left no running server with this task's code to curl).
   http.get('*/api/scan/cross-asset', () =>
     HttpResponse.json(crossAssetFixture as CrossAssetResponse),
+  ),
+
+  // T60: `/decisions`. One fixture, the live response recorded in-process on 2026-09-10 (see
+  // `fixtures/scan/README.md`'s "Decisions fixture" section). The filter is ignored here --
+  // the handler serves the `ALL` recording for every value -- and `min_score` is honoured so
+  // the page's threshold control visibly does something against the mock.
+  http.get('*/api/decisions', ({ request }) => {
+    const url = new URL(request.url);
+    const minScore = Number(url.searchParams.get('min_score') ?? '0');
+    const fixture = decisionsFixture as DecisionsResponse;
+    return HttpResponse.json({
+      ...fixture,
+      ranked: fixture.ranked.filter((o) => o.score >= minScore),
+    });
+  }),
+
+  // T61: the track record. The live recording (25 pending rows, nothing resolved yet -- the
+  // honest day-one state, see `fixtures/scan/README.md`) serves every query; tests that need
+  // resolved rows override this handler with a hand-built variant and say so.
+  http.get('*/api/decisions/history', () =>
+    HttpResponse.json(decisionsHistoryFixture as DecisionsHistoryResponse),
+  ),
+  http.post('*/api/decisions/record', () =>
+    HttpResponse.json({ recorded: 0, evaluated: 25, resolved: 0, errors: [] }, { status: 201 }),
   ),
 
   http.get('*/api/symbols', () =>

@@ -165,6 +165,12 @@ export const DEFAULT_SCAN_WEEKS = 6;
 export const SCAN_WINDOW_VALUES = [5, 20, 60] as const;
 export const DEFAULT_SCAN_WINDOW = 20;
 
+/** T60: `/decisions`' score threshold. The values are the engine's own grade boundaries
+ * (`app.scan.decisions.GRADE_C/B/A` = 45/60/75) plus "everything", so the toolbar reads as
+ * "C or better", "B or better", "A only" rather than as arbitrary numbers. */
+export const SCAN_MIN_SCORE_VALUES = [0, 45, 60, 75] as const;
+export const DEFAULT_SCAN_MIN_SCORE = 0;
+
 function isOneOf<T extends string>(value: string | null, allowed: readonly T[]): T | null {
   return value !== null && (allowed as readonly string[]).includes(value) ? (value as T) : null;
 }
@@ -191,6 +197,8 @@ export interface ScanParams {
   benchmark: ScanBenchmark;
   weeks: number;
   window: number;
+  /** T60: `/decisions`' score threshold, one of `SCAN_MIN_SCORE_VALUES`. */
+  minScore: number;
   setView: (view: ScanView) => void;
   setN: (n: number) => void;
   setK: (k: number) => void;
@@ -203,6 +211,7 @@ export interface ScanParams {
   setBenchmark: (benchmark: ScanBenchmark) => void;
   setWeeks: (weeks: number) => void;
   setWindow: (window: number) => void;
+  setMinScore: (minScore: number) => void;
 }
 
 /**
@@ -227,6 +236,7 @@ export function useScanParams(): ScanParams {
   const benchmark = isOneOf(searchParams.get('benchmark'), SCAN_BENCHMARKS) ?? DEFAULT_SCAN_BENCHMARK;
   const weeks = numberOneOf(searchParams.get('weeks'), SCAN_WEEKS_VALUES) ?? DEFAULT_SCAN_WEEKS;
   const windowParam = numberOneOf(searchParams.get('window'), SCAN_WINDOW_VALUES) ?? DEFAULT_SCAN_WINDOW;
+  const minScore = numberOneOf(searchParams.get('min_score'), SCAN_MIN_SCORE_VALUES) ?? DEFAULT_SCAN_MIN_SCORE;
 
   const setView = useCallback(
     (next: ScanView) => setSearchParams((prev) => setParam(prev, 'view', next)),
@@ -265,6 +275,10 @@ export function useScanParams(): ScanParams {
     (next: number) => setSearchParams((prev) => setParam(prev, 'window', String(next))),
     [setSearchParams],
   );
+  const setMinScore = useCallback(
+    (next: number) => setSearchParams((prev) => setParam(prev, 'min_score', String(next))),
+    [setSearchParams],
+  );
 
   return useMemo(
     () => ({
@@ -278,6 +292,7 @@ export function useScanParams(): ScanParams {
       benchmark,
       weeks,
       window: windowParam,
+      minScore,
       setView,
       setN,
       setK,
@@ -287,6 +302,7 @@ export function useScanParams(): ScanParams {
       setBenchmark,
       setWeeks,
       setWindow,
+      setMinScore,
     }),
     [
       view,
@@ -308,6 +324,8 @@ export function useScanParams(): ScanParams {
       setBenchmark,
       setWeeks,
       setWindow,
+      minScore,
+      setMinScore,
     ],
   );
 }

@@ -8,6 +8,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.api.bars import router as bars_router
 from app.api.chains import router as chains_router
+from app.api.decisions import router as decisions_router
 from app.api.gex import router as gex_router
 from app.api.health import router as health_router
 from app.api.report import router as report_router
@@ -79,6 +80,7 @@ app.include_router(report_router, prefix="/api")
 app.include_router(bars_router, prefix="/api")
 app.include_router(scan_router, prefix="/api")
 app.include_router(symbols_router, prefix="/api")
+app.include_router(decisions_router, prefix="/api")
 
 
 @app.get("/health")

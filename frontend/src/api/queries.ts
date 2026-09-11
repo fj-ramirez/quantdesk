@@ -139,6 +139,10 @@ export const scanQueryKeys = {
   rotation: (group: RotationGroup, benchmark: RotationBenchmark, weeks: number) =>
     ['scan-rotation', group, benchmark, weeks] as const,
   regime: (filter: ExpiryFilter) => ['scan-regime', filter] as const,
+  decisions: (filter: ExpiryFilter, minScore?: number) =>
+    ['decisions', filter, minScore ?? null] as const,
+  decisionsHistory: (underlying?: string, outcome?: string, limit?: number) =>
+    ['decisions-history', underlying ?? null, outcome ?? null, limit ?? null] as const,
 };
 
 export function useBreakouts(params: { n?: number; k?: number; lookback?: number } = {}) {
@@ -235,5 +239,40 @@ export function useFlows(window: number) {
   return useQuery({
     queryKey: ['scan-flows', window] as const,
     queryFn: () => apiClient.flows(window),
+  });
+}
+
+// ---------------------------------------------------------------------------------------
+// T60: `/decisions`. Same persisted-filter vocabulary as `/regime` (the page reuses
+// `useDashboardParams`'s validator for it, exactly as `Regime.tsx` does).
+// ---------------------------------------------------------------------------------------
+
+export function useDecisions(filter: ExpiryFilter, minScore?: number) {
+  return useQuery({
+    queryKey: scanQueryKeys.decisions(filter, minScore),
+    queryFn: () => apiClient.decisions(filter, minScore),
+  });
+}
+
+// ---------------------------------------------------------------------------------------
+// T61: the track record. A successful "Record now" invalidates every history query (the
+// rows changed) and the `/decisions` ranking too (a run can follow a fresh capture).
+// ---------------------------------------------------------------------------------------
+
+export function useDecisionsHistory(opts: { underlying?: string; outcome?: string; limit?: number } = {}) {
+  return useQuery({
+    queryKey: scanQueryKeys.decisionsHistory(opts.underlying, opts.outcome, opts.limit),
+    queryFn: () => apiClient.decisionsHistory(opts),
+  });
+}
+
+export function useRecordDecisions() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: () => apiClient.recordDecisions(),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ['decisions-history'] });
+      void queryClient.invalidateQueries({ queryKey: ['decisions'] });
+    },
   });
 }
