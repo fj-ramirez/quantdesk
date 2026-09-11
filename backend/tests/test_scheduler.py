@@ -15,6 +15,7 @@ from zoneinfo import ZoneInfo
 from app.jobs import scheduler as scheduler_module
 from app.jobs.scheduler import (
     BARS_JOB_ID,
+    BARS_PREOPEN_JOB_ID,
     DECISIONS_JOB_ID,
     EOD_JOB_ID,
     EXTENDED_JOB_ID,
@@ -222,6 +223,7 @@ def test_build_scheduler_still_registers_the_two_option_capture_jobs_unchanged()
         FLOWS_JOB_ID,
         DECISIONS_JOB_ID,
         RETENTION_JOB_ID,
+        BARS_PREOPEN_JOB_ID,
     }
 
 
@@ -321,6 +323,7 @@ def test_build_scheduler_adding_the_extended_job_leaves_the_other_three_untouche
         FLOWS_JOB_ID,
         DECISIONS_JOB_ID,
         RETENTION_JOB_ID,
+        BARS_PREOPEN_JOB_ID,
     }
 
 
@@ -473,6 +476,7 @@ def test_build_scheduler_adding_the_flows_job_leaves_the_other_four_untouched():
         FLOWS_JOB_ID,
         DECISIONS_JOB_ID,
         RETENTION_JOB_ID,
+        BARS_PREOPEN_JOB_ID,
     }
 
 
@@ -760,3 +764,29 @@ async def test_intraday_job_survives_an_unexpected_exception(monkeypatch, caplog
     with caplog.at_level("ERROR"):
         await capture_intraday_job()  # must not raise
     assert "capture_intraday_job: unexpected top-level failure" in caplog.text
+
+
+# --- T73: pre-open bars refresh ---------------------------------------------------------------
+
+
+def test_build_scheduler_registers_the_preopen_bars_job_at_0815_ny():
+    """Before the 09:30 open and long after any overnight vendor publication, so a pre-session
+    read of the regime strip is at worst one session behind rather than two."""
+    scheduler = build_scheduler()
+    job = scheduler.get_job(BARS_PREOPEN_JOB_ID)
+    assert job is not None
+    fields = {f.name: str(f) for f in job.trigger.fields}
+    assert (fields["hour"], fields["minute"], fields["day_of_week"]) == ("8", "15", "mon-fri")
+    assert job.misfire_grace_time is None  # same policy as the 17:30 run it doubles
+
+
+def test_the_two_bars_jobs_share_a_function_but_not_an_id():
+    """One job function, two triggers. Distinct ids so either can be inspected, paused or run by
+    hand without touching the other -- and so the 17:30 run stays exactly as it was."""
+    scheduler = build_scheduler()
+    preopen = scheduler.get_job(BARS_PREOPEN_JOB_ID)
+    evening = scheduler.get_job(BARS_JOB_ID)
+    assert preopen.func is evening.func
+    assert preopen.id != evening.id
+    evening_fields = {f.name: str(f) for f in evening.trigger.fields}
+    assert (evening_fields["hour"], evening_fields["minute"]) == ("17", "30")

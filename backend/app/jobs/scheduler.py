@@ -30,6 +30,7 @@ from app.jobs.retention import prune_intraday_strike_detail
 
 __all__ = [
     "BARS_JOB_ID",
+    "BARS_PREOPEN_JOB_ID",
     "DECISIONS_JOB_ID",
     "EOD_JOB_ID",
     "EXTENDED_JOB_ID",
@@ -55,6 +56,7 @@ logger = logging.getLogger("app.jobs.scheduler")
 EOD_JOB_ID = "capture_eod"
 SAFETY_NET_JOB_ID = "capture_eod_safety_net"
 BARS_JOB_ID = "bars_update"
+BARS_PREOPEN_JOB_ID = "bars_update_preopen"
 EXTENDED_JOB_ID = "capture_extended"
 FLOWS_JOB_ID = "flows_update"
 DECISIONS_JOB_ID = "decisions_update"
@@ -365,6 +367,28 @@ def build_scheduler() -> AsyncIOScheduler:
         trigger=CronTrigger(day_of_week="mon-fri", hour=17, minute=30, timezone=_TZ),
         id=BARS_JOB_ID,
         name="Daily bars update (SCAN_UNIVERSE)",
+        coalesce=True,
+        misfire_grace_time=None,
+        max_instances=1,
+        replace_existing=True,
+    )
+    # T73: a second bars run before the open, on the same job function and the same 5-day
+    # overlap. Not redundant with 17:30 -- it exists because `app.providers.cboe_index` had not
+    # published the current session's row when the 17:30 run asked for it on 2026-09-10, so the
+    # six Cboe index symbols (^VIX, ^VIX9D, ^VIX3M, ^VIX6M, ^VVIX, ^SKEW) sat a day behind every
+    # Yahoo-backed symbol. Between one evening's run and the next, `/api/scan/cross-asset` was
+    # therefore reporting a term structure and VRP from **two** sessions ago, which is what the
+    # user saw on Opportunities.
+    #
+    # 08:15 NY is before the 09:30 open and long after any overnight publication, so the
+    # pre-session read of the regime strip is at worst one session behind rather than two. The
+    # job is idempotent by construction (`upsert_bars` no-ops on unchanged values), so running
+    # the whole universe twice a day costs one extra pass and no duplicate rows.
+    scheduler.add_job(
+        bars_update_job,
+        trigger=CronTrigger(day_of_week="mon-fri", hour=8, minute=15, timezone=_TZ),
+        id=BARS_PREOPEN_JOB_ID,
+        name="Daily bars pre-open refresh (catches vendors that publish overnight)",
         coalesce=True,
         misfire_grace_time=None,
         max_instances=1,

@@ -1102,3 +1102,42 @@ and they are not - which matters most on exactly the fast tape where the view is
 Acceptance: feeding a changed spot moves the marker and the distance readouts without a new
 capture, the structure stamp does not move, and killing the quote source drops back to the
 captured spot with a visible reason.
+
+
+---
+
+## T73 · Opus · T42, T54
+**Pre-open bars refresh, so the VIX family is not two sessions behind**
+
+Reported by the user 2026-09-11: the Opportunities page was showing bars through Sep 9 on Sep 11.
+
+Diagnosed: 119 of 125 symbols were current to 2026-09-10. The six stale ones were exactly the
+Cboe index series routed to `app.providers.cboe_index` by `BAR_PROVIDER_GROUPS` -- `^VIX`,
+`^VIX9D`, `^VIX3M`, `^VIX6M`, `^VVIX`, `^SKEW`. `GET /api/scan/cross-asset` reads those, so it
+was reporting `as_of 2026-09-09` with VIX 16.46 while the real Sep 10 close was 17.84 -- and
+that strip is the "bars" the user was looking at.
+
+The source was fine when probed directly at 13:50 ET: the CSV served Sep 10 for every one of
+the six. So the row existed by then but not when the 17:30 ET job asked for it on Sep 10.
+Either Cboe publishes the session's row after 17:30, or that particular run failed for these
+six; the old container's logs were gone, so this is not settled, and it does not need to be --
+both causes have the same fix and the same symptom.
+
+Why it looked two days stale rather than one: `update_one_symbol` re-fetches `last - 5 days`
+and upserts, so the gap self-heals on the *next* evening run. Between 17:30 on day D-1 and
+17:30 on day D, the VIX family therefore sat at D-2 while every Yahoo symbol sat at D-1.
+
+Fixed by adding a second trigger, `bars_update_preopen`, at 08:15 NY Mon-Fri on the same job
+function and the same 5-day overlap. Before the open, long after any overnight publication, so
+a pre-session read is at worst one session behind instead of two. `upsert_bars` no-ops on
+unchanged values, so running the universe twice a day costs one extra pass and no duplicate
+rows. Distinct job id from the 17:30 run, which is untouched.
+
+The six symbols were also backfilled by hand at the time (`inserted=1, updated=3-4` each), so
+cross-asset went to `as_of 2026-09-10` immediately rather than waiting for a scheduled run.
+
+**Still open:** this reduces the worst case but does not make the VIX family same-session
+current, because the Cboe CSV may simply not carry day D during day D. If the regime strip
+ought to show *today's* VIX, that needs a different source for those six (Yahoo serves `^VIX`
+and `^VIX3M`, though not obviously the whole family) -- a separate decision, not this fix.
+955 backend tests pass.

@@ -27,6 +27,7 @@ setting-named error if constructed without it.
 | Mon–Fri 20:00 | safety net; no-op if 16:20 already succeeded |
 | Mon–Fri every 15 min, 09:45–16:15 | intraday polling (T18), `is_eod=False` — **only when `INTRADAY_ENABLED=true`**; 27 fires a session, and unlike every other job here a missed slot can never be recovered |
 | Mon–Fri 16:45 | extended sector/industry ETF capture (T47) |
+| Mon–Fri 08:15 | daily bars pre-open refresh (T73) — same job, catches vendors that publish overnight; without it the six Cboe index symbols sit two sessions behind between evening runs |
 | Mon–Fri 17:30 | daily bars update (T42) |
 | Mon–Fri 17:45 | decision engine record-and-score (T61): writes today's opportunities, scores pending ones against new bars |
 | Mon–Fri 18:30 | ETF shares-outstanding flows (T52) |
