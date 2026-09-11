@@ -21,7 +21,9 @@ from pathlib import Path
 from sqlalchemy import select
 from sqlalchemy.orm import Session, sessionmaker
 
+from app.events import broker
 from app.gex.store import compute_and_store
+from app.jobs.calendar import effective_data_time
 from app.models.chain import ChainSnapshot
 from app.models.db import Snapshot, get_engine, get_sessionmaker
 from app.providers import get_provider
@@ -211,6 +213,40 @@ async def capture_snapshot(
             "failed; it will be picked up by `uv run python -m app.gex.backfill`",
             underlying,
             row.id,
+        )
+    else:
+        # --- T19 publish -----------------------------------------------------------------
+        # Strictly after the levels are committed, and only when they were: a client woken by
+        # this event immediately re-fetches, and waking it before the rows exist would serve it
+        # the *previous* snapshot's levels and leave it stale until the next capture. Hence
+        # `else` rather than a line after the try/except.
+        #
+        # Publishing here rather than inside `app.gex.store` keeps invariant 1 intact -- the
+        # engine and its store stay free of transport concerns -- and keeps this beside the
+        # structured log line, which is the other thing this function emits to the outside
+        # world at exactly this moment.
+        #
+        # A duplicate capture still publishes. The levels are unchanged, but a client that
+        # reconnected since the last event has no way to know that, and a redundant re-fetch is
+        # cheaper than a dashboard that sits on stale data because the server decided the
+        # nudge was unnecessary.
+        #
+        # `broker.publish` never raises and never blocks (see its docstring), so this needs no
+        # guard of its own -- but it must never be the thing that fails a capture, so if that
+        # contract ever changes, this call needs a try/except, not a comment.
+        broker.publish(
+            snapshot.underlying.value,
+            {
+                "underlying": snapshot.underlying.value,
+                "snapshot_id": row.id,
+                "captured_at": snapshot.captured_at,
+                "effective_at": effective_data_time(
+                    snapshot.captured_at, snapshot.delayed_minutes
+                ),
+                "is_eod": is_eod,
+                "spot": snapshot.spot,
+                "skipped_duplicate": skipped_duplicate,
+            },
         )
     # -----------------------------------------------------------------------------------------
 

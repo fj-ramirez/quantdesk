@@ -231,6 +231,13 @@ Add scheduler job `capture_intraday`: every 15 minutes from 09:45 to 16:15 NY on
 ### T19 · Sonnet · T18, T11
 **Server-Sent Events stream**
 
+**Done 2026-09-11.** `app/events.py` (in-process broker), `app/api/stream.py`
+(`GET /api/stream/{underlying}`), a publish from the capture path after levels commit, and the
+`useLiveLevels` hook plus a `LiveIndicator` in `ContextBar`. 24 new tests; suites 953 backend /
+343 frontend. Verified live against a running backend: `ready` on connect, a `levels` frame on a
+real capture, keep-alives while idle, and a logged unsubscribe on disconnect. See the Result
+section in [02-intraday-polling.md](plans/continuous-feed/02-intraday-polling.md).
+
 `GET /api/stream/{underlying}` SSE endpoint that emits an event whenever a new snapshot's levels are stored. Frontend hook `useLiveLevels` that invalidates the relevant queries on each event. Show a "last updated" indicator and a delay badge in the top bar.
 
 ### T20 · Sonnet · T18, T14

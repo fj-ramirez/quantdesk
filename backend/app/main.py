@@ -14,6 +14,7 @@ from app.api.health import router as health_router
 from app.api.report import router as report_router
 from app.api.scan import router as scan_router
 from app.api.snapshots import router as snapshots_router
+from app.api.stream import router as stream_router
 from app.api.symbols import router as symbols_router
 from app.config import settings
 from app.jobs.catchup import startup_catchup_job
@@ -81,6 +82,7 @@ app.include_router(bars_router, prefix="/api")
 app.include_router(scan_router, prefix="/api")
 app.include_router(symbols_router, prefix="/api")
 app.include_router(decisions_router, prefix="/api")
+app.include_router(stream_router, prefix="/api")
 
 
 @app.get("/health")

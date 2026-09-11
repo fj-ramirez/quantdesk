@@ -225,3 +225,63 @@ for all three filters (ALL net GEX +38.4 B, flip 7645.6, call wall 7675, put wal
    polling. On this evidence it is the safety net, not the workhorse. It costs one hash per
    capture and is still exactly right for the after-hours case, so nothing changes in the code;
    the claim is corrected rather than left overstated.
+
+---
+
+## Result — T19, shipped 2026-09-11
+
+Backend: `app/events.py` (new broker), `app/api/stream.py` (new SSE route), a publish in
+`app/jobs/capture.py`, router registration. Frontend: `src/api/useLiveLevels.ts` (new hook), a
+`LiveIndicator` in `ContextBar`, styles on the existing `--status-positive`/`--status-negative`
+tokens. 15 new backend tests and 9 new frontend tests; suites 953 backend / 343 frontend,
+`ruff`, `eslint` and `tsc -b` all clean.
+
+**Shipped as specified.** In-process `asyncio.Queue` fan-out, no broker or Redis; publish from
+the capture path rather than from `app/gex/` (invariant 1); `effective_at` on the event rather
+than raw `captured_at` (T34); a `ready` frame on connect; keep-alive comments; the subscriber
+queue released in a `finally`.
+
+**Decisions made while building.**
+
+- *The publish is in the `else` of the level-computation `try`, not after it.* A client woken by
+  the event re-fetches immediately, so publishing before the level rows are committed — or after
+  a failed computation — would serve it the *previous* snapshot's levels and leave it stale until
+  the next capture. There is a test for the failure case.
+- *A duplicate capture still publishes.* The levels are unchanged, but a client that reconnected
+  since the last event cannot know that, and a redundant re-fetch is cheaper than a dashboard
+  sitting on stale data because the server decided the nudge was unnecessary.
+- *Oldest-first dropping under backpressure.* For a "something changed" signal the newest event
+  strictly dominates: a client that receives only the latest of several dropped events does the
+  right thing, while one that receives the oldest re-fetches stale data.
+- *An explicit `is_disconnected` check each loop.* At one capture per fifteen minutes almost every
+  disconnect happens while nothing is being published; without it the generator would sit in
+  `wait_for` until the next capture before noticing, holding its queue the whole time.
+- *`LiveIndicator` renders nothing where `EventSource` does not exist,* and says "Reconnecting…"
+  rather than hiding a dead stream. The value of this channel is that the freshness stamp can be
+  trusted without a reload, and that trust is only warranted while the connection is up.
+
+**A testing note worth keeping.** Driving the SSE route through `TestClient.stream` hangs: the
+response is an endless generator and the client's context exit waits for a body that never ends.
+That is correct behaviour for an SSE channel and a bad shape for a test. The route's headers are
+therefore asserted by calling it directly, and the streaming behaviour by driving
+`_event_stream` on the test's own loop with a fake request. A `broker.publish` from the
+`TestClient`'s thread would also enqueue without waking the loop's pending `get()` —
+`asyncio.Queue` is not thread-safe, and a test built that way passes or hangs on timing.
+
+**Verified live, 2026-09-11 13:30 ET,** against a real backend on a spare port with a real Cboe
+capture:
+
+```
+event: ready
+data: {"underlying": "SPX"}
+
+event: levels
+data: {"underlying": "SPX", "snapshot_id": 100, "captured_at": "2026-09-11 17:29:32+00:00",
+       "effective_at": "2026-09-11 17:29:32+00:00", "is_eod": false, "spot": 7669.1699,
+       "skipped_duplicate": false}
+```
+
+`ready` arrived on connect; the `levels` frame arrived when `POST /api/snapshots/capture`
+returned 201; two keep-alive comments went out during the idle stretch; and the server logged
+`stream_subscribed subscribers: 1` then `stream_unsubscribed subscribers: 0` when the client
+went away — so the queue is released on disconnect in practice, not only in the unit test.

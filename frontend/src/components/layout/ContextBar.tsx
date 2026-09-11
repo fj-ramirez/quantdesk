@@ -23,6 +23,7 @@
 import { useLocation } from 'react-router-dom';
 import { EXPIRY_FILTERS, EXPIRY_FILTER_LABELS, type Underlying } from '../../api/types';
 import { useGexResult, useSnapshots } from '../../api/queries';
+import { useLiveLevels } from '../../api/useLiveLevels';
 import { useDashboardParams } from '../../state/urlState';
 import { formatFreshness, formatNyDateTime } from '../../lib/time';
 import { ThemeToggle } from './ThemeToggle';
@@ -107,6 +108,29 @@ function DataFreshnessBadge({ symbol, filter, snapshotId }: { symbol: Underlying
   );
 }
 
+/** T19 — a dot beside the freshness stamp saying whether this tab is receiving live updates.
+ *
+ * Deliberately small and deliberately honest. The value of the SSE channel is that the user can
+ * *trust* the freshness stamp without reloading, and that trust is only warranted while the
+ * connection is up. A silently-dead stream behind a confident-looking timestamp is worse than
+ * no indicator at all, which is why 'reconnecting' is shown rather than hidden.
+ *
+ * Nothing is rendered when the browser has no `EventSource` (jsdom, a prerender): the page then
+ * behaves exactly as it did before this task, fetching normally and simply not refreshing on
+ * its own, and an indicator claiming otherwise would be a lie.
+ */
+function LiveIndicator({ symbol }: { symbol: Underlying }) {
+  const { status } = useLiveLevels(symbol);
+  if (status === 'unsupported') return null;
+  const label = status === 'live' ? 'Live' : status === 'connecting' ? 'Connecting…' : 'Reconnecting…';
+  return (
+    <span className={`live-indicator live-indicator--${status}`} aria-live="polite" title={`Live updates: ${label}`}>
+      <span className="live-indicator__dot" aria-hidden="true" />
+      {label}
+    </span>
+  );
+}
+
 export function ContextBar() {
   const location = useLocation();
   const { symbol, filter, snapshotId, setSymbol, setFilter, setSnapshotId } = useDashboardParams();
@@ -131,6 +155,7 @@ export function ContextBar() {
       </div>
       <div className="topbar-meta">
         <DataFreshnessBadge symbol={symbol} filter={filter} snapshotId={snapshotId} />
+        <LiveIndicator symbol={symbol} />
         <ThemeToggle />
       </div>
     </header>

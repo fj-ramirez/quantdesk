@@ -620,6 +620,34 @@ code {
   min-width: 0;
 }
 
+/* T19 live-update indicator, beside the freshness stamp. Colour carries the state but never
+ * alone -- the text label says it too, so the states are distinguishable without colour
+ * vision, which is the rule T68's accessibility pass held every other status chip to. */
+.live-indicator {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+
+.live-indicator__dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: currentColor;
+  flex: none;
+}
+
+.live-indicator--live {
+  color: var(--status-positive);
+}
+
+.live-indicator--reconnecting {
+  color: var(--status-negative);
+}
+
 /*
  * Dashboard (T16). Breakpoint: charts stack in one column up to 880px (a phone, and a
  * laptop window that isn't maximized), and sit side by side above it -- GexByStrike and
