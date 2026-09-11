@@ -29,9 +29,77 @@ from __future__ import annotations
 
 import datetime as dt
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
-__all__ = ["DailyBar"]
+__all__ = ["DailyBar", "IntradayBar", "LiveQuote"]
+
+
+class IntradayBar(BaseModel):
+    """One interval-aligned intraday OHLCV bucket (T74).
+
+    Distinct from `DailyBar` in exactly one way that matters: it is keyed by an **instant**
+    (`ts`, the bucket's opening moment, tz-aware UTC) rather than a trading date, so an
+    interval has to travel with it. Everything else -- the plain-ticker `symbol` contract, the
+    nullable `volume` meaning "unknown, not zero", the `source` tag -- follows `DailyBar`
+    exactly, on purpose: the two are read side by side and a reader should not have to hold two
+    conventions in mind.
+
+    A bucket in here is always interval-aligned. Yahoo's synthetic trailing live-quote row
+    (verified 2026-09-11: stamped 15:14:17 with `volume = 0`) is not a bucket and is never
+    modelled as one -- the provider returns it separately. See
+    `plans/continuous-feed/05-intraday-bars.md`.
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    symbol: str = Field(min_length=1, description="Plain ticker as this app knows it (SPY, ^VIX, SPX).")
+    interval: str = Field(min_length=1, max_length=8, description="Vendor interval, e.g. '5m'.")
+    ts: dt.datetime = Field(description="Bucket opening instant, tz-aware, normalized to UTC.")
+    open: float = Field(gt=0, description="Bucket open.")
+    high: float = Field(gt=0, description="Bucket high.")
+    low: float = Field(gt=0, description="Bucket low.")
+    close: float = Field(gt=0, description="Bucket close; still moving for the newest bucket.")
+    volume: int | None = Field(
+        default=None,
+        ge=0,
+        description=(
+            "Contracts/shares traded in the bucket. `None` means the vendor published no "
+            "volume for it (^VIX never does); `0` means genuinely none traded."
+        ),
+    )
+    source: str = Field(min_length=1, description="Provider name, e.g. 'yahoo-splitadj'.")
+
+    @field_validator("ts")
+    @classmethod
+    def _utc(cls, v: dt.datetime) -> dt.datetime:
+        if v.tzinfo is None or v.tzinfo.utcoffset(v) is None:
+            raise ValueError("IntradayBar.ts must be timezone-aware")
+        return v.astimezone(dt.UTC)
+
+
+class LiveQuote(BaseModel):
+    """The vendor's trailing live-quote row -- a price at an instant, explicitly **not** a bar.
+
+    Yahoo appends this to every intraday payload during a session: an unaligned timestamp and
+    `volume = 0`, carrying the current quote. Persisting it as a bucket would put a
+    zero-volume bar at a ragged timestamp in the middle of the series, so it is given its own
+    type rather than being squeezed into `IntradayBar` with a flag -- a shape that cannot be
+    mistaken for a bar is better than one that must be remembered not to be.
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    symbol: str = Field(min_length=1)
+    ts: dt.datetime = Field(description="Quote instant, tz-aware, normalized to UTC.")
+    price: float = Field(gt=0)
+    source: str = Field(min_length=1)
+
+    @field_validator("ts")
+    @classmethod
+    def _utc(cls, v: dt.datetime) -> dt.datetime:
+        if v.tzinfo is None or v.tzinfo.utcoffset(v) is None:
+            raise ValueError("LiveQuote.ts must be timezone-aware")
+        return v.astimezone(dt.UTC)
 
 
 class DailyBar(BaseModel):

@@ -17,9 +17,53 @@ from fastapi import APIRouter, Query
 from pydantic import BaseModel
 
 from app.config import settings
-from app.storage.bars_repository import get_session_factory, read_bars
+from app.jobs.intraday_bars import session_daily_bar
+from app.storage.bars_repository import get_session_factory, read_bars, read_intraday_bars
 
 __all__ = ["router"]
+
+class IntradayBarOut(BaseModel):
+    """One stored intraday bucket (T74). `ts` is the bucket's opening instant, UTC."""
+
+    symbol: str
+    interval: str
+    ts: dt.datetime
+    open: float
+    high: float
+    low: float
+    close: float
+    volume: int | None = None
+
+
+class SessionBarOut(BaseModel):
+    """The in-progress daily bar, aggregated from today's buckets (T74).
+
+    Deliberately a distinct schema from `BarOut` rather than a `BarOut` with a flag: this is
+    **not** a settled daily bar and nothing that consumes settled bars should be able to accept
+    it by accident. `complete` is always `false` here; it exists so a client renders the
+    "in progress" affordance from the payload rather than from knowing which endpoint it called.
+    """
+
+    symbol: str
+    date: dt.date
+    open: float
+    high: float
+    low: float
+    close: float
+    volume: int | None = None
+    complete: bool = False
+    bucket_count: int
+    last_bucket_ts: dt.datetime
+
+
+class IntradayBarsResponse(BaseModel):
+    """`GET /api/bars/{symbol}/intraday`: the stored series plus the derived session bar."""
+
+    symbol: str
+    interval: str
+    bars: list[IntradayBarOut]
+    session_bar: SessionBarOut | None = None
+
 
 router = APIRouter(tags=["bars"])
 
@@ -88,3 +132,78 @@ def get_bars(
         )
         for row in df.itertuples(index=False)
     ]
+
+
+@router.get("/bars/{symbol}/intraday", response_model=IntradayBarsResponse)
+def get_intraday_bars(
+    symbol: str,
+    interval: Annotated[str | None, Query(description="Bar interval; defaults to the configured one")] = None,
+    day: Annotated[dt.date | None, Query(description="UTC day to read; defaults to today")] = None,
+) -> IntradayBarsResponse:
+    """Stored intraday buckets for `symbol`, plus the in-progress daily bar derived from them (T74).
+
+    Same "empty is not an error" contract as `GET /api/bars/{symbol}` above: a symbol outside
+    `INTRADAY_BARS_SYMBOLS`, a day before polling was switched on, or a holiday all return an
+    empty `bars` list and a `null` session_bar rather than a 404. A client renders "no intraday
+    data" from that, and falls back to the last settled daily bar.
+
+    `session_bar` is explicitly **not** a settled daily bar and carries `complete: false` to say
+    so in the payload. It is aggregated from the buckets in this same response, never written to
+    `daily_bars` -- see `app.jobs.intraday_bars.session_daily_bar` for why that separation is
+    load-bearing rather than tidiness.
+    """
+    resolved_interval = interval or settings.INTRADAY_BARS_INTERVAL
+    normalized = symbol.strip().upper()
+    session_factory = get_session_factory()
+    target_day = day or dt.datetime.now(dt.UTC).date()
+
+    start = dt.datetime.combine(target_day, dt.time.min, tzinfo=dt.UTC)
+    end = dt.datetime.combine(target_day, dt.time.max, tzinfo=dt.UTC)
+    rows = read_intraday_bars(
+        normalized,
+        interval=resolved_interval,
+        start=start,
+        end=end,
+        session_factory=session_factory,
+    )
+
+    session_bar = None
+    if rows:
+        aggregate = session_daily_bar(
+            normalized,
+            day=target_day,
+            interval=resolved_interval,
+            session_factory=session_factory,
+        )
+        if aggregate is not None:
+            session_bar = SessionBarOut(
+                symbol=normalized,
+                date=target_day,
+                open=aggregate.open,
+                high=aggregate.high,
+                low=aggregate.low,
+                close=aggregate.close,
+                volume=aggregate.volume,
+                complete=False,
+                bucket_count=len(rows),
+                last_bucket_ts=rows[-1].ts,
+            )
+
+    return IntradayBarsResponse(
+        symbol=normalized,
+        interval=resolved_interval,
+        bars=[
+            IntradayBarOut(
+                symbol=r.symbol,
+                interval=r.interval,
+                ts=r.ts,
+                open=r.open,
+                high=r.high,
+                low=r.low,
+                close=r.close,
+                volume=r.volume,
+            )
+            for r in rows
+        ],
+        session_bar=session_bar,
+    )

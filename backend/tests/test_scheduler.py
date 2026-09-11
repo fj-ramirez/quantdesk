@@ -20,6 +20,7 @@ from app.jobs.scheduler import (
     EOD_JOB_ID,
     EXTENDED_JOB_ID,
     FLOWS_JOB_ID,
+    INTRADAY_BARS_JOB_ID,
     INTRADAY_FIRST_CAPTURE,
     INTRADAY_JOB_ID,
     INTRADAY_LAST_CAPTURE,
@@ -33,6 +34,7 @@ from app.jobs.scheduler import (
     capture_intraday_job,
     decisions_update_job,
     flows_update_job,
+    intraday_bars_job,
     retention_prune_job,
 )
 
@@ -790,3 +792,71 @@ def test_the_two_bars_jobs_share_a_function_but_not_an_id():
     assert preopen.id != evening.id
     evening_fields = {f.name: str(f) for f in evening.trigger.fields}
     assert (evening_fields["hour"], evening_fields["minute"]) == ("17", "30")
+
+
+# --- T74: intraday bars job ---------------------------------------------------------------------
+
+
+def test_intraday_bars_job_is_not_registered_when_disabled():
+    assert scheduler_module.settings.INTRADAY_BARS_ENABLED is False
+    assert build_scheduler().get_job(INTRADAY_BARS_JOB_ID) is None
+
+
+def test_intraday_bars_job_registers_every_five_minutes_when_enabled(monkeypatch):
+    monkeypatch.setattr(scheduler_module.settings, "INTRADAY_BARS_ENABLED", True)
+    job = build_scheduler().get_job(INTRADAY_BARS_JOB_ID)
+    assert job is not None
+    fields = {f.name: str(f) for f in job.trigger.fields}
+    assert fields["minute"] == "*/5"
+    assert fields["day_of_week"] == "mon-fri"
+    assert job.misfire_grace_time == 120  # not None: a late poll recovers nothing
+
+
+def test_intraday_bars_window_starts_at_the_open_not_at_the_capture_window(monkeypatch):
+    """Bars are not delayed, so the 09:30 opening bucket is immediately useful -- unlike the
+    option capture, which waits until 09:45 for the 15-minute delay to clear."""
+    from app.jobs.scheduler import INTRADAY_BARS_FIRST, INTRADAY_BARS_LAST
+
+    assert INTRADAY_BARS_FIRST == dt.time(9, 30)
+    assert INTRADAY_BARS_FIRST < INTRADAY_FIRST_CAPTURE
+    assert INTRADAY_BARS_LAST == dt.time(16, 5)
+
+
+async def test_intraday_bars_job_does_nothing_when_disabled(monkeypatch):
+    calls = []
+    monkeypatch.setattr(scheduler_module.settings, "INTRADAY_BARS_ENABLED", False)
+    monkeypatch.setattr(scheduler_module, "update_intraday_bars", lambda *a, **k: calls.append(a))
+    await intraday_bars_job()
+    assert calls == []
+
+
+async def test_intraday_bars_job_skips_outside_the_window(monkeypatch):
+    calls = []
+
+    class FakeDatetime(dt.datetime):
+        @classmethod
+        def now(cls, tz=None):
+            return dt.datetime(2026, 9, 11, 17, 0, tzinfo=_NY)  # after 16:05
+
+    monkeypatch.setattr(scheduler_module.settings, "INTRADAY_BARS_ENABLED", True)
+    monkeypatch.setattr(scheduler_module.dt, "datetime", FakeDatetime)
+    monkeypatch.setattr(scheduler_module, "update_intraday_bars", lambda *a, **k: calls.append(a))
+    await intraday_bars_job()
+    assert calls == []
+
+
+async def test_intraday_bars_job_survives_an_unexpected_exception(monkeypatch, caplog):
+    class FakeDatetime(dt.datetime):
+        @classmethod
+        def now(cls, tz=None):
+            return dt.datetime(2026, 9, 11, 12, 0, tzinfo=_NY)
+
+    async def boom(*args, **kwargs):
+        raise RuntimeError("kaboom")
+
+    monkeypatch.setattr(scheduler_module.settings, "INTRADAY_BARS_ENABLED", True)
+    monkeypatch.setattr(scheduler_module.dt, "datetime", FakeDatetime)
+    monkeypatch.setattr(scheduler_module, "update_intraday_bars", boom)
+    with caplog.at_level("ERROR"):
+        await intraday_bars_job()  # must not raise
+    assert "intraday_bars_job: unexpected top-level failure" in caplog.text

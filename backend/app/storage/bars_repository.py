@@ -23,15 +23,18 @@ from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 from sqlalchemy.orm import Session, sessionmaker
 
 from app.models.bars import DailyBar as DailyBarIn
-from app.models.db import DailyBar, get_engine, get_sessionmaker
+from app.models.bars import IntradayBar as IntradayBarIn
+from app.models.db import DailyBar, IntradayBar, get_engine, get_sessionmaker
 
 __all__ = [
     "BarsUpsertResult",
     "get_session_factory",
     "last_bar_date",
     "read_bars",
+    "read_intraday_bars",
     "read_universe_closes",
     "upsert_bars",
+    "upsert_intraday_bars",
 ]
 
 # One engine (and its connection pool) for the process's lifetime -- same rationale as
@@ -134,6 +137,107 @@ def upsert_bars(
         session.commit()
 
     return BarsUpsertResult(inserted=inserted, updated=updated)
+
+
+def upsert_intraday_bars(
+    bars: Sequence[IntradayBarIn], *, session_factory: sessionmaker[Session] | None = None
+) -> BarsUpsertResult:
+    """Upsert intraday buckets on `(symbol, interval, ts)` -- the same contract as
+    `upsert_bars`, one grain finer (T74).
+
+    The upsert is not an optimisation here, it is the mechanism. T74's job re-fetches the whole
+    session every five minutes, so the newest bucket arrives repeatedly while it is still
+    forming: at 15:14 the 15:10 bucket is partial, and at 15:19 the same bucket arrives settled.
+    Keying on the bucket's instant means the second write *corrects* the first instead of
+    appending a near-duplicate, which is what makes the stored series continuous rather than
+    one interval behind. It also means a missed poll costs nothing -- the next one carries the
+    buckets the missed one would have written.
+
+    Returns:
+        `BarsUpsertResult`, with `inserted` counting buckets new to their (symbol, interval) and
+        `updated` counting buckets already stored -- so a steady session reads as a handful of
+        inserts and one or two updates per poll, and a run of pure updates means the vendor
+        stopped publishing new buckets.
+    """
+    if not bars:
+        return BarsUpsertResult(inserted=0, updated=0)
+
+    factory = session_factory or get_session_factory()
+    inserted = 0
+    updated = 0
+    with factory() as session:
+        insert_fn = pg_insert if session.bind.dialect.name == "postgresql" else sqlite_insert
+
+        by_key: dict[tuple[str, str], list[IntradayBarIn]] = {}
+        for bar in bars:
+            by_key.setdefault((bar.symbol, bar.interval), []).append(bar)
+
+        for (symbol, interval), group in by_key.items():
+            stamps = {b.ts for b in group}
+            existing = set(
+                session.execute(
+                    select(IntradayBar.ts).where(
+                        IntradayBar.symbol == symbol,
+                        IntradayBar.interval == interval,
+                        IntradayBar.ts.in_(stamps),
+                    )
+                ).scalars()
+            )
+            inserted += len(stamps - existing)
+            updated += len(stamps & existing)
+
+            rows = [
+                {
+                    "symbol": b.symbol,
+                    "interval": b.interval,
+                    "ts": b.ts,
+                    "open": b.open,
+                    "high": b.high,
+                    "low": b.low,
+                    "close": b.close,
+                    "volume": b.volume,
+                    "source": b.source,
+                }
+                for b in group
+            ]
+            stmt = insert_fn(IntradayBar).values(rows)
+            stmt = stmt.on_conflict_do_update(
+                index_elements=["symbol", "interval", "ts"],
+                set_={
+                    col: getattr(stmt.excluded, col)
+                    for col in ("open", "high", "low", "close", "volume", "source")
+                },
+            )
+            session.execute(stmt)
+
+        session.commit()
+
+    return BarsUpsertResult(inserted=inserted, updated=updated)
+
+
+def read_intraday_bars(
+    symbol: str,
+    *,
+    interval: str,
+    start: dt.datetime | None = None,
+    end: dt.datetime | None = None,
+    session_factory: sessionmaker[Session] | None = None,
+) -> list[IntradayBar]:
+    """Stored buckets for `(symbol, interval)` in `[start, end]`, ascending by `ts`.
+
+    Bounds must be tz-aware if given: `UTCDateTime` always hands back aware values, so a naive
+    bound would compare wrongly rather than loudly (invariant 4).
+    """
+    factory = session_factory or get_session_factory()
+    with factory() as session:
+        stmt = select(IntradayBar).where(
+            IntradayBar.symbol == symbol, IntradayBar.interval == interval
+        )
+        if start is not None:
+            stmt = stmt.where(IntradayBar.ts >= start)
+        if end is not None:
+            stmt = stmt.where(IntradayBar.ts <= end)
+        return list(session.execute(stmt.order_by(IntradayBar.ts.asc())).scalars().all())
 
 
 def last_bar_date(

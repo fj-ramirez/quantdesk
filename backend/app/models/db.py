@@ -45,6 +45,7 @@ __all__ = [
     "EtfSharesOutstanding",
     "GexByStrike",
     "GexLevel",
+    "IntradayBar",
     "Snapshot",
     "UTCDateTime",
     "get_engine",
@@ -312,6 +313,60 @@ class DailyBar(Base):
         return (
             f"<DailyBar symbol={self.symbol!r} date={self.date.isoformat()!r} "
             f"close={self.close!r} volume={self.volume!r}>"
+        )
+
+
+class IntradayBar(Base):
+    """One intraday OHLCV bucket (TASKS.md T74, plans/continuous-feed/05-intraday-bars.md).
+
+    Separate from `DailyBar` rather than a widened version of it: different grain (an instant,
+    not a date), different provider path, and widening would put a nullable `interval` on every
+    one of that table's ~157k rows and force every existing query to specify one.
+
+    **Only interval-aligned buckets belong here.** Yahoo appends a synthetic live-quote row to
+    an intraday payload -- verified 2026-09-11 at 15:14 ET, stamped 15:14:17 with `volume = 0`
+    and `close` equal to the current quote -- which is not a bucket at all. Persisting it would
+    put a zero-volume bar at a ragged timestamp in the middle of every session. The provider
+    returns it separately as the live quote instead; see `app.providers.yahoo`.
+
+    The newest aligned bucket *is* stored while it is still forming, unlike the daily table's
+    in-progress row. The difference is that this job re-polls every five minutes and upserts on
+    `(symbol, interval, ts)`, so a forming bucket converges to its settled values on the next
+    pass; the daily job gets one shot at 17:30 and so must drop a partial outright.
+
+    `ts` is the bucket's opening instant, tz-aware UTC like every other timestamp here
+    (invariant 4). Keying on a naive datetime would silently duplicate every bucket the moment
+    stored and fetched values disagreed about tzinfo.
+    """
+
+    __tablename__ = "intraday_bars"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    symbol: Mapped[str] = mapped_column(String(16), nullable=False)
+    interval: Mapped[str] = mapped_column(String(8), nullable=False)
+    ts: Mapped[dt.datetime] = mapped_column(UTCDateTime, nullable=False)
+    open: Mapped[float] = mapped_column(Float, nullable=False)
+    high: Mapped[float] = mapped_column(Float, nullable=False)
+    low: Mapped[float] = mapped_column(Float, nullable=False)
+    close: Mapped[float] = mapped_column(Float, nullable=False)
+    volume: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
+    """Nullable because `^VIX` publishes no volume at all (it is always 0 there, and the daily
+    table already treats that as a real zero rather than missing). A bucket with unknown volume
+    must never read back as a bucket with no trading."""
+    source: Mapped[str] = mapped_column(String(64), nullable=False)
+
+    __table_args__ = (
+        # The upsert key. One row per bucket per interval per symbol, which is what lets a
+        # forming bucket converge across polls instead of accumulating near-duplicates.
+        UniqueConstraint("symbol", "interval", "ts", name="uq_intraday_bars_symbol_interval_ts"),
+        # "This symbol, this interval, ordered by time" -- every read this table has.
+        Index("ix_intraday_bars_symbol_interval_ts", "symbol", "interval", "ts"),
+    )
+
+    def __repr__(self) -> str:  # pragma: no cover - debugging aid only
+        return (
+            f"<IntradayBar {self.symbol!r} {self.interval} "
+            f"{self.ts.isoformat()} close={self.close}>"
         )
 
 

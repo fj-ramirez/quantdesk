@@ -1141,3 +1141,39 @@ current, because the Cboe CSV may simply not carry day D during day D. If the re
 ought to show *today's* VIX, that needs a different source for those six (Yahoo serves `^VIX`
 and `^VIX3M`, though not obviously the whole family) -- a separate decision, not this fix.
 955 backend tests pass.
+
+---
+
+## T74 · Opus · T42, T18
+**Intraday bars: 5-minute series plus the in-progress daily bar**
+
+The user asked for continuous bars on 2026-09-11 after seeing "bars through Sep 10" during the
+Sep 11 session — correct, since `daily_bars` holds settled sessions only, but indistinguishable
+from a genuinely missed day.
+
+Scope agreed with the user: **both** halves (store the series *and* surface the in-progress
+daily bar), on **six symbols** (SPX/SPY/QQQ/GLD/DIA/^VIX) rather than the 125-symbol scan
+universe — six requests per poll is ~72/hour, the universe would be ~1,500, and losing Yahoo to
+throttling would take the daily bars pipeline down with it.
+
+Full design, verified facts and outcome in
+[plans/continuous-feed/05-intraday-bars.md](plans/continuous-feed/05-intraday-bars.md).
+
+**Done 2026-09-11.** New `intraday_bars` table + migration `179bee3e9455`,
+`YahooBarProvider.fetch_intraday_bars`, `upsert_intraday_bars`/`read_intraday_bars`,
+`app/jobs/intraday_bars.py` with a five-minute job (09:30–16:05 NY, gated on
+`INTRADAY_BARS_ENABLED`), and `GET /api/bars/{symbol}/intraday`. 24 new tests; suite 979 passed.
+
+Two facts measured live and worth keeping: **Yahoo's intraday data is effectively real-time**
+(at 15:12:11 ET the last SPY row was stamped 15:12:11), which also settles the open question in
+[03-live-spot-overlay.md](plans/continuous-feed/03-live-spot-overlay.md); and **the trailing row
+of an intraday payload is a synthetic live quote, not a bucket** — unaligned timestamp,
+volume 0. It is split out by the provider and never stored.
+
+`daily_bars` is deliberately untouched: a partial row there would poison ATR, realized vol,
+breakout levels and every same-day join. The in-progress daily bar is aggregated from the
+buckets at read time and typed so it cannot pass as a settled one.
+
+**Next:** the frontend still reads the settled daily series. Wiring `session_bar` into the
+symbol views and charting the 5-minute series is UI work, not data work, and is the obvious
+follow-on. Next free ID is **T75**.

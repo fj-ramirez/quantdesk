@@ -26,6 +26,7 @@ from app.jobs.capture import capture_all_symbols, get_session_factory
 from app.jobs.catchup import catch_up_missed_eod
 from app.jobs.decisions import record_decisions_job
 from app.jobs.flows import update_flows_job
+from app.jobs.intraday_bars import update_intraday_bars
 from app.jobs.retention import prune_intraday_strike_detail
 
 __all__ = [
@@ -35,6 +36,7 @@ __all__ = [
     "EOD_JOB_ID",
     "EXTENDED_JOB_ID",
     "FLOWS_JOB_ID",
+    "INTRADAY_BARS_JOB_ID",
     "INTRADAY_FIRST_CAPTURE",
     "INTRADAY_JOB_ID",
     "INTRADAY_LAST_CAPTURE",
@@ -48,6 +50,7 @@ __all__ = [
     "capture_intraday_job",
     "decisions_update_job",
     "flows_update_job",
+    "intraday_bars_job",
     "retention_prune_job",
 ]
 
@@ -62,6 +65,7 @@ FLOWS_JOB_ID = "flows_update"
 DECISIONS_JOB_ID = "decisions_update"
 RETENTION_JOB_ID = "retention_prune"
 INTRADAY_JOB_ID = "capture_intraday"
+INTRADAY_BARS_JOB_ID = "intraday_bars_update"
 
 #: T18's polling window, NY local and inclusive at both ends: 09:45 through 16:15, every 15
 #: minutes, which is 27 fires per session.
@@ -76,6 +80,12 @@ INTRADAY_JOB_ID = "capture_intraday"
 #: something new to say about it" is exactly the confusion that module's docstring warns about.
 INTRADAY_FIRST_CAPTURE = dt.time(9, 45)
 INTRADAY_LAST_CAPTURE = dt.time(16, 15)
+
+#: T74's intraday-bar polling window, NY local. Wider than the capture window above: bars are
+#: not delayed, so the 09:30 opening bucket is immediately useful, and 16:05 leaves the vendor a
+#: few minutes to publish the bucket that closes the session.
+INTRADAY_BARS_FIRST = dt.time(9, 30)
+INTRADAY_BARS_LAST = dt.time(16, 5)
 
 # `settings.TZ` (default "America/New_York") drives both the trigger's wall-clock time and
 # the weekday/holiday check inside the job -- if this were ever pointed at another zone, both
@@ -285,6 +295,30 @@ async def capture_intraday_job() -> None:
         logger.exception("capture_intraday_job: unexpected top-level failure")
 
 
+async def intraday_bars_job() -> None:
+    """Five-minute intraday bar poll (T74), gated on `settings.INTRADAY_BARS_ENABLED`.
+
+    Window guard is wider than T18's capture window and intentionally so: these are *bars*, not
+    a delayed option chain, so the first useful bucket is the 09:30 open itself rather than
+    09:45, and the last is the one that closes the 16:00 session. 16:05 gives the vendor a few
+    minutes to publish the closing bucket.
+
+    No trading-day guard beyond the window: on a holiday the vendor simply publishes no buckets
+    for the day and `update_intraday_bars` upserts an empty list, which is a no-op. That is
+    cheaper and less to get wrong than a second calendar check, and unlike an option capture
+    there is no risk of storing a misleading row.
+    """
+    if not settings.INTRADAY_BARS_ENABLED:
+        return
+    now_ny = dt.datetime.now(_TZ)
+    if not (INTRADAY_BARS_FIRST <= now_ny.time() <= INTRADAY_BARS_LAST):
+        return
+    try:
+        await update_intraday_bars()
+    except Exception:  # must never take the scheduler thread down with it
+        logger.exception("intraday_bars_job: unexpected top-level failure")
+
+
 async def retention_prune_job() -> None:
     """21:00 ET prune of intraday `gex_by_strike` detail past its retention window (T32).
 
@@ -458,6 +492,22 @@ def build_scheduler() -> AsyncIOScheduler:
             name="Intraday option chain capture (every 15 min, 09:45-16:15 NY)",
             coalesce=True,
             misfire_grace_time=300,
+            max_instances=1,
+            replace_existing=True,
+        )
+
+    # T74: five-minute intraday bars, registered only when enabled -- same rationale as the
+    # capture job above, and the same inverted misfire policy for the same reason: a poll that
+    # fires late does not recover the slot it missed, and here it does not even need to, since
+    # every poll re-fetches the whole session.
+    if settings.INTRADAY_BARS_ENABLED:
+        scheduler.add_job(
+            intraday_bars_job,
+            trigger=CronTrigger(day_of_week="mon-fri", minute="*/5", hour="9-16", timezone=_TZ),
+            id=INTRADAY_BARS_JOB_ID,
+            name="Intraday bars poll (every 5 min, 09:30-16:05 NY)",
+            coalesce=True,
+            misfire_grace_time=120,
             max_instances=1,
             replace_existing=True,
         )

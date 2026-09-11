@@ -33,6 +33,7 @@ services:
       # trap that made "I enabled intraday in .env" a no-op on 2026-09-11.
       INTRADAY_ENABLED: ${INTRADAY_ENABLED:-false}
       INTRADAY_STRIKE_RETENTION_DAYS: ${INTRADAY_STRIKE_RETENTION_DAYS:-30}
+      INTRADAY_BARS_ENABLED: ${INTRADAY_BARS_ENABLED:-false}
     volumes:
       - ./backend:/app
       - /app/.venv

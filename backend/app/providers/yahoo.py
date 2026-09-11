@@ -106,7 +106,7 @@ import httpx
 from pydantic import ValidationError
 
 from app.jobs.calendar import MARKET_CLOSE, is_trading_day
-from app.models.bars import DailyBar
+from app.models.bars import DailyBar, IntradayBar, LiveQuote
 from app.providers.bars import BarProvider, SymbolNotSupported, UpstreamUnavailable
 
 __all__ = ["YahooBarProvider"]
@@ -167,6 +167,32 @@ def _extract_chart_error(body: Any) -> dict[str, Any] | None:
         return None
     error = chart.get("error")
     return error if isinstance(error, dict) else None
+
+
+#: Vendor interval string -> seconds. Used to tell an aligned bucket from the trailing
+#: live-quote row: bucket epochs are exact multiples of the interval (verified 2026-09-11 --
+#: 09:30:00, 09:35:00 ... 15:10:00) while the quote row carries the wall-clock instant it was
+#: read (15:14:17). Only the intervals this app actually polls are listed; an unknown one is a
+#: configuration error worth failing on rather than guessing a divisor for.
+_INTERVAL_SECONDS: dict[str, int] = {
+    "1m": 60,
+    "2m": 120,
+    "5m": 300,
+    "15m": 900,
+    "30m": 1800,
+    "60m": 3600,
+    "90m": 5400,
+}
+
+
+def _interval_seconds(interval: str) -> int:
+    try:
+        return _INTERVAL_SECONDS[interval]
+    except KeyError:
+        raise ValueError(
+            f"yahoo: unsupported intraday interval {interval!r}; "
+            f"known: {sorted(_INTERVAL_SECONDS)}"
+        ) from None
 
 
 def _at(values: list[Any] | None, i: int) -> Any:
@@ -350,6 +376,121 @@ class YahooBarProvider(BarProvider):
         )
         payload = await self._fetch_chart(str(url), requested_symbol=requested_symbol)
         return self._parse_payload(requested_symbol, payload, now_ny=now_ny)
+
+    async def fetch_intraday_bars(
+        self, symbol: str, *, interval: str = "5m", lookback: str = "1d"
+    ) -> tuple[list[IntradayBar], LiveQuote | None]:
+        """Fetch interval-aligned intraday buckets plus the vendor's trailing live quote (T74).
+
+        Uses the `range=` shorthand rather than `period1`/`period2`, unlike `fetch_daily_bars`:
+        the vendor caps intraday history by interval (roughly 7 days at `1m`, 60 at `5m`) and
+        rejects or silently truncates an epoch window that exceeds it, so asking in the vendor's
+        own units is the honest request. `lookback="1d"` returns the current session, which is
+        what the five-minute poll wants -- the whole session every time, so a missed poll
+        self-heals on the next one rather than leaving a hole.
+
+        Returns:
+            `(bars, quote)`. `bars` is ascending and contains **only** rows whose timestamp
+            falls on an `interval` boundary. `quote` is the unaligned trailing row when the
+            vendor appended one (it does so during a session), else `None`.
+
+            The split is the whole point of this method. Verified live 2026-09-11 at 15:14 ET:
+            a `5m`/`1d` pull returned aligned buckets at 09:30, 09:35 ... 15:10 and then one row
+            stamped 15:14:17 with `volume = 0` carrying the current quote. That row is not a
+            bucket; persisting it would drop a zero-volume bar at a ragged timestamp into the
+            middle of the series. See `plans/continuous-feed/05-intraday-bars.md`.
+
+        Raises:
+            SymbolNotSupported, UpstreamUnavailable: exactly as `fetch_daily_bars`.
+        """
+        requested_symbol = symbol.strip().upper()
+        vendor_symbol = _vendor_symbol(requested_symbol)
+        url = httpx.URL(
+            _BASE_URL.format(symbol=quote(vendor_symbol, safe="")),
+            params={"interval": interval, "range": lookback},
+        )
+        payload = await self._fetch_chart(str(url), requested_symbol=requested_symbol)
+        return self._parse_intraday_payload(requested_symbol, payload, interval=interval)
+
+    def _parse_intraday_payload(
+        self, requested_symbol: str, payload: dict[str, Any], *, interval: str
+    ) -> tuple[list[IntradayBar], LiveQuote | None]:
+        """Split one intraday chart body into aligned buckets and the trailing live quote."""
+        try:
+            results = payload["chart"]["result"]
+            if not results:
+                raise UpstreamUnavailable(
+                    f"yahoo: empty chart.result for {requested_symbol!r}"
+                )
+            result = results[0]
+            tz_name = result["meta"]["exchangeTimezoneName"]
+            timestamps = result.get("timestamp") or []
+            quote_block = result["indicators"]["quote"][0]
+        except (KeyError, IndexError, TypeError) as exc:
+            raise UpstreamUnavailable(
+                f"yahoo: intraday response for {requested_symbol!r} is missing an expected field"
+            ) from exc
+
+        try:
+            exchange_tz = ZoneInfo(tz_name)
+        except Exception as exc:
+            raise UpstreamUnavailable(
+                f"yahoo: unrecognized exchangeTimezoneName {tz_name!r} for {requested_symbol!r}"
+            ) from exc
+
+        interval_seconds = _interval_seconds(interval)
+        opens = quote_block.get("open") or []
+        highs = quote_block.get("high") or []
+        lows = quote_block.get("low") or []
+        closes = quote_block.get("close") or []
+        volumes = quote_block.get("volume") or []
+
+        bars: list[IntradayBar] = []
+        live: LiveQuote | None = None
+
+        for i, epoch in enumerate(timestamps):
+            close = _at(closes, i)
+            if close is None or close <= 0:
+                # A null row is a gap the vendor published, not a bar. Same policy as the
+                # daily parser: skip rather than interpolate.
+                continue
+            moment = dt.datetime.fromtimestamp(epoch, dt.UTC)
+
+            if epoch % interval_seconds != 0:
+                # The trailing live-quote row. Only ever the last one in practice, but the
+                # check is per row rather than positional so a vendor that ever inserts one
+                # mid-payload cannot smuggle it into the series.
+                live = LiveQuote(
+                    symbol=requested_symbol, ts=moment, price=close, source=self.name
+                )
+                continue
+
+            open_, high, low = _at(opens, i), _at(highs, i), _at(lows, i)
+            if open_ is None or high is None or low is None or min(open_, high, low) <= 0:
+                continue
+            volume = _at(volumes, i)
+            bars.append(
+                IntradayBar(
+                    symbol=requested_symbol,
+                    interval=interval,
+                    ts=moment,
+                    open=open_,
+                    high=high,
+                    low=low,
+                    close=close,
+                    volume=int(volume) if volume is not None else None,
+                    source=self.name,
+                )
+            )
+
+        # `exchange_tz` is resolved above and deliberately not used to derive `ts`: unlike a
+        # daily bar, whose identity is an exchange-local *date*, a bucket's identity is an
+        # instant, and an instant is the same instant in every zone. Resolving the zone anyway
+        # keeps the "unrecognized timezone means the payload is wrong" check that the daily
+        # path relies on -- ^VIX arrives as America/Chicago and must not be assumed otherwise.
+        del exchange_tz
+        bars.sort(key=lambda b: b.ts)
+        return bars, live
 
     def _parse_payload(
         self, requested_symbol: str, payload: dict[str, Any], *, now_ny: dt.datetime

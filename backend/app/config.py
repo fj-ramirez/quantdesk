@@ -93,6 +93,21 @@ class Settings(BaseSettings):
     # logged rather than retried.
     INTRADAY_ENABLED: bool = False
 
+    # --- T74: intraday bars (plans/continuous-feed/05-intraday-bars.md) -----------------------
+    # Its own flag, deliberately not folded into INTRADAY_ENABLED above: that governs
+    # option-chain capture against Cboe, this polls Yahoo, and one source being rate-limited or
+    # broken must not force the other off.
+    INTRADAY_BARS_ENABLED: bool = False
+    # Six symbols, chosen with the user 2026-09-11 over the full 125-symbol scan universe: six
+    # requests per poll is ~72/hour at a 5-minute cadence, while the universe would be ~1,500 --
+    # which is where an unofficial endpoint starts throttling, and losing Yahoo would take the
+    # *daily* bars pipeline down with it.
+    INTRADAY_BARS_SYMBOLS: str = "SPX,SPY,QQQ,GLD,DIA,^VIX"
+    # Interval string passed straight to the vendor. 5m keeps a session at ~80 buckets per
+    # symbol (~500 rows/day across all six, ~125k/year) -- three orders of magnitude below what
+    # made T32's retention rule necessary, so this table needs no pruning.
+    INTRADAY_BARS_INTERVAL: str = "5m"
+
     # --- T47: sector/industry ETF option capture (plans/continuation/03-regime-board.md) ------
     # Deliberately NOT folded into `SYMBOLS`: the 16:20 EOD job reads `symbols` only, and this
     # setting drives a separate 16:45 ET job (`capture_extended_job`,
@@ -138,6 +153,11 @@ class Settings(BaseSettings):
         identically.
         """
         return [s.strip() for s in self.EXTENDED_SYMBOLS.split(",") if s.strip()]
+
+    @property
+    def intraday_bars_symbols(self) -> list[str]:
+        """T74's intraday-bar universe. Same parse-on-read pattern as `symbols`."""
+        return [s.strip() for s in self.INTRADAY_BARS_SYMBOLS.split(",") if s.strip()]
 
     @property
     def scan_universe(self) -> list[str]:
