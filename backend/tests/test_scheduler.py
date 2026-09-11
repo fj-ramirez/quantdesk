@@ -19,6 +19,9 @@ from app.jobs.scheduler import (
     EOD_JOB_ID,
     EXTENDED_JOB_ID,
     FLOWS_JOB_ID,
+    INTRADAY_FIRST_CAPTURE,
+    INTRADAY_JOB_ID,
+    INTRADAY_LAST_CAPTURE,
     RETENTION_JOB_ID,
     SAFETY_NET_JOB_ID,
     bars_update_job,
@@ -26,6 +29,7 @@ from app.jobs.scheduler import (
     capture_eod_job,
     capture_eod_safety_net_job,
     capture_extended_job,
+    capture_intraday_job,
     decisions_update_job,
     flows_update_job,
     retention_prune_job,
@@ -591,3 +595,168 @@ async def test_retention_prune_job_delegates_to_the_prune(monkeypatch):
     monkeypatch.setattr("app.jobs.scheduler.get_session_factory", lambda: "factory")
     await retention_prune_job()
     assert calls == ["factory"]
+
+
+# --- T18: 15-minute intraday polling ----------------------------------------------------------
+
+
+def _enable_intraday(monkeypatch):
+    monkeypatch.setattr(scheduler_module.settings, "INTRADAY_ENABLED", True)
+
+
+def test_intraday_job_is_not_registered_when_disabled():
+    """The default. Registration is conditional so `get_jobs()` states what will actually run
+    rather than listing a job that always no-ops."""
+    assert scheduler_module.settings.INTRADAY_ENABLED is False
+    assert build_scheduler().get_job(INTRADAY_JOB_ID) is None
+
+
+def test_intraday_job_is_registered_when_enabled(monkeypatch):
+    _enable_intraday(monkeypatch)
+    job = build_scheduler().get_job(INTRADAY_JOB_ID)
+    assert job is not None
+    fields = {f.name: str(f) for f in job.trigger.fields}
+    assert fields["day_of_week"] == "mon-fri"
+    assert fields["hour"] == "9-16"
+    assert fields["minute"] == "0,15,30,45"
+
+
+def test_intraday_job_does_not_use_the_eod_misfire_policy(monkeypatch):
+    """The inverse of every other capture job, deliberately: an intraday slot has nothing to
+    rescue, since the endpoint serves only "now". A run that fires hours late adds an off-grid
+    reading rather than recovering the missed one."""
+    _enable_intraday(monkeypatch)
+    scheduler = build_scheduler()
+    assert scheduler.get_job(INTRADAY_JOB_ID).misfire_grace_time == 300
+    assert scheduler.get_job(EOD_JOB_ID).misfire_grace_time is None
+
+
+def test_enabling_intraday_leaves_every_other_job_untouched(monkeypatch):
+    """The P0 guardrail. Turning polling on must not move the EOD capture by a minute."""
+    _enable_intraday(monkeypatch)
+    scheduler = build_scheduler()
+    for job_id, hour, minute in (
+        (EOD_JOB_ID, "16", "20"),
+        (SAFETY_NET_JOB_ID, "20", "0"),
+        (BARS_JOB_ID, "17", "30"),
+        (EXTENDED_JOB_ID, "16", "45"),
+        (FLOWS_JOB_ID, "18", "30"),
+        (DECISIONS_JOB_ID, "17", "45"),
+    ):
+        job = scheduler.get_job(job_id)
+        assert job is not None, job_id
+        fields = {f.name: str(f) for f in job.trigger.fields}
+        assert (fields["hour"], fields["minute"]) == (hour, minute), job_id
+        assert job.misfire_grace_time is None, job_id
+
+
+def test_the_trigger_and_window_together_give_27_fires_a_session():
+    """The number in the brief, derived rather than asserted by hand: the cron trigger fires on
+    every quarter hour from 09:00 to 16:45, and the window guard keeps 09:45 through 16:15."""
+    fires = [
+        dt.time(hour, minute)
+        for hour in range(9, 17)
+        for minute in (0, 15, 30, 45)
+    ]
+    kept = [t for t in fires if INTRADAY_FIRST_CAPTURE <= t <= INTRADAY_LAST_CAPTURE]
+    assert len(fires) == 32
+    assert len(kept) == 27
+    assert kept[0] == dt.time(9, 45)
+    assert kept[-1] == dt.time(16, 15)
+
+
+def test_the_window_ends_before_the_eod_job_fires():
+    """16:15 is the last poll and 16:20 is the EOD capture. If the window ever reached 16:20 the
+    two jobs would race for the same vendor payload."""
+    assert INTRADAY_LAST_CAPTURE < dt.time(16, 20)
+
+
+async def test_intraday_job_does_nothing_when_disabled(monkeypatch):
+    calls = []
+    monkeypatch.setattr(scheduler_module.settings, "INTRADAY_ENABLED", False)
+    monkeypatch.setattr(
+        scheduler_module, "capture_all_symbols", lambda *a, **k: calls.append(a)
+    )
+    await capture_intraday_job()
+    assert calls == []
+
+
+async def test_intraday_job_skips_outside_the_window(monkeypatch, caplog):
+    """A 09:15 fire is inside the cron trigger but before the window, and must not capture --
+    the feed is 15 minutes delayed, so it would return the pre-open book."""
+    calls = []
+
+    class FakeDatetime(dt.datetime):
+        @classmethod
+        def now(cls, tz=None):
+            return dt.datetime(2026, 9, 11, 9, 15, tzinfo=_NY)
+
+    _enable_intraday(monkeypatch)
+    monkeypatch.setattr(scheduler_module.dt, "datetime", FakeDatetime)
+    monkeypatch.setattr(
+        scheduler_module, "capture_all_symbols", lambda *a, **k: calls.append(a)
+    )
+    with caplog.at_level(logging.DEBUG, logger="app.jobs.scheduler"):
+        await capture_intraday_job()
+    assert calls == []
+    assert "outside the 09:45-16:15 polling window" in caplog.text
+
+
+async def test_intraday_job_skips_on_a_holiday(monkeypatch, caplog):
+    calls = []
+
+    class FakeDatetime(dt.datetime):
+        @classmethod
+        def now(cls, tz=None):
+            # 2026-01-01, a Thursday and a market holiday, at a time inside the window.
+            return dt.datetime(2026, 1, 1, 12, 0, tzinfo=_NY)
+
+    _enable_intraday(monkeypatch)
+    monkeypatch.setattr(scheduler_module.dt, "datetime", FakeDatetime)
+    monkeypatch.setattr(
+        scheduler_module, "capture_all_symbols", lambda *a, **k: calls.append(a)
+    )
+    with caplog.at_level(logging.INFO, logger="app.jobs.scheduler"):
+        await capture_intraday_job()
+    assert calls == []
+    assert "not a trading day" in caplog.text
+
+
+async def test_intraday_job_captures_with_is_eod_false(monkeypatch):
+    """The one property that separates an intraday row from an EOD row everywhere downstream --
+    T32's retention, the catch-up guard, and every `eod_only` query."""
+    seen = {}
+
+    class FakeDatetime(dt.datetime):
+        @classmethod
+        def now(cls, tz=None):
+            return dt.datetime(2026, 9, 11, 12, 0, tzinfo=_NY)
+
+    async def fake_capture(symbols, *, is_eod, **kwargs):
+        seen["symbols"] = list(symbols)
+        seen["is_eod"] = is_eod
+        return []
+
+    _enable_intraday(monkeypatch)
+    monkeypatch.setattr(scheduler_module.dt, "datetime", FakeDatetime)
+    monkeypatch.setattr(scheduler_module, "capture_all_symbols", fake_capture)
+    await capture_intraday_job()
+    assert seen["is_eod"] is False
+    assert seen["symbols"] == scheduler_module.settings.symbols
+
+
+async def test_intraday_job_survives_an_unexpected_exception(monkeypatch, caplog):
+    class FakeDatetime(dt.datetime):
+        @classmethod
+        def now(cls, tz=None):
+            return dt.datetime(2026, 9, 11, 12, 0, tzinfo=_NY)
+
+    async def boom(*args, **kwargs):
+        raise RuntimeError("kaboom")
+
+    _enable_intraday(monkeypatch)
+    monkeypatch.setattr(scheduler_module.dt, "datetime", FakeDatetime)
+    monkeypatch.setattr(scheduler_module, "capture_all_symbols", boom)
+    with caplog.at_level("ERROR"):
+        await capture_intraday_job()  # must not raise
+    assert "capture_intraday_job: unexpected top-level failure" in caplog.text

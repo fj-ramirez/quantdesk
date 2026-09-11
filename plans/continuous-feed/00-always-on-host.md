@@ -76,6 +76,33 @@ Acceptance: the host survives a reboot with the stack coming back unattended; a 
 on a day the user's laptop was never opened, verified by an `is_eod=true` row whose
 `captured_at` falls on such a day; `GET /api/health/capture` answers from the host.
 
+## Decision — 2026-09-11: stay on the laptop for now
+
+The user chose the status quo. T70 is **deferred, not cancelled**, and nothing else in this
+initiative is blocked by it: T18, T19, T20 and T72 are all implementable and shippable without
+it.
+
+What that decision costs, stated plainly so it is not rediscovered later as a surprise: on any
+day the lid is closed during market hours, that session's intraday series has holes, and the
+free Cboe source can never backfill them. The captured series will therefore be ragged in a way
+that is invisible unless you look — T18's own logs are the only record that a slot was never
+attempted.
+
+Two consequences for the tasks that follow:
+
+- `INTRADAY_ENABLED` stays **False** by default, and this is now the main reason. Turn it on
+  deliberately, on days the machine will be up through the session, rather than leaving it on
+  and accumulating a series with unmarked gaps.
+- Any analysis built on the intraday series (comparing the 15-minute-lagged flip point against
+  where it actually sat, which is the empirical trigger for buying the real-time tier per
+  [04-realtime-paid.md](04-realtime-paid.md)) must treat missing slots as missing, never as
+  "no change". A gap and a flat stretch look identical in a time series and mean opposite
+  things.
+
+Revisit when the ragged series becomes annoying in practice, or before flipping
+`INTRADAY_ENABLED` on permanently. The git remote half of this task is worth doing on its own
+merits regardless — it closes the state review's P0 backup gap and costs nothing.
+
 ## Verified facts (2026-09-11)
 
 - `app/jobs/scheduler.py` uses `AsyncIOScheduler` with no persistent job store configured.

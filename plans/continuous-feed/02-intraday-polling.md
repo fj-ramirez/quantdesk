@@ -180,3 +180,48 @@ slider moves the by-strike chart through all 27 without refetching the whole day
 
 Real-time anything — that is `T21`–`T23`. Backfilling intraday history for days already past:
 impossible on this source, by construction.
+
+---
+
+## Result — T18, shipped 2026-09-11
+
+`INTRADAY_ENABLED` in `app/config.py`, `capture_intraday_job` plus conditional registration in
+`app/jobs/scheduler.py`, and 11 new tests. Backend suite 938 passed (was 927), `ruff check .`
+clean.
+
+**Shipped as specified**, with the three guards in order (flag, trading day, window), the
+inverted misfire policy (`misfire_grace_time=300`, against the capture jobs' `None`), and a
+test asserting those two policies differ so the inconsistency cannot later be "fixed" by
+mistake. Registration is conditional on the flag, so `scheduler.get_jobs()` states what will
+actually run rather than listing a job that always no-ops.
+
+`INTRADAY_ENABLED` defaults to **False**, now reinforced by the user's 2026-09-11 decision to
+stay on the laptop (T70 deferred): leaving polling on under that arrangement accumulates a
+series whose gaps are invisible in the data itself.
+
+### Verified live, 2026-09-11 13:15-13:16 ET (inside the window, a trading Friday)
+
+Ran `capture_intraday_job` twice against the real Cboe endpoint, 45 seconds apart. Both rounds
+captured all five symbols; SPX 29,162 contracts in 2.4 s, spot 7671.24, with levels computed
+for all three filters (ALL net GEX +38.4 B, flip 7645.6, call wall 7675, put wall 7500) and
+`ZERO_DTE` correctly populated on a Friday. Nine new `is_eod=false` rows, every one carrying a
+`content_hash`.
+
+**Two findings worth recording.**
+
+1. **Cboe refreshes faster than every 15 minutes.** Four of five symbols returned genuinely
+   new data 45 seconds apart (SPX spot moved 7671.24 → 7670.28). So the 15-minute cadence is a
+   *rate-limit policy*, not a data-availability limit — there is more resolution available than
+   this app takes, and taking it would burn the informal budget. Worth knowing before anyone is
+   tempted to "fix" a cadence that looks conservative.
+
+2. **A correction to this plan's framing of the content key.** DIA's second fetch returned a
+   payload whose vendor timestamp had *not* advanced (16:58:31 both times), and it was caught
+   on the `captured_at` key — `duplicate_reason: "captured_at"`, one row, one Parquet file. So
+   intraday, when the feed has not refreshed, the timestamp has not refreshed either, and the
+   **timestamp key does the everyday work**. T34's divergence — the timestamp advancing over
+   frozen quotes — was observed *after the close*, which is where the content key earns its
+   place. This plan and T71's implied that the content key would be the common case for
+   polling. On this evidence it is the safety net, not the workhorse. It costs one hash per
+   capture and is still exactly right for the after-hours case, so nothing changes in the code;
+   the claim is corrected rather than left overstated.

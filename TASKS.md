@@ -217,6 +217,15 @@ Review API/frontend contract consistency, error handling, and whether URL state 
 ### T18 · Sonnet · T32, T71 (was T05, T09)
 **Intraday polling job**
 
+**Done 2026-09-11.** `INTRADAY_ENABLED` (default False), `capture_intraday_job` with flag /
+trading-day / window guards, conditional registration, and a misfire policy inverted from the
+capture jobs (300 s grace vs `None`) because an intraday slot has nothing to rescue. 11 new
+tests; suite 938 passed. Verified live inside the window on a trading Friday: two rounds 45 s
+apart captured all five symbols, SPX 29,162 contracts with levels computed, and DIA's unrefreshed
+payload was correctly deduped. Two live findings recorded in the plan's Result section,
+including a correction to how often the content key actually fires. See
+[02-intraday-polling.md](plans/continuous-feed/02-intraday-polling.md).
+
 Add scheduler job `capture_intraday`: every 15 minutes from 09:45 to 16:15 NY on trading days, all symbols, `is_eod=False`, compute levels after each capture. Ensure the EOD job still runs at 16:20 and that the polling cadence never exceeds one request per symbol per 15 minutes (this is the free source's informal limit). Config flag `INTRADAY_ENABLED`.
 
 ### T19 · Sonnet · T18, T11
@@ -1019,6 +1028,13 @@ then **T72**.
 
 ### T70 · user decision, then Sonnet · -
 **Always-on host for the scheduler**
+
+> **Deferred 2026-09-11 by the user's decision: stay on the laptop for now.** Nothing else in
+> the initiative is blocked. The cost is that any session with the lid closed has unbackfillable
+> holes, which is why `INTRADAY_ENABLED` defaults to False and should be switched on
+> deliberately. The private git remote is still worth doing alone (state-review P0). See the
+> Decision section in
+> [00-always-on-host.md](plans/continuous-feed/00-always-on-host.md).
 
 APScheduler's job store is in-memory, so jobs fire only while the process lives. T29's
 catch-up rescues a missed daily EOD because Cboe still serves the settled chain that evening;

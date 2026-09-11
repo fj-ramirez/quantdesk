@@ -76,6 +76,23 @@ class Settings(BaseSettings):
     # `0` disables pruning entirely, for a user who would rather buy disk than lose detail.
     INTRADAY_STRIKE_RETENTION_DAYS: int = 30
 
+    # --- T18: 15-minute intraday polling -------------------------------------------------------
+    # Off by default, and deliberately so. The scheduler's job store is in memory, so jobs fire
+    # only while the process is alive, and unlike the EOD capture an intraday slot has **no**
+    # recovery path -- the Cboe endpoint serves only "now", so a slot missed while the laptop
+    # was closed is gone permanently and silently.
+    #
+    # The user decided on 2026-09-11 to keep running on the laptop rather than an always-on host
+    # (T70, deferred). Leaving this on under that arrangement would accumulate a series whose
+    # gaps are invisible in the data itself -- and a gap and a flat stretch look identical in a
+    # time series while meaning opposite things. So: switch it on deliberately, on days the
+    # machine will be up through the session.
+    #
+    # When it is on, the cadence sits exactly on the free source's informal limit of one request
+    # per symbol per 15 minutes, with no headroom -- which is why a failed slot is skipped and
+    # logged rather than retried.
+    INTRADAY_ENABLED: bool = False
+
     # --- T47: sector/industry ETF option capture (plans/continuation/03-regime-board.md) ------
     # Deliberately NOT folded into `SYMBOLS`: the 16:20 EOD job reads `symbols` only, and this
     # setting drives a separate 16:45 ET job (`capture_extended_job`,

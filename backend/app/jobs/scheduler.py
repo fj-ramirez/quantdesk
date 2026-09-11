@@ -34,6 +34,9 @@ __all__ = [
     "EOD_JOB_ID",
     "EXTENDED_JOB_ID",
     "FLOWS_JOB_ID",
+    "INTRADAY_FIRST_CAPTURE",
+    "INTRADAY_JOB_ID",
+    "INTRADAY_LAST_CAPTURE",
     "RETENTION_JOB_ID",
     "SAFETY_NET_JOB_ID",
     "bars_update_job",
@@ -41,6 +44,7 @@ __all__ = [
     "capture_eod_job",
     "capture_eod_safety_net_job",
     "capture_extended_job",
+    "capture_intraday_job",
     "decisions_update_job",
     "flows_update_job",
     "retention_prune_job",
@@ -55,6 +59,21 @@ EXTENDED_JOB_ID = "capture_extended"
 FLOWS_JOB_ID = "flows_update"
 DECISIONS_JOB_ID = "decisions_update"
 RETENTION_JOB_ID = "retention_prune"
+INTRADAY_JOB_ID = "capture_intraday"
+
+#: T18's polling window, NY local and inclusive at both ends: 09:45 through 16:15, every 15
+#: minutes, which is 27 fires per session.
+#:
+#: 09:45 rather than 09:30 because the feed is 15 minutes delayed -- a 09:30 poll would return
+#: the pre-open book, not the first quarter hour of the session. 16:15 for the mirror-image
+#: reason: it is the first poll whose delayed data reflects the 16:00 close, and it is where the
+#: intraday series should end rather than duplicating what the 16:20 EOD job already stores.
+#:
+#: Deliberately not derived from `app.jobs.calendar.MARKET_OPEN`/`MARKET_CLOSE`: those are the
+#: exchange's own hours, and conflating "when the market traded" with "when a delayed feed has
+#: something new to say about it" is exactly the confusion that module's docstring warns about.
+INTRADAY_FIRST_CAPTURE = dt.time(9, 45)
+INTRADAY_LAST_CAPTURE = dt.time(16, 15)
 
 # `settings.TZ` (default "America/New_York") drives both the trigger's wall-clock time and
 # the weekday/holiday check inside the job -- if this were ever pointed at another zone, both
@@ -204,6 +223,66 @@ async def decisions_update_job() -> None:
         logger.exception("decisions_update_job: unexpected top-level failure")
 
 
+async def capture_intraday_job() -> None:
+    """One 15-minute intraday capture of every symbol in `settings.symbols`, `is_eod=False`.
+
+    Three guards, in order, each for a different reason:
+
+    1. `settings.INTRADAY_ENABLED` -- off by default; see the setting's own comment for why.
+       Checked here rather than only at registration so that the reason a fire did nothing is
+       in the logs, not merely absent from them.
+    2. `is_trading_day` -- the cron trigger knows about weekends but not holidays, the same
+       belt-and-suspenders `capture_eod_job` uses.
+    3. The window. The trigger fires on every quarter hour from 09:00 to 16:45 (32 fires);
+       this drops the five outside 09:45-16:15, leaving 27. Expressing it as a trigger plus a
+       guard rather than as a more intricate cron expression keeps the window readable as two
+       named constants that a human can check against the delay policy.
+
+    Wrapped in the same top-level try/except as every other job here: `capture_all_symbols`
+    already turns each symbol's provider and storage failures into a logged `CaptureResult`
+    rather than an exception, and this is the belt to those braces -- a bug that escaped would
+    otherwise deregister this job *and* the P0 capture jobs sharing the scheduler.
+
+    **No retry on failure.** The cadence sits exactly on the free source's informal one request
+    per symbol per 15 minutes, with no headroom, so a failed slot is skipped and logged. The
+    next slot is fifteen minutes away and will ask again.
+    """
+    if not settings.INTRADAY_ENABLED:
+        logger.debug(
+            json.dumps({"event": "capture_intraday_skipped", "reason": "INTRADAY_ENABLED is false"})
+        )
+        return
+
+    now_ny = dt.datetime.now(_TZ)
+    if not is_trading_day(now_ny.date()):
+        logger.info(
+            json.dumps(
+                {
+                    "event": "capture_intraday_skipped",
+                    "date": now_ny.date().isoformat(),
+                    "reason": "not a trading day",
+                }
+            )
+        )
+        return
+    if not (INTRADAY_FIRST_CAPTURE <= now_ny.time() <= INTRADAY_LAST_CAPTURE):
+        logger.debug(
+            json.dumps(
+                {
+                    "event": "capture_intraday_skipped",
+                    "time": now_ny.time().isoformat(timespec="minutes"),
+                    "reason": "outside the 09:45-16:15 polling window",
+                }
+            )
+        )
+        return
+
+    try:
+        await capture_all_symbols(settings.symbols, is_eod=False)
+    except Exception:  # must never take the scheduler thread down with it
+        logger.exception("capture_intraday_job: unexpected top-level failure")
+
+
 async def retention_prune_job() -> None:
     """21:00 ET prune of intraday `gex_by_strike` detail past its retention window (T32).
 
@@ -334,6 +413,31 @@ def build_scheduler() -> AsyncIOScheduler:
         max_instances=1,
         replace_existing=True,
     )
+    # T18: 15-minute intraday polling, registered only when enabled so that
+    # `scheduler.get_jobs()` is an honest statement of what will actually run rather than a list
+    # containing a job that always no-ops.
+    #
+    # The misfire policy is the **opposite** of every capture job above, and this is the part
+    # that is easy to get wrong. Those use `misfire_grace_time=None` because a late EOD capture
+    # still captures the settled close, which is irreplaceable. An intraday slot has nothing to
+    # rescue: the endpoint serves only "now", so a run that fires at 14:03 for the 10:00 slot
+    # does not recover the 10:00 reading -- it just adds an off-grid one, which T20's timeline
+    # would then plot between two real readings as though it belonged there. Five minutes of
+    # grace covers an ordinary scheduling hiccup and nothing more.
+    if settings.INTRADAY_ENABLED:
+        scheduler.add_job(
+            capture_intraday_job,
+            trigger=CronTrigger(
+                day_of_week="mon-fri", hour="9-16", minute="0,15,30,45", timezone=_TZ
+            ),
+            id=INTRADAY_JOB_ID,
+            name="Intraday option chain capture (every 15 min, 09:45-16:15 NY)",
+            coalesce=True,
+            misfire_grace_time=300,
+            max_instances=1,
+            replace_existing=True,
+        )
+
     # T32: nightly retention prune. The misfire policy here is the *opposite* of every capture
     # job above, and deliberately so. Those use `misfire_grace_time=None` because a capture
     # that runs hours late still captures something irreplaceable. A prune has nothing
