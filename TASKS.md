@@ -953,3 +953,9 @@ Paths: `backend/app/scan/outcomes.py`, `backend/app/storage/decisions_repository
 
 Acceptance (all run): `uv run pytest` (889 passed), `uv run ruff check .`, `npm test`,
 `npm run lint`, `tsc -b`; the live in-process run above.
+
+---
+
+## T62–T68 · Sonnet · proposed UI/UX refresh
+
+The user asked on 2026-09-10 to retain the tool’s information while substantially improving its UI/UX. The proposed workbench redesign, task specifications, dependencies, invariants, and acceptance criteria are in plans/ui-ux-refresh/README.md. T62 is the approval-gated UX baseline; T63–T68 implement the shell, primitives, Today/Analyze/Review workspaces, and final visual/accessibility QA. No task has been dispatched.
