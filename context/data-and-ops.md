@@ -25,6 +25,7 @@ setting-named error if constructed without it.
 |---|---|
 | Mon–Fri 16:20 | EOD capture of SPX/SPY/QQQ/GLD/DIA — after the 15-min delay clears the 16:00 close |
 | Mon–Fri 20:00 | safety net; no-op if 16:20 already succeeded |
+| Mon–Fri every 15 min, 09:45–16:15 | intraday polling (T18), `is_eod=False` — **only when `INTRADAY_ENABLED=true`**; 27 fires a session, and unlike every other job here a missed slot can never be recovered |
 | Mon–Fri 16:45 | extended sector/industry ETF capture (T47) |
 | Mon–Fri 17:30 | daily bars update (T42) |
 | Mon–Fri 17:45 | decision engine record-and-score (T61): writes today's opportunities, scores pending ones against new bars |
@@ -33,8 +34,11 @@ setting-named error if constructed without it.
 | every process start | `startup_catchup_job` — recovers a missed EOD without blocking boot |
 | on demand | `POST /api/snapshots/capture?underlying=SPX&eod=true` |
 
-Both cron jobs use `misfire_grace_time=None` and `coalesce=True`: a laptop closed at 16:20 is
-the normal case for this user, so a run that fires hours late must still fire, once.
+The **capture** jobs use `misfire_grace_time=None` and `coalesce=True`: a laptop closed at
+16:20 is the normal case for this user, so a run that fires hours late must still fire, once.
+The intraday and prune jobs deliberately do **not** — an intraday slot has nothing to rescue
+(the endpoint serves only "now", so a late run adds an off-grid reading rather than recovering
+the missed one), and a prune skipped tonight deletes the same rows plus a day's worth tomorrow.
 
 Freshness monitoring: `GET /api/health/capture`. "Stale" means **two or more** trading days
 behind the last completed trading day — being exactly one day behind is normal for most of
@@ -79,6 +83,7 @@ the host). Keys, all read by `app/config.py`:
 | `RISK_FREE_RATE` | `0.04` | annualized, continuously compounded. A parameter, never fetched |
 | `DIVIDEND_YIELD` | `0.013` | continuous; builds the forward for the Greeks |
 | `MARKETDATA_TOKEN` | *(empty)* | only for `PROVIDER=marketdata` |
+| `INTRADAY_ENABLED` | `false` | T18. Turns on 15-minute polling. Off by default because the scheduler only fires while the process is alive and a missed slot is unrecoverable |
 | `INTRADAY_STRIKE_RETENTION_DAYS` | `30` | T32. Days of `gex_by_strike` detail kept for **non-EOD** snapshots; `0` disables. EOD strike detail, `gex_levels` and Parquet are never pruned |
 
 `Settings` uses `extra="ignore"`, so an unknown key in `.env` is silently dropped rather than
