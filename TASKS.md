@@ -335,6 +335,14 @@ Providers skip-and-log unparseable contracts, which is the right policy, but the
 > plan file carries measured volumes (~216k rows/day at 27 captures), the recommended policy,
 > and the reason pruning is safe (`gex_by_strike` is a cache recomputable from Parquet).
 
+**Done 2026-09-11.** `app/jobs/retention.py`, `INTRADAY_STRIKE_RETENTION_DAYS` (default 30,
+`0` disables), and a daily 21:00 ET `retention_prune` job. Kept forever: EOD strike detail,
+every `gex_levels` row, every `snapshots` row, every Parquet file. 13 new tests; backend suite
+927 passed. Run live against the real Postgres (38,650 strike rows, 25 non-EOD snapshots, all
+inside the window) and correctly did nothing. Full rationale and the resolved judgment calls
+are in the Result section of
+[plans/continuous-feed/01-capture-integrity.md](plans/continuous-feed/01-capture-integrity.md).
+
 Flagged by T09: `gex_by_strike` is the volume driver at ~800 rows per filter per capture (2 non-empty filters × 3 symbols today). T18's 15-minute intraday polling multiplies that by ~26 sessions-worth per day per symbol. Nothing partitions or prunes it. Decide a retention rule — e.g. keep EOD strike detail forever, drop intraday strike detail after N days while keeping the `gex_levels` summary row — and implement it before T18 ships, not after the table is large.
 
 ---

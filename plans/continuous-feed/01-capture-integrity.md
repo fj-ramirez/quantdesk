@@ -241,3 +241,51 @@ separately in `test_migration_t71_duplicates.py` against a SQLite table built fr
 which files are still referenced is the state review's own orphaned-file item, and on a source
 with no history an orphaned file costs a megabyte while a wrongly deleted one costs a day that
 cannot be re-fetched.
+
+---
+
+## Result — T32, shipped 2026-09-11
+
+`app/jobs/retention.py` (new), `INTRADAY_STRIKE_RETENTION_DAYS` in `app/config.py`, a
+`retention_prune` job on the scheduler, and 13 new tests across `tests/test_retention.py` and
+`tests/test_scheduler.py`. Backend suite 927 passed (was 914), `ruff check .` clean.
+`.env.example` and `context/data-and-ops.md` (both the schedule table and the env table)
+updated.
+
+**The policy that shipped** is the recommended one above, unchanged: EOD strike detail, every
+`gex_levels` row, every `snapshots` row and every Parquet file kept forever; non-EOD strike
+detail kept 30 days; `0` disables. Negative values disable too rather than computing a cutoff
+in the future and deleting the entire table — a misconfiguration must fail safe, and there is a
+test pinning that.
+
+**Judgment calls, resolved.**
+
+- *Separate nightly job, not a tail step on capture.* A slow `DELETE` must never sit in front of
+  the next capture on a path whose premise is that a missed capture is permanent; a distinct job
+  id is visible in the job list and runnable by hand; and the deletion is attributable to itself
+  in the logs.
+- *21:00, daily.* An hour after the 20:00 EOD safety net, so a late-recovered capture is stored
+  and flagged `is_eod=True` before anything considers deleting its strike rows. Daily rather
+  than Mon–Fri because retention is a function of row age and a weekend is a fine time to
+  delete.
+- *Misfire policy inverted, deliberately.* Every capture job here uses
+  `misfire_grace_time=None` because a late capture still captures something irreplaceable. A
+  prune has nothing irreplaceable to catch — a run skipped tonight deletes the same rows plus
+  one more day's worth tomorrow — so it gets an explicit one-hour grace instead. There is a test
+  asserting the two policies differ, so the inconsistency cannot later be "fixed" by mistake.
+- *No new index.* The plan said measure first. The predicate selects ids from `snapshots` (tens
+  of thousands of rows even after a year of polling — a trivial scan) and deletes from
+  `gex_by_strike` by `snapshot_id`, the leading column of the existing
+  `ix_gex_by_strike_snapshot_filter`. The expensive half is already indexed; the cheap half does
+  not justify maintaining another index on every insert.
+- *Chunked commits* (50 snapshots per transaction). The first run after `T18` is enabled may
+  face months of accumulated detail rather than one day's, and incremental commits make durable
+  progress instead of building one enormous transaction a restart would roll back.
+
+**Verified live.** Run against the real Postgres: 38,650 `gex_by_strike` rows, 25 non-EOD
+snapshots, all inside the 30-day window → `snapshots_pruned=0, rows_deleted=0` and the table
+unchanged at 38,650. The correct answer today is "do nothing", and it did nothing.
+
+**Note for T20.** Scrubbing the intraday slider past the cutoff will find `gex_levels` but no
+strike detail. That empty state is designed, not incidental — it is already called out in
+[02-intraday-polling.md](02-intraday-polling.md) as something T20 must render explicitly.

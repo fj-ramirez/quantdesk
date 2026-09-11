@@ -29,6 +29,7 @@ setting-named error if constructed without it.
 | Mon–Fri 17:30 | daily bars update (T42) |
 | Mon–Fri 17:45 | decision engine record-and-score (T61): writes today's opportunities, scores pending ones against new bars |
 | Mon–Fri 18:30 | ETF shares-outstanding flows (T52) |
+| Daily 21:00 | retention prune of intraday `gex_by_strike` detail (T32) — an hour after the safety net, daily rather than Mon–Fri because retention is a function of row age |
 | every process start | `startup_catchup_job` — recovers a missed EOD without blocking boot |
 | on demand | `POST /api/snapshots/capture?underlying=SPX&eod=true` |
 
@@ -69,6 +70,7 @@ the host). Keys, all read by `app/config.py`:
 | `RISK_FREE_RATE` | `0.04` | annualized, continuously compounded. A parameter, never fetched |
 | `DIVIDEND_YIELD` | `0.013` | continuous; builds the forward for the Greeks |
 | `MARKETDATA_TOKEN` | *(empty)* | only for `PROVIDER=marketdata` |
+| `INTRADAY_STRIKE_RETENTION_DAYS` | `30` | T32. Days of `gex_by_strike` detail kept for **non-EOD** snapshots; `0` disables. EOD strike detail, `gex_levels` and Parquet are never pruned |
 
 `Settings` uses `extra="ignore"`, so an unknown key in `.env` is silently dropped rather than
 crashing boot — spell keys carefully.

@@ -62,6 +62,20 @@ class Settings(BaseSettings):
     SYMBOLS: str = "SPX,SPY,QQQ,GLD,DIA"
     TZ: str = "America/New_York"
 
+    # --- T32: retention for intraday `gex_by_strike` detail -----------------------------------
+    # How many days of per-strike detail to keep for NON-EOD (intraday) snapshots. EOD strike
+    # detail is kept forever, as is every `gex_levels` summary row, every `snapshots` index row
+    # and every Parquet file -- see `app.jobs.retention` for the full policy and why pruning is
+    # reversible.
+    #
+    # Sized against measured volume: `gex_by_strike` runs ~800 rows per filter per capture, so
+    # five symbols x two non-empty filters x T18's 27 captures a session is ~216k rows/day
+    # against ~8k/day at one capture. Thirty days caps the intraday share at roughly 6M rows
+    # while still covering "scrub back through last month's sessions" (T20).
+    #
+    # `0` disables pruning entirely, for a user who would rather buy disk than lose detail.
+    INTRADAY_STRIKE_RETENTION_DAYS: int = 30
+
     # --- T47: sector/industry ETF option capture (plans/continuation/03-regime-board.md) ------
     # Deliberately NOT folded into `SYMBOLS`: the 16:20 EOD job reads `symbols` only, and this
     # setting drives a separate 16:45 ET job (`capture_extended_job`,

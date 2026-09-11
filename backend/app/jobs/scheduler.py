@@ -10,6 +10,7 @@ without ever starting it (no real network, no real 16:20 wait).
 
 from __future__ import annotations
 
+import asyncio
 import datetime as dt
 import json
 import logging
@@ -21,10 +22,11 @@ from apscheduler.triggers.cron import CronTrigger
 from app.config import settings
 from app.jobs.bars import update_bars_job
 from app.jobs.calendar import is_trading_day
-from app.jobs.capture import capture_all_symbols
+from app.jobs.capture import capture_all_symbols, get_session_factory
 from app.jobs.catchup import catch_up_missed_eod
 from app.jobs.decisions import record_decisions_job
 from app.jobs.flows import update_flows_job
+from app.jobs.retention import prune_intraday_strike_detail
 
 __all__ = [
     "BARS_JOB_ID",
@@ -32,6 +34,7 @@ __all__ = [
     "EOD_JOB_ID",
     "EXTENDED_JOB_ID",
     "FLOWS_JOB_ID",
+    "RETENTION_JOB_ID",
     "SAFETY_NET_JOB_ID",
     "bars_update_job",
     "build_scheduler",
@@ -40,6 +43,7 @@ __all__ = [
     "capture_extended_job",
     "decisions_update_job",
     "flows_update_job",
+    "retention_prune_job",
 ]
 
 logger = logging.getLogger("app.jobs.scheduler")
@@ -50,6 +54,7 @@ BARS_JOB_ID = "bars_update"
 EXTENDED_JOB_ID = "capture_extended"
 FLOWS_JOB_ID = "flows_update"
 DECISIONS_JOB_ID = "decisions_update"
+RETENTION_JOB_ID = "retention_prune"
 
 # `settings.TZ` (default "America/New_York") drives both the trigger's wall-clock time and
 # the weekday/holiday check inside the job -- if this were ever pointed at another zone, both
@@ -199,6 +204,32 @@ async def decisions_update_job() -> None:
         logger.exception("decisions_update_job: unexpected top-level failure")
 
 
+async def retention_prune_job() -> None:
+    """21:00 ET prune of intraday `gex_by_strike` detail past its retention window (T32).
+
+    Last of the evening's jobs, deliberately: it runs an hour after the 20:00 EOD safety net,
+    so on a day when the 16:20 capture was missed and recovered late, the recovered snapshot is
+    already stored and correctly flagged `is_eod=True` before anything considers deleting
+    strike rows. Pruning by the *stored* flag rather than by wall-clock time is what makes that
+    ordering merely tidy rather than load-bearing, but the margin costs nothing.
+
+    Runs every day, not just Mon-Fri: retention is a function of row age, and a weekend is a
+    perfectly good time to do the deleting. Same P0 guardrail as every other job here -- the
+    prune already never raises for an empty table or a disabled setting, and this wrapper
+    exists so that a bug which somehow did raise cannot deregister the capture jobs.
+
+    Off the event loop via `asyncio.to_thread` for the same reason as the capture path's own DB
+    work: `prune_intraday_strike_detail` is synchronous and commits per chunk, so calling it
+    inline would block the loop for the length of a multi-hundred-thousand-row delete.
+    """
+    try:
+        await asyncio.to_thread(
+            prune_intraday_strike_detail, session_factory=get_session_factory()
+        )
+    except Exception:  # must never take the scheduler thread down with it
+        logger.exception("retention_prune_job: unexpected top-level failure")
+
+
 def build_scheduler() -> AsyncIOScheduler:
     """Construct (but do not start) the scheduler with `capture_eod` registered.
 
@@ -300,6 +331,27 @@ def build_scheduler() -> AsyncIOScheduler:
         name="Decision engine record and score",
         coalesce=True,
         misfire_grace_time=None,
+        max_instances=1,
+        replace_existing=True,
+    )
+    # T32: nightly retention prune. The misfire policy here is the *opposite* of every capture
+    # job above, and deliberately so. Those use `misfire_grace_time=None` because a capture
+    # that runs hours late still captures something irreplaceable. A prune has nothing
+    # irreplaceable to catch: it deletes by row age, so a run skipped tonight deletes exactly
+    # the same rows plus one day's worth tomorrow. `coalesce=True` keeps a week of missed runs
+    # from replaying as seven identical deletes on wake-up.
+    scheduler.add_job(
+        retention_prune_job,
+        trigger=CronTrigger(hour=21, minute=0, timezone=_TZ),
+        id=RETENTION_JOB_ID,
+        name="Prune intraday gex_by_strike detail past its retention window",
+        coalesce=True,
+        # One hour, explicitly, rather than the module-wide `None`. A run that fires at 03:00
+        # because the laptop was asleep at 21:00 deletes exactly what the 21:00 run would have;
+        # a run that is dropped entirely costs one night of deferred deletion and nothing else.
+        # Stating it rather than leaving it to APScheduler's default also keeps the attribute
+        # present on the Job, which the scheduler tests read directly.
+        misfire_grace_time=3600,
         max_instances=1,
         replace_existing=True,
     )

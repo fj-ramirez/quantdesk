@@ -19,6 +19,7 @@ from app.jobs.scheduler import (
     EOD_JOB_ID,
     EXTENDED_JOB_ID,
     FLOWS_JOB_ID,
+    RETENTION_JOB_ID,
     SAFETY_NET_JOB_ID,
     bars_update_job,
     build_scheduler,
@@ -27,6 +28,7 @@ from app.jobs.scheduler import (
     capture_extended_job,
     decisions_update_job,
     flows_update_job,
+    retention_prune_job,
 )
 
 _NY = ZoneInfo("America/New_York")
@@ -215,6 +217,7 @@ def test_build_scheduler_still_registers_the_two_option_capture_jobs_unchanged()
         EXTENDED_JOB_ID,
         FLOWS_JOB_ID,
         DECISIONS_JOB_ID,
+        RETENTION_JOB_ID,
     }
 
 
@@ -313,6 +316,7 @@ def test_build_scheduler_adding_the_extended_job_leaves_the_other_three_untouche
         EXTENDED_JOB_ID,
         FLOWS_JOB_ID,
         DECISIONS_JOB_ID,
+        RETENTION_JOB_ID,
     }
 
 
@@ -464,6 +468,7 @@ def test_build_scheduler_adding_the_flows_job_leaves_the_other_four_untouched():
         EXTENDED_JOB_ID,
         FLOWS_JOB_ID,
         DECISIONS_JOB_ID,
+        RETENTION_JOB_ID,
     }
 
 
@@ -519,3 +524,70 @@ async def test_decisions_update_job_survives_an_unexpected_exception(monkeypatch
     with caplog.at_level("ERROR"):
         await decisions_update_job()  # must not raise
     assert "decisions_update_job: unexpected top-level failure" in caplog.text
+
+
+# --- T32: nightly retention prune ------------------------------------------------------------
+
+
+def test_build_scheduler_registers_retention_job_at_2100_every_day():
+    """21:00 ET, an hour after the 20:00 EOD safety net, so a late-recovered capture is stored
+    and flagged `is_eod=True` before anything considers deleting strike rows. Daily rather than
+    Mon-Fri: retention is a function of row age, and a weekend is a fine time to delete."""
+    scheduler = build_scheduler()
+    job = scheduler.get_job(RETENTION_JOB_ID)
+    assert job is not None
+    assert job.max_instances == 1
+    assert job.coalesce is True
+    fields = {f.name: str(f) for f in job.trigger.fields}
+    assert (fields["hour"], fields["minute"]) == ("21", "0")
+    assert fields["day_of_week"] == "*"
+
+
+def test_retention_job_does_not_use_the_capture_misfire_policy():
+    """Deliberately unlike every capture job here. Those set `misfire_grace_time=None` because
+    a late capture still captures something irreplaceable; a prune has nothing irreplaceable to
+    catch, since a run skipped tonight deletes the same rows plus a day's worth tomorrow."""
+    scheduler = build_scheduler()
+    assert scheduler.get_job(RETENTION_JOB_ID).misfire_grace_time is not None
+    assert scheduler.get_job(EOD_JOB_ID).misfire_grace_time is None
+
+
+def test_build_scheduler_adding_the_retention_job_leaves_the_capture_jobs_untouched():
+    """The P0 guardrail every additive job in this module is held to."""
+    scheduler = build_scheduler()
+    for job_id, hour, minute in (
+        (EOD_JOB_ID, "16", "20"),
+        (SAFETY_NET_JOB_ID, "20", "0"),
+        (BARS_JOB_ID, "17", "30"),
+        (EXTENDED_JOB_ID, "16", "45"),
+        (FLOWS_JOB_ID, "18", "30"),
+        (DECISIONS_JOB_ID, "17", "45"),
+    ):
+        job = scheduler.get_job(job_id)
+        assert job is not None, job_id
+        fields = {f.name: str(f) for f in job.trigger.fields}
+        assert (fields["hour"], fields["minute"]) == (hour, minute), job_id
+        assert job.misfire_grace_time is None, job_id
+
+
+async def test_retention_prune_job_survives_an_unexpected_exception(monkeypatch, caplog):
+    def boom(**kwargs):
+        raise RuntimeError("kaboom")
+
+    monkeypatch.setattr("app.jobs.scheduler.prune_intraday_strike_detail", boom)
+    monkeypatch.setattr("app.jobs.scheduler.get_session_factory", lambda: None)
+    with caplog.at_level("ERROR"):
+        await retention_prune_job()  # must not raise
+    assert "retention_prune_job: unexpected top-level failure" in caplog.text
+
+
+async def test_retention_prune_job_delegates_to_the_prune(monkeypatch):
+    calls = []
+
+    def fake_prune(*, session_factory):
+        calls.append(session_factory)
+
+    monkeypatch.setattr("app.jobs.scheduler.prune_intraday_strike_detail", fake_prune)
+    monkeypatch.setattr("app.jobs.scheduler.get_session_factory", lambda: "factory")
+    await retention_prune_job()
+    assert calls == ["factory"]
