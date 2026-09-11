@@ -25,6 +25,14 @@ services:
       PROVIDER: cboe
       SYMBOLS: SPX,SPY,QQQ,GLD,DIA
       TZ: America/New_York
+      # T18/T32. Taken from the root `.env` via substitution, with the same defaults the
+      # settings themselves carry, so that file is the single knob for both. Without an entry
+      # here the container would never see them: this service declares `environment:` and no
+      # `env_file:`, so the root `.env` is only used for substitution *into* this file, and the
+      # `backend/.env` visible through the bind mount is the container's own -- which is the
+      # trap that made "I enabled intraday in .env" a no-op on 2026-09-11.
+      INTRADAY_ENABLED: ${INTRADAY_ENABLED:-false}
+      INTRADAY_STRIKE_RETENTION_DAYS: ${INTRADAY_STRIKE_RETENTION_DAYS:-30}
     volumes:
       - ./backend:/app
       - /app/.venv

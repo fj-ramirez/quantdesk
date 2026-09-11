@@ -50,6 +50,15 @@ UTC, chronologically sortable, filesystem-safe. `snapshots.parquet_path` stores 
 **relative to `DATA_DIR`** with posix separators. Always resolve through
 `storage.parquet.resolve_snapshot_path`; never join `settings.DATA_DIR` by hand.
 
+**Run the backend from the repo root, or from Docker -- never `uv run uvicorn` from inside
+`backend/`.** `DATA_DIR=./data` resolves against the process's CWD, so a backend started from
+`backend/` writes Parquet into `backend/data/` while `snapshots.parquet_path` stores the path
+*relative to `DATA_DIR`*. The container, whose `DATA_DIR=/data` is bound to the repo-root
+`./data`, then resolves those rows to files that are not there. Found 2026-09-11 with 13 such
+rows (3 from early runs, 10 from a live T18 test); no data was lost and the files were copied
+across, but the trap is silent -- the rows look fine until something opens the Parquet. This is
+also the origin of the "orphaned files under `backend/data/`" item in the state review.
+
 `data/` is gitignored. `DATA_DIR` is a bind mount in Docker (`./data` → `/data`) so captures
 survive container restarts and stay inspectable from the host. Note there are currently
 orphaned Parquet files under `backend/data/` from early runs — see
@@ -74,6 +83,13 @@ the host). Keys, all read by `app/config.py`:
 
 `Settings` uses `extra="ignore"`, so an unknown key in `.env` is silently dropped rather than
 crashing boot — spell keys carefully.
+
+**Compose does not read the root `.env` into the container.** The `backend` service declares an
+explicit `environment:` block and no `env_file:`, so the root `.env` is used only for
+*substitution into* `docker-compose.yml`. A setting added to `app/config.py` must also be added
+to that block (as `KEY: ${KEY:-default}`) or the container will never see it. Combined with the
+`extra="ignore"` rule above, a misspelled key in the root `.env` fails twice over in complete
+silence -- which is exactly what happened to `INTRADAY_ENABLE` (missing `D`) on 2026-09-11.
 
 ## Docker
 
