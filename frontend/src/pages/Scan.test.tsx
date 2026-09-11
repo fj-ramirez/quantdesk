@@ -101,16 +101,25 @@ describe('Scan page -- breakouts view', () => {
     expect(disclosure as HTMLElement).toHaveTextContent(excludedFixture.excluded[0].reason);
   });
 
-  it('opens the detail panel on a row click', async () => {
+  it('opens the detail drawer on a row click, focus-managed', async () => {
     renderScan();
     await awaitBreakoutsLoaded();
     const table = await screen.findByRole('table', { name: /breakout continuation/i });
     const firstDataRow = within(table).getAllByRole('row')[1];
+    firstDataRow.focus();
     fireEvent.click(firstDataRow);
-    expect(await screen.findByRole('region', { name: /breakout detail/i })).toBeInTheDocument();
+    // T66: BreakoutDetail is now mounted through ui/DetailDrawer, which owns the panel's
+    // dialog chrome and moves focus inside it on open -- not the old unmanaged `region`.
+    const dialog = await screen.findByRole('dialog', { name: /breakout detail/i });
+    expect(dialog).toBeInTheDocument();
+    expect(dialog).toContainElement(document.activeElement as HTMLElement);
+
+    fireEvent.keyDown(document, { key: 'Escape' });
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    expect(firstDataRow).toHaveFocus();
   });
 
-  it('opens the detail panel from the keyboard with Enter', async () => {
+  it('opens the detail drawer from the keyboard with Enter', async () => {
     renderScan();
     await awaitBreakoutsLoaded();
     const table = await screen.findByRole('table', { name: /breakout continuation/i });
@@ -118,7 +127,7 @@ describe('Scan page -- breakouts view', () => {
     // Focusable, per 07-ui.md's keyboard acceptance criterion -- not merely clickable.
     expect(firstDataRow).toHaveAttribute('tabindex', '0');
     fireEvent.keyDown(firstDataRow, { key: 'Enter' });
-    expect(await screen.findByRole('region', { name: /breakout detail/i })).toBeInTheDocument();
+    expect(await screen.findByRole('dialog', { name: /breakout detail/i })).toBeInTheDocument();
   });
 
   it('exposes sortable headers as buttons and toggles direction in the URL', async () => {

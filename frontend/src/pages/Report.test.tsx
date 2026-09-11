@@ -15,14 +15,22 @@ import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { describe, expect, it } from 'vitest';
 import { server } from '../mocks/server';
 import { ThemeProvider } from '../theme/ThemeContext';
+import { ContextBar } from '../components/layout/ContextBar';
 import { Report } from './Report';
 
+// T67: the page-body symbol/expiry `<select>`s this test used to drive directly are gone --
+// `/report` isn't in `ContextBar`'s `SCAN_FAMILY_PATHS`, so it renders the same
+// `AssetSelector`/expiry-select controls `/dashboard` gets, and switching symbol now happens
+// through that shared control (the same pattern `App.test.tsx` already uses for `/dashboard`).
+// `ContextBar` is rendered alongside `Report` here so a real, end-to-end symbol switch is
+// exercised rather than assumed.
 function renderReport(initialPath: string) {
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   return render(
     <QueryClientProvider client={queryClient}>
       <ThemeProvider>
         <MemoryRouter initialEntries={[initialPath]}>
+          <ContextBar />
           <Routes>
             <Route path="/report" element={<Report />} />
           </Routes>
@@ -30,6 +38,13 @@ function renderReport(initialPath: string) {
       </ThemeProvider>
     </QueryClientProvider>,
   );
+}
+
+/** Switches the underlying via `ContextBar`'s `AssetSelector` -- opens the dropdown from the
+ * trigger button (accessible name "Symbol {current}") and picks the target option. */
+function switchSymbol(current: string, next: string) {
+  fireEvent.click(screen.getByRole('button', { name: `Symbol ${current}` }));
+  fireEvent.click(screen.getByRole('option', { name: next }));
 }
 
 /** Wait for the report *data*, not just the page chrome.
@@ -147,8 +162,11 @@ describe('Report page', () => {
   it('surfaces the T34 data-freshness badge', async () => {
     renderReport('/report?symbol=GLD');
     await awaitReportLoaded('GLD');
-    // `formatFreshness` produces either "As of ... ET" or "At <day>'s close".
-    expect(screen.getByText(/As of .*ET|close \(/)).toBeInTheDocument();
+    // `formatFreshness` produces either "As of ... ET" or "At <day>'s close". Scoped to the
+    // page's own freshness caveat (`data-testid="report-freshness"`, in `PageHeader`) since
+    // `ContextBar`'s own freshness badge renders the same style of text from a different
+    // query and would otherwise make an unscoped `getByText` ambiguous.
+    expect(screen.getByTestId('report-freshness').textContent).toMatch(/As of .*ET|close \(/);
   });
 
   it('the ZERO_DTE filter renders the empty scope cleanly rather than as zeros', async () => {
@@ -164,11 +182,11 @@ describe('Report page', () => {
     expect(price.textContent).toContain('Max pain —');
   });
 
-  it('switching the symbol select updates the URL-driven view', async () => {
+  it('switching the ContextBar symbol control updates the URL-driven view', async () => {
     renderReport('/report?symbol=GLD');
     await awaitReportLoaded('GLD');
 
-    fireEvent.change(screen.getByLabelText(/Symbol/), { target: { value: 'DIA' } });
+    switchSymbol('GLD', 'DIA');
 
     await awaitReportLoaded('DIA');
     expect(screen.getByTestId('positioning-label')).toHaveTextContent('NOISE-DOMINATED');
@@ -189,13 +207,68 @@ describe('Report page', () => {
   });
 });
 
+describe('Report page density pass (T69)', () => {
+  it('Gamma exposure, Premium selling screen, Playbook and Summary are collapsed <details> by default', async () => {
+    renderReport('/report?symbol=GLD');
+    await awaitReportLoaded('GLD');
+
+    for (const label of ['Gamma exposure', 'Premium selling screen', 'Playbook', 'Executive summary']) {
+      const region = screen.getByRole('region', { name: label });
+      const details = region.closest('details') as HTMLDetailsElement | null;
+      expect(details).not.toBeNull();
+      expect(details!.open).toBe(false);
+    }
+  });
+
+  it('clicking a disclosure summary opens it, keyboard-operable via the native <details> element', async () => {
+    renderReport('/report?symbol=GLD');
+    await awaitReportLoaded('GLD');
+
+    const region = screen.getByRole('region', { name: 'Playbook' });
+    const details = region.closest('details') as HTMLDetailsElement;
+    expect(details.open).toBe(false);
+
+    fireEvent.click(screen.getByRole('heading', { name: 'Playbook', level: 2 }));
+    expect(details.open).toBe(true);
+  });
+
+  it('Risk alerts is also a collapsed <details> when the symbol has any alerts', async () => {
+    renderReport('/report?symbol=DIA');
+    await awaitReportLoaded('DIA');
+
+    const region = screen.getByRole('region', { name: 'Risk alerts' });
+    const details = region.closest('details') as HTMLDetailsElement;
+    expect(details).not.toBeNull();
+    expect(details.open).toBe(false);
+  });
+
+  it('Levels straddling spot and the three summary cards are never wrapped in a <details> -- always visible', async () => {
+    renderReport('/report?symbol=DIA');
+    await awaitReportLoaded('DIA');
+
+    for (const label of ['Current price', 'Volatility', 'Market sentiment', 'Levels straddling spot']) {
+      const region = screen.getByRole('region', { name: label });
+      expect(region.closest('details')).toBeNull();
+    }
+  });
+
+  it('the three load-bearing disclaimer strings still appear verbatim after the disclosure rewrite (T67 regression check)', async () => {
+    renderReport('/report?symbol=GLD');
+    await awaitReportLoaded('GLD');
+
+    expect(document.body.textContent).toContain('Screening output');
+    expect(document.body.textContent).toMatch(/not a recommendation/);
+    expect(document.body.textContent).toMatch(/never routes an order/);
+  });
+});
+
 describe('CFD level translation (T41)', () => {
   it('labels the CFD-spot field from CFD_INSTRUMENTS for GLD and DIA', async () => {
     renderReport('/report?symbol=GLD');
     await awaitReportLoaded('GLD');
     expect(screen.getByLabelText('XAUUSD spot')).toBeInTheDocument();
 
-    fireEvent.change(screen.getByLabelText(/Symbol/), { target: { value: 'DIA' } });
+    switchSymbol('GLD', 'DIA');
     await awaitReportLoaded('DIA');
     expect(screen.getByLabelText('US30 spot')).toBeInTheDocument();
   });
@@ -209,7 +282,7 @@ describe('CFD level translation (T41)', () => {
 
     // Switching back to a mapped symbol restores the normal input -- the degrade is per
     // symbol, not a permanently broken state.
-    fireEvent.change(screen.getByLabelText(/Symbol/), { target: { value: 'GLD' } });
+    switchSymbol('XLK', 'GLD');
     await awaitReportLoaded('GLD');
     expect(screen.getByLabelText('XAUUSD spot')).toBeInTheDocument();
   });
@@ -288,7 +361,12 @@ describe('Report page error and empty states (T37)', () => {
     );
     renderReport('/report?symbol=SPY');
 
-    await waitFor(() => expect(screen.getByRole('region', { name: 'No data yet' })).toBeInTheDocument());
+    // T67: the empty state now goes through the shared `EmptyState` primitive, whose
+    // `heading` prop is both the visible heading and the region's accessible name (rather
+    // than the old bespoke section's separate fixed `aria-label="No data yet"`).
+    await waitFor(() =>
+      expect(screen.getByRole('region', { name: 'No SPY snapshot captured yet' })).toBeInTheDocument(),
+    );
     expect(screen.getByRole('button', { name: 'Capture now' })).toBeInTheDocument();
     expect(screen.queryByRole('alert')).not.toBeInTheDocument();
     // The T37 regression: no raw JSON envelope may reach the page.
@@ -319,7 +397,7 @@ describe('Report page error and empty states (T37)', () => {
     renderReport('/report?symbol=SPY');
 
     await waitFor(() => expect(screen.getByRole('alert')).toBeInTheDocument());
-    expect(screen.queryByRole('region', { name: 'No data yet' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('region', { name: 'No SPY snapshot captured yet' })).not.toBeInTheDocument();
   });
 
   it('an unparseable error body degrades to the status text, never the raw body', async () => {

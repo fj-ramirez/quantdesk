@@ -10,6 +10,13 @@
  *    calendar days) since the API clips to what exists.
  *  - **`^VIX` reaches here unencoded** and is percent-encoded inside `api/client.ts` (T55).
  *    Nothing in this component may pre-encode it, or the caret would be double-escaped.
+ *
+ * T66: this used to render its own `<section>`/heading/Close button wrapper (no Escape
+ * handler, no focus trap, no focus-return — `01-ux-baseline.md` flagged it explicitly). It is
+ * now mounted as `ui/DetailDrawer`'s children (`Scan.tsx`), which owns that chrome and the
+ * focus-management behavior neither this component nor its predecessor ever had — same
+ * pattern T64 already applied to `OpportunityDetail`. This file renders only the content
+ * below the drawer's own header.
  */
 import { useSymbolBreakouts, useBars } from '../../api/queries';
 import { EmptyState } from '../EmptyState';
@@ -32,30 +39,15 @@ export interface BreakoutDetailProps {
   n: number;
   k: number;
   lookback: number;
-  onClose: () => void;
   onMarkersRendered?: (count: number) => void;
 }
 
-export function BreakoutDetail({
-  symbol,
-  n,
-  k,
-  lookback,
-  onClose,
-  onMarkersRendered,
-}: BreakoutDetailProps) {
+export function BreakoutDetail({ symbol, n, k, lookback, onMarkersRendered }: BreakoutDetailProps) {
   const events = useSymbolBreakouts(symbol, { n, k, lookback });
   const bars = useBars(symbol, { start: startDateFor(lookback) });
 
   return (
-    <section className="scan-detail" aria-label={`${symbol} breakout detail`}>
-      <header className="scan-detail__head">
-        <h2 className="scan-detail__title">{symbol}</h2>
-        <button type="button" className="scan-detail__close" onClick={onClose}>
-          Close
-        </button>
-      </header>
-
+    <>
       {events.isError || bars.isError ? (
         <ErrorState message={`Could not load breakout detail for ${symbol}.`} />
       ) : events.isPending || bars.isPending ? (
@@ -72,7 +64,7 @@ export function BreakoutDetail({
               {symbol} did not break its {n}-bar range over the last {lookback} bars.
             </EmptyState>
           ) : (
-            <div className="scan-table-container">
+            <div className="scan-table-container" tabIndex={0}>
               <table className="scan-table">
                 <caption className="scan-detail__caption">
                   Breakout events for {symbol}
@@ -114,6 +106,6 @@ export function BreakoutDetail({
           )}
         </>
       )}
-    </section>
+    </>
   );
 }

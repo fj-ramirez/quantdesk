@@ -13,56 +13,51 @@
  * `watch` before `rejected`, then score descending -- so "unsorted" is the meaningful order,
  * not an accident of insertion.
  *
- * The backend's `generated_from` disclaimer renders verbatim under the toolbar. These are
- * suggestions computed from the latest captured chain and daily bars; nothing here is routed.
+ * The backend's `generated_from` disclaimer renders verbatim as `DataTableFrame`'s source-
+ * timing line, next to the table it describes. These are suggestions computed from the
+ * latest captured chain and daily bars; nothing here is routed.
+ *
+ * T64: chosen as this task's one representative page -- it now exercises `PageHeader`,
+ * `Toolbar`/`SegmentedControl` (replacing the local `ButtonGroup` this file used to define),
+ * `DataTableFrame` (wrapping `OpportunityTable`'s `ScanTable`, unchanged inside), `MetricStrip`
+ * (a current-state summary computed from data already fetched here, no new query), and
+ * `DetailDrawer` (replacing `OpportunityDetail`'s old unmanaged-focus panel). All fetch/query
+ * logic, ranking, and URL parameters (`filter`, `min_score`, `sort`, `dir`) are unchanged.
+ *
+ * T65: `plans/ui-ux-refresh/README.md`'s target reading order for Opportunities is "Status
+ * summary -> filter/threshold -> ranked table -> selected detail -> no-trade reasons and
+ * track record." T64 had `MetricStrip` (the status summary) rendered *after* the filter/
+ * min-grade `Toolbar` -- this task reorders those two so the summary reads first, matching the
+ * plan; nothing about either one's content, visibility condition, or computed values changed,
+ * only their position in the JSX (the `MetricStrip` render is now gated on `decisions.data`
+ * directly rather than nested inside the big loading/error/data conditional, which is what
+ * moving it earlier requires, but it is hidden in exactly the same cases as before: no data
+ * yet). Ranked table -> selected detail -> no-trade reasons -> track record was already in this
+ * order (main column: table then drawer; aside: no-trade list; then track record below both) --
+ * verified, not changed.
  */
 import { useCallback, useMemo, useState } from 'react';
 import { useDecisions } from '../api/queries';
 import { EXPIRY_FILTER_LABELS, type ExpiryFilter } from '../api/types';
 import { EmptyState } from '../components/EmptyState';
 import { ErrorState } from '../components/ErrorState';
+import { LoadingState } from '../components/LoadingState';
 import { NoTradeList } from '../components/decisions/NoTradeList';
 import { OpportunityDetail } from '../components/decisions/OpportunityDetail';
 import { OpportunityTable } from '../components/decisions/OpportunityTable';
 import { TrackRecord } from '../components/decisions/TrackRecord';
-import { toOpportunityRows } from '../components/decisions/opportunityRows';
+import { setupLabel, toOpportunityRows } from '../components/decisions/opportunityRows';
+import { DataTableFrame } from '../components/ui/DataTableFrame';
+import { DetailDrawer } from '../components/ui/DetailDrawer';
+import { MetricStrip } from '../components/ui/MetricCard';
+import { PageHeader } from '../components/ui/PageHeader';
+import { SegmentedControl, Toolbar } from '../components/ui/Toolbar';
 import { SCAN_MIN_SCORE_VALUES, useDashboardParams, useScanParams } from '../state/urlState';
 
 const DECISION_FILTERS: readonly ExpiryFilter[] = ['ALL', 'ZERO_DTE', 'EX_ZERO_DTE'];
 
 /** Labels for `SCAN_MIN_SCORE_VALUES`: the engine's grade boundaries, read as thresholds. */
 const MIN_SCORE_LABELS: Record<number, string> = { 0: 'All', 45: 'C+', 60: 'B+', 75: 'A' };
-
-function ButtonGroup<T extends string | number>({
-  label,
-  values,
-  active,
-  render,
-  onChange,
-}: {
-  label: string;
-  values: readonly T[];
-  active: T;
-  render: (value: T) => string;
-  onChange: (value: T) => void;
-}) {
-  return (
-    <div className="scan-toolbar__group" role="group" aria-label={label}>
-      <span className="scan-toolbar__label">{label}</span>
-      {values.map((value) => (
-        <button
-          key={String(value)}
-          type="button"
-          className={value === active ? 'scan-toolbar__btn scan-toolbar__btn--active' : 'scan-toolbar__btn'}
-          aria-pressed={value === active}
-          onClick={() => onChange(value)}
-        >
-          {render(value)}
-        </button>
-      ))}
-    </div>
-  );
-}
 
 export function Decisions() {
   const { filter, setFilter } = useDashboardParams();
@@ -83,56 +78,107 @@ export function Decisions() {
   const selected = rows.find((row) => row.id === selectedId) ?? null;
   const filterSearch = `filter=${filter}`;
 
+  // Current-state summary for `MetricStrip` -- every figure is derived from `decisions.data`,
+  // already fetched above; no new query. `rows` is in the API's own rank order (rank 1
+  // first) regardless of the table's own sort column, so `rows[0]` is always "the top-ranked
+  // opportunity", not whatever the table currently happens to be sorted by.
+  const activeCount = rows.filter((r) => r.status === 'active').length;
+  const noTradeCount = decisions.data
+    ? decisions.data.symbols.filter((s) => s.opportunities.length === 0).length + decisions.data.no_chain.length
+    : 0;
+  const bestRow = rows[0] ?? null;
+  const drawerTitle = selected ? `${selected.opportunity.underlying} · ${setupLabel(selected.opportunity.key)}` : '';
+
   return (
     <div className="decisions-page">
-      <div className="scan-toolbar">
-        <ButtonGroup
+      <PageHeader
+        title="Opportunities"
+        description="Ranked trade-idea opportunities across the universe, with named no-trade reasons and the track record of past suggestions."
+      />
+
+      {decisions.data && (
+        <MetricStrip
+          label="Opportunities at a glance"
+          metrics={[
+            { metricKey: 'scored', label: 'Scored', value: String(rows.length), hint: 'ranked opportunities' },
+            {
+              metricKey: 'active',
+              label: 'Active',
+              value: String(activeCount),
+              status: {
+                tone: activeCount > 0 ? 'positive' : 'neutral',
+                label: activeCount > 0 ? 'Entry reachable now' : 'None active',
+              },
+            },
+            {
+              metricKey: 'best',
+              label: 'Best grade',
+              value: bestRow?.grade ?? '—',
+              hint: bestRow ? `${bestRow.symbol} · ${bestRow.score}/100` : 'No ranked opportunity',
+            },
+            { metricKey: 'notrade', label: 'No trade', value: String(noTradeCount), hint: 'symbols with a named reason' },
+          ]}
+        />
+      )}
+
+      <Toolbar>
+        <SegmentedControl
           label="Filter"
           values={DECISION_FILTERS}
           active={filter}
           render={(value) => EXPIRY_FILTER_LABELS[value]}
           onChange={setFilter}
         />
-        <ButtonGroup
+        <SegmentedControl
           label="Min grade"
           values={SCAN_MIN_SCORE_VALUES}
           active={minScore}
           render={(value) => MIN_SCORE_LABELS[value] ?? String(value)}
           onChange={setMinScore}
         />
-      </div>
+      </Toolbar>
 
       {decisions.isError ? (
         <ErrorState message="Could not load the decision engine." />
       ) : decisions.isPending ? (
-        <p className="scan-page__loading">Scoring opportunities across the universe…</p>
+        <LoadingState message="Scoring opportunities across the universe…" />
       ) : !decisions.data ? null : (
         <>
-          <p className="scan-legend">{decisions.data.generated_from}</p>
           <div className="scan-layout">
             <div className="scan-layout__main">
               {rows.length === 0 ? (
                 <EmptyState heading="No opportunities at this threshold">
+                  {decisions.data.generated_from}{' '}
                   {decisions.data.symbols.length === 0
                     ? 'No option chain has been captured yet, so there is nothing to score.'
                     : 'Every symbol with a chain is either below the score threshold or has a named reason for no trade (listed on the right).'}
                 </EmptyState>
               ) : (
-                <OpportunityTable
-                  rows={rows}
-                  filterSearch={filterSearch}
-                  sort={sort}
-                  dir={dir}
-                  onSort={onSort}
-                  selectedId={selectedId}
-                  onSelect={setSelectedId}
-                />
+                <DataTableFrame
+                  title="Ranked opportunities"
+                  readingCue="Active entries are reachable now; watch entries need the wall to come closer; rejected entries fall below the reward/risk floor."
+                  sourceTiming={decisions.data.generated_from}
+                >
+                  <OpportunityTable
+                    rows={rows}
+                    filterSearch={filterSearch}
+                    sort={sort}
+                    dir={dir}
+                    onSort={onSort}
+                    selectedId={selectedId}
+                    onSelect={setSelectedId}
+                  />
+                </DataTableFrame>
               )}
-              {selected && (
-                <OpportunityDetail opportunity={selected.opportunity} onClose={() => setSelectedId(null)} />
-              )}
+              <DetailDrawer open={selected != null} onClose={() => setSelectedId(null)} title={drawerTitle}>
+                {selected && <OpportunityDetail opportunity={selected.opportunity} />}
+              </DetailDrawer>
             </div>
-            <aside className="scan-layout__side">
+            {/* T68: every other scan-family page's side `<aside>` already carries its own
+                aria-label (Scan's "Open breakouts", Rotation's "Rank table and breadth") --
+                this one didn't, so it shared an unnamed "complementary" landmark with
+                SideRail's persistent `<aside>` (axe-core: "landmark-unique"). */}
+            <aside className="scan-layout__side" aria-label="No trade">
               <NoTradeList
                 symbols={decisions.data.symbols}
                 noChain={decisions.data.no_chain}

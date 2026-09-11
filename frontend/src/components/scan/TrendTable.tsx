@@ -151,24 +151,21 @@ export function TrendTable({
     },
   ];
 
+  // T66: the "composite is the mean of..." legend that used to render here as its own
+  // `<p className="scan-legend">` now lives in `Scan.tsx`'s `DataTableFrame` `readingCue` --
+  // same sentence, one copy, read once above this table rather than duplicated in both
+  // places (see that page's own docstring).
   return (
-    <>
-      <p className="scan-legend">
-        Composite is the mean of four cross-sectional percentile ranks (ADX, ER, CHOP, VR).
-        IV/RV is shown but is not part of it, so symbols with no option chain are ranked on the
-        same four components as everything else.
-      </p>
-      <ScanTable
-        columns={columns}
-        rows={rows}
-        sort={sort}
-        dir={dir}
-        onSort={onSort}
-        onRowClick={onRowClick}
-        rowKey={(row) => row.symbol}
-        selectedKey={selectedSymbol}
-        caption="Trend and chop by symbol"
-      />
-    </>
+    <ScanTable
+      columns={columns}
+      rows={rows}
+      sort={sort}
+      dir={dir}
+      onSort={onSort}
+      onRowClick={onRowClick}
+      rowKey={(row) => row.symbol}
+      selectedKey={selectedSymbol}
+      caption="Trend and chop by symbol"
+    />
   );
 }

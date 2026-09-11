@@ -1,14 +1,20 @@
 /**
- * T60 -- the detail panel for one selected opportunity: the three levels with the engine's
- * own sentence for each, the thesis, the invalidation conditions, the structure hint, any
- * warnings, and the score breakdown. Everything renders verbatim from the API -- same rule
- * `VerdictCell` follows for `reasons`: no rewording, re-casing or truncation, because every
- * sentence here is a reading of a number that sits beside it and the two must not drift.
+ * T60 -- the detail panel's content for one selected opportunity: the three levels with the
+ * engine's own sentence for each, the thesis, the invalidation conditions, the structure
+ * hint, any warnings, and the score breakdown. Everything renders verbatim from the API --
+ * same rule `VerdictCell` follows for `reasons`: no rewording, re-casing or truncation,
+ * because every sentence here is a reading of a number that sits beside it and the two must
+ * not drift.
+ *
+ * T64: this component used to render its own `<section>`/heading/Close button wrapper. It is
+ * now mounted as `ui/DetailDrawer`'s children (`Decisions.tsx`), which owns that chrome (and
+ * the focus-trap/Escape/backdrop/focus-return behavior neither this component nor
+ * `DetailDrawer`'s predecessor ever had) -- this file renders only the content below the
+ * drawer's own header.
  */
 import type { RankedOpportunity } from '../../api/types';
 import { formatAtr, formatPrice, formatRatio } from '../../lib/format';
 import { StatusChip } from '../scan/StatusChip';
-import { setupLabel } from './opportunityRows';
 
 function magnitude(value: number | null): string {
   if (value == null || !Number.isFinite(value)) return '—';
@@ -17,21 +23,12 @@ function magnitude(value: number | null): string {
 
 export interface OpportunityDetailProps {
   opportunity: RankedOpportunity;
-  onClose: () => void;
 }
 
-export function OpportunityDetail({ opportunity, onClose }: OpportunityDetailProps) {
+export function OpportunityDetail({ opportunity }: OpportunityDetailProps) {
   const o = opportunity;
-  const title = `${o.underlying} · ${setupLabel(o.key)}`;
   return (
-    <section className="scan-detail decisions-detail" aria-label={`${o.underlying} opportunity detail`}>
-      <header className="scan-detail__head">
-        <h2 className="scan-detail__title">{title}</h2>
-        <button type="button" className="scan-detail__close" onClick={onClose}>
-          Close
-        </button>
-      </header>
-
+    <div className="decisions-detail">
       <div className="decisions-detail__chips">
         <StatusChip status={o.status} />
         <StatusChip status={o.setup} />
@@ -128,6 +125,6 @@ export function OpportunityDetail({ opportunity, onClose }: OpportunityDetailPro
           </tbody>
         </table>
       </section>
-    </section>
+    </div>
   );
 }

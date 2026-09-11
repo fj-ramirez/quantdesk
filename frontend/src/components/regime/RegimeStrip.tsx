@@ -32,6 +32,23 @@
  * "fewer than 60 bars returns `None`" contract and the plan's "sector correlation... report the
  * effective sample size" requirement (the sector-correlation tile always shows its own
  * `sector_correlation_n` next to the value, not only when the value itself is `null`).
+ *
+ * **T69 — `compact` (additive, Overview-only).** `/regime` (`Regime.tsx`) calls `<RegimeStrip />`
+ * with no prop and keeps rendering all nine tiles unconditionally, exactly as before this task
+ * — that page's own reason to exist is the complete reference strip, so it is deliberately
+ * never abbreviated. Overview passes `compact`, which splits the same nine tiles (no value,
+ * ranking, or endpoint changed) into:
+ *  - **Primary (always visible):** VIX9D/VIX, VIX/VIX3M, VVIX, SPY VRP — the vol/term-structure
+ *    cluster. Judgment call, not a fixed spec: these four answer "what kind of tape is it"
+ *    most directly (plan 06's own framing for this whole component) and change intraday, so
+ *    they are the ones worth first-screen space on a page that is itself a cross-market
+ *    morning brief, not the regime board.
+ *  - **Secondary (behind a native `<details>`, collapsed by default):** VIX 1y pct, Sector
+ *    corr 20d, UUP 20d, GLD 20d, TLT 20d — valuable reference material (per the user's own
+ *    review note) but slower-moving cross-asset context rather than tape-driving signal, so
+ *    they move behind a disclosure instead of consuming another full row on first load. Same
+ *    `<details>`/`<summary>` pattern Rotation's "About this chart" already uses — no bespoke
+ *    focus-trap logic, it is natively keyboard-operable.
  */
 import { useCrossAsset } from '../../api/queries';
 import { PercentileBar } from '../scan/PercentileBar';
@@ -155,7 +172,15 @@ function Tile({ label, value, tooltip, pct, footnote, chip }: TileProps) {
   );
 }
 
-export function RegimeStrip() {
+export interface RegimeStripProps {
+  /** T69, additive: default `false` renders the complete nine-tile strip unchanged (`/regime`
+   * never passes this). `true` (Overview only) shows the primary vol/term-structure cluster
+   * up front and puts the remaining five tiles behind a collapsed `<details>` — see this
+   * file's own docstring for which tiles are primary and why. */
+  compact?: boolean;
+}
+
+export function RegimeStrip({ compact = false }: RegimeStripProps = {}) {
   const { data, isLoading, isError } = useCrossAsset();
 
   if (isLoading) {
@@ -177,93 +202,156 @@ export function RegimeStrip() {
   const tsTooltip = termStructureTooltip(data);
   const tsChip = { label: data.term_structure, tooltip: tsTooltip };
 
+  // Built once, in the original nine-tile order, and reused by both branches below so the
+  // default (non-compact) strip stays byte-identical to before this task -- compact mode only
+  // regroups the same elements, it never reorders or duplicates a value.
+  const vix9dVix = (
+    <Tile
+      key="vix9d-vix"
+      label="VIX9D/VIX"
+      value={formatRatioValue(data.vix9d_vix_ratio)}
+      tooltip={tsTooltip}
+      pct={data.vix9d_vix_ratio_pct}
+      chip={tsChip}
+    />
+  );
+  const vixVix3m = (
+    <Tile
+      key="vix-vix3m"
+      label="VIX/VIX3M"
+      value={formatRatioValue(data.vix_vix3m_ratio)}
+      tooltip={tsTooltip}
+      pct={data.vix_vix3m_ratio_pct}
+      chip={tsChip}
+    />
+  );
+  const vvix = (
+    <Tile
+      key="vvix"
+      label="VVIX"
+      value={formatVolPoints(data.vvix)}
+      tooltip="Cboe's VVIX (vol-of-vol on VIX options)."
+      pct={data.vvix_pct}
+      chip={{
+        label: bandLabel(data.vvix_pct),
+        tooltip: 'Banded on VVIX’s own trailing 1-year percentile: low (<33rd), normal, elevated (>66th).',
+      }}
+    />
+  );
+  const vix1yPct = (
+    <Tile
+      key="vix-1y-pct"
+      label="VIX 1y pct"
+      value={formatPctValue(data.vix_pct)}
+      tooltip={`VIX's own percentile rank within its trailing 252-bar (~1-year) history. n=${data.vix_pct_n} bars (needs >= 60).`}
+      pct={data.vix_pct}
+      chip={{
+        label: bandLabel(data.vix_pct),
+        tooltip: 'Banded on the percentile itself: low (<33rd), normal, elevated (>66th).',
+      }}
+    />
+  );
+  const spyVrp = (
+    <Tile
+      key="spy-vrp"
+      label="SPY VRP"
+      value={formatSignedVolPoints(data.vrp)}
+      tooltip={
+        data.vrp_reason
+          ? `VIX minus SPY's 20-day realized vol, both in vol points. n/a: ${data.vrp_reason}.`
+          : "VIX minus SPY's 20-day realized vol, both in vol points (annualized). Positive means options are pricing more vol than has recently realized."
+      }
+      pct={data.vrp_pct}
+      chip={{
+        label: bandLabel(data.vrp_pct),
+        tooltip: "Banded on VRP's own trailing 1-year percentile: low (<33rd), normal, elevated (>66th).",
+      }}
+    />
+  );
+  const sectorCorr = (
+    <Tile
+      key="sector-corr"
+      label="Sector corr 20d"
+      value={formatCorrelation(data.sector_correlation)}
+      tooltip="Mean pairwise 20-day correlation of daily log returns across the 11 sector ETFs."
+      footnote={`n=${data.sector_correlation_n}/20 aligned days`}
+      chip={{
+        label: correlationBandLabel(data.sector_correlation),
+        tooltip: 'Banded on the correlation value itself: low (<0.3), moderate (<0.6), high (>=0.6).',
+      }}
+    />
+  );
+  const uup = (
+    <Tile
+      key="uup"
+      label="UUP 20d"
+      value={formatMove(data.uup_return_20d)}
+      tooltip="20-day close-to-close return on UUP (dollar index proxy)."
+      chip={{
+        label: moveBandLabel(data.uup_return_20d),
+        tooltip: 'Flat when |return| < 0.2%; otherwise the sign of the 20-day return.',
+      }}
+    />
+  );
+  const gld = (
+    <Tile
+      key="gld"
+      label="GLD 20d"
+      value={formatMove(data.gld_return_20d)}
+      tooltip="20-day close-to-close return on GLD."
+      chip={{
+        label: moveBandLabel(data.gld_return_20d),
+        tooltip: 'Flat when |return| < 0.2%; otherwise the sign of the 20-day return.',
+      }}
+    />
+  );
+  const tlt = (
+    <Tile
+      key="tlt"
+      label="TLT 20d"
+      value={formatMove(data.tlt_return_20d)}
+      tooltip="20-day close-to-close return on TLT (rates proxy)."
+      chip={{
+        label: moveBandLabel(data.tlt_return_20d),
+        tooltip: 'Flat when |return| < 0.2%; otherwise the sign of the 20-day return.',
+      }}
+    />
+  );
+
+  if (!compact) {
+    return (
+      <section className="regime-strip" aria-label="Cross-asset regime strip">
+        {vix9dVix}
+        {vixVix3m}
+        {vvix}
+        {vix1yPct}
+        {spyVrp}
+        {sectorCorr}
+        {uup}
+        {gld}
+        {tlt}
+      </section>
+    );
+  }
+
   return (
-    <section className="regime-strip" aria-label="Cross-asset regime strip">
-      <Tile
-        label="VIX9D/VIX"
-        value={formatRatioValue(data.vix9d_vix_ratio)}
-        tooltip={tsTooltip}
-        pct={data.vix9d_vix_ratio_pct}
-        chip={tsChip}
-      />
-      <Tile
-        label="VIX/VIX3M"
-        value={formatRatioValue(data.vix_vix3m_ratio)}
-        tooltip={tsTooltip}
-        pct={data.vix_vix3m_ratio_pct}
-        chip={tsChip}
-      />
-      <Tile
-        label="VVIX"
-        value={formatVolPoints(data.vvix)}
-        tooltip="Cboe's VVIX (vol-of-vol on VIX options)."
-        pct={data.vvix_pct}
-        chip={{
-          label: bandLabel(data.vvix_pct),
-          tooltip: 'Banded on VVIX’s own trailing 1-year percentile: low (<33rd), normal, elevated (>66th).',
-        }}
-      />
-      <Tile
-        label="VIX 1y pct"
-        value={formatPctValue(data.vix_pct)}
-        tooltip={`VIX's own percentile rank within its trailing 252-bar (~1-year) history. n=${data.vix_pct_n} bars (needs >= 60).`}
-        pct={data.vix_pct}
-        chip={{
-          label: bandLabel(data.vix_pct),
-          tooltip: 'Banded on the percentile itself: low (<33rd), normal, elevated (>66th).',
-        }}
-      />
-      <Tile
-        label="SPY VRP"
-        value={formatSignedVolPoints(data.vrp)}
-        tooltip={
-          data.vrp_reason
-            ? `VIX minus SPY's 20-day realized vol, both in vol points. n/a: ${data.vrp_reason}.`
-            : "VIX minus SPY's 20-day realized vol, both in vol points (annualized). Positive means options are pricing more vol than has recently realized."
-        }
-        pct={data.vrp_pct}
-        chip={{
-          label: bandLabel(data.vrp_pct),
-          tooltip: "Banded on VRP's own trailing 1-year percentile: low (<33rd), normal, elevated (>66th).",
-        }}
-      />
-      <Tile
-        label="Sector corr 20d"
-        value={formatCorrelation(data.sector_correlation)}
-        tooltip="Mean pairwise 20-day correlation of daily log returns across the 11 sector ETFs."
-        footnote={`n=${data.sector_correlation_n}/20 aligned days`}
-        chip={{
-          label: correlationBandLabel(data.sector_correlation),
-          tooltip: 'Banded on the correlation value itself: low (<0.3), moderate (<0.6), high (>=0.6).',
-        }}
-      />
-      <Tile
-        label="UUP 20d"
-        value={formatMove(data.uup_return_20d)}
-        tooltip="20-day close-to-close return on UUP (dollar index proxy)."
-        chip={{
-          label: moveBandLabel(data.uup_return_20d),
-          tooltip: 'Flat when |return| < 0.2%; otherwise the sign of the 20-day return.',
-        }}
-      />
-      <Tile
-        label="GLD 20d"
-        value={formatMove(data.gld_return_20d)}
-        tooltip="20-day close-to-close return on GLD."
-        chip={{
-          label: moveBandLabel(data.gld_return_20d),
-          tooltip: 'Flat when |return| < 0.2%; otherwise the sign of the 20-day return.',
-        }}
-      />
-      <Tile
-        label="TLT 20d"
-        value={formatMove(data.tlt_return_20d)}
-        tooltip="20-day close-to-close return on TLT (rates proxy)."
-        chip={{
-          label: moveBandLabel(data.tlt_return_20d),
-          tooltip: 'Flat when |return| < 0.2%; otherwise the sign of the 20-day return.',
-        }}
-      />
+    <section className="regime-strip regime-strip--compact" aria-label="Cross-asset regime strip">
+      <div className="regime-strip__primary">
+        {vix9dVix}
+        {vixVix3m}
+        {vvix}
+        {spyVrp}
+      </div>
+      <details className="regime-strip__more">
+        <summary>5 more regime tiles</summary>
+        <div className="regime-strip__secondary">
+          {vix1yPct}
+          {sectorCorr}
+          {uup}
+          {gld}
+          {tlt}
+        </div>
+      </details>
     </section>
   );
 }

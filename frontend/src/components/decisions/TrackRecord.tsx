@@ -20,6 +20,7 @@ import type { DecisionGroupStats, DecisionRecord } from '../../api/types';
 import { formatPrice } from '../../lib/format';
 import { EmptyState } from '../EmptyState';
 import { ErrorState } from '../ErrorState';
+import { LoadingState } from '../LoadingState';
 import { StatusChip } from '../scan/StatusChip';
 import { SymbolCell } from '../scan/SymbolCell';
 import { setupLabel } from './opportunityRows';
@@ -112,7 +113,7 @@ export function TrackRecord({ filterSearch }: TrackRecordProps) {
       {history.isError ? (
         <ErrorState message="Could not load the track record." />
       ) : history.isPending ? (
-        <p className="scan-page__loading">Loading the track record…</p>
+        <LoadingState message="Loading the track record…" />
       ) : !history.data ? null : (
         <>
           <p className="track-record__note">{history.data.note}</p>
@@ -123,7 +124,7 @@ export function TrackRecord({ filterSearch }: TrackRecordProps) {
             </EmptyState>
           ) : (
             <>
-              <div className="scan-table-container">
+              <div className="scan-table-container" tabIndex={0}>
                 <table className="track-record__stats" aria-label="Track record summary">
                   <thead>
                     <tr>
@@ -153,7 +154,7 @@ export function TrackRecord({ filterSearch }: TrackRecordProps) {
                 </table>
               </div>
 
-              <div className="scan-table-container">
+              <div className="scan-table-container" tabIndex={0}>
                 <table className="scan-table" aria-label="Recorded opportunities">
                   <thead>
                     <tr>

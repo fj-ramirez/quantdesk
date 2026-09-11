@@ -16,10 +16,28 @@
  * option chains per request to source `iv30` (recorded in T45's commit; a backend task owns
  * the fix). Nothing is worked around here, but the loading state is explicit and names the
  * reason, since five seconds of blank table reads as a broken page.
+ *
+ * T66: `PageHeader` names the page and what it answers; the view/N/k/Lookback button rows
+ * (each page's own hand-rolled `ChoiceRow`) now render through `ui/Toolbar`'s
+ * `Toolbar`/`SegmentedControl` -- identical DOM/classes/`aria-pressed` behavior, since that
+ * primitive generalized this exact pattern from this file (see its own docstring), not a new
+ * one. Both tables are wrapped in `DataTableFrame`; `BreakoutDetail`/`TrendDetail` are now
+ * mounted through `ui/DetailDrawer` instead of rendering their own unmanaged header/close
+ * button, fixing the same missing focus-trap/Escape/focus-return `01-ux-baseline.md` flagged
+ * for every detail panel in the app and T64 already fixed for `OpportunityDetail`. Per
+ * `DetailDrawer`'s own contract, it is always mounted (never `{selected && <DetailDrawer/>}`)
+ * so `useOverlayDismiss`'s focus-return effect survives close.
  */
 import { useCallback, useState } from 'react';
 import { useBreakouts, useTrend } from '../api/queries';
-import { useScanParams, SCAN_K_VALUES, SCAN_LOOKBACK_VALUES, SCAN_N_VALUES } from '../state/urlState';
+import {
+  useScanParams,
+  SCAN_K_VALUES,
+  SCAN_LOOKBACK_VALUES,
+  SCAN_N_VALUES,
+  SCAN_VIEWS,
+  type ScanView,
+} from '../state/urlState';
 import { RegimeStrip } from '../components/regime/RegimeStrip';
 import { BreakoutTable, BREAKOUT_DEFAULT_SORT } from '../components/scan/BreakoutTable';
 import { BreakoutDetail } from '../components/scan/BreakoutDetail';
@@ -28,37 +46,13 @@ import { TrendTable, TREND_DEFAULT_SORT } from '../components/scan/TrendTable';
 import { TrendDetail } from '../components/scan/TrendDetail';
 import { EmptyState } from '../components/EmptyState';
 import { ErrorState } from '../components/ErrorState';
+import { LoadingState } from '../components/LoadingState';
+import { PageHeader } from '../components/ui/PageHeader';
+import { SegmentedControl, Toolbar } from '../components/ui/Toolbar';
+import { DataTableFrame } from '../components/ui/DataTableFrame';
+import { DetailDrawer } from '../components/ui/DetailDrawer';
 
-function ChoiceRow({
-  label,
-  values,
-  active,
-  onChange,
-}: {
-  label: string;
-  values: readonly number[];
-  active: number;
-  onChange: (next: number) => void;
-}) {
-  return (
-    <div className="scan-toolbar__group" role="group" aria-label={label}>
-      <span className="scan-toolbar__label">{label}</span>
-      {values.map((value) => (
-        <button
-          key={value}
-          type="button"
-          className={
-            value === active ? 'scan-toolbar__btn scan-toolbar__btn--active' : 'scan-toolbar__btn'
-          }
-          aria-pressed={value === active}
-          onClick={() => onChange(value)}
-        >
-          {value}
-        </button>
-      ))}
-    </div>
-  );
-}
+const VIEW_LABEL: Record<ScanView, string> = { breakouts: 'Breakouts', trend: 'Trend' };
 
 export function Scan() {
   const params = useScanParams();
@@ -83,47 +77,43 @@ export function Scan() {
 
   return (
     <div className="scan-page">
+      <PageHeader
+        title="Scan"
+        description="Which symbols just broke range, and which are trending or chopping, across the tracked universe."
+      />
+
       {/* T54's cross-asset strip. 07-ui.md renders it at the top of both `/scan` and
           `/regime`: it answers "what kind of tape is this" for everything at once, which is
           the context the per-symbol rows below are read against. It owns its own query and
           its own loading/error/`n/a` states. */}
       <RegimeStrip />
 
-      <div className="scan-toolbar">
-        <div className="scan-toolbar__group" role="group" aria-label="View">
-          {(['breakouts', 'trend'] as const).map((candidate) => (
-            <button
-              key={candidate}
-              type="button"
-              className={
-                candidate === view
-                  ? 'scan-toolbar__btn scan-toolbar__btn--active'
-                  : 'scan-toolbar__btn'
-              }
-              aria-pressed={candidate === view}
-              onClick={() => {
-                setView(candidate);
-                setSelected(null);
-              }}
-            >
-              {candidate === 'breakouts' ? 'Breakouts' : 'Trend'}
-            </button>
-          ))}
-        </div>
+      <Toolbar>
+        <SegmentedControl
+          label="View"
+          values={SCAN_VIEWS}
+          active={view}
+          render={(value) => VIEW_LABEL[value]}
+          onChange={(next) => {
+            setView(next);
+            setSelected(null);
+          }}
+        />
 
         {view === 'breakouts' && (
           <>
-            <ChoiceRow label="N" values={SCAN_N_VALUES} active={n} onChange={setN} />
-            <ChoiceRow label="k" values={SCAN_K_VALUES} active={k} onChange={setK} />
-            <ChoiceRow
+            <SegmentedControl label="N" values={SCAN_N_VALUES} active={n} render={String} onChange={setN} />
+            <SegmentedControl label="k" values={SCAN_K_VALUES} active={k} render={String} onChange={setK} />
+            <SegmentedControl
               label="Lookback"
               values={SCAN_LOOKBACK_VALUES}
               active={lookback}
+              render={String}
               onChange={setLookback}
             />
           </>
         )}
-      </div>
+      </Toolbar>
 
       {active.isError ? (
         <ErrorState
@@ -134,11 +124,13 @@ export function Scan() {
           }
         />
       ) : active.isPending ? (
-        <p className="scan-page__loading">
-          {view === 'breakouts'
-            ? 'Scanning the universe for range breaks…'
-            : 'Scoring the universe… the trend scan reads every tracked option chain, so this takes a few seconds.'}
-        </p>
+        <LoadingState
+          message={
+            view === 'breakouts'
+              ? 'Scanning the universe for range breaks…'
+              : 'Scoring the universe… the trend scan reads every tracked option chain, so this takes a few seconds.'
+          }
+        />
       ) : view === 'breakouts' ? (
         <BreakoutsView
           data={breakouts.data}
@@ -186,58 +178,63 @@ function BreakoutsView({
   selected: string | null;
   onSelect: (symbol: string | null) => void;
 }) {
-  if (!data || data.summaries.length === 0) {
-    return (
-      <EmptyState heading="No symbols scanned">
-        No bars are stored for the scan universe yet.
-      </EmptyState>
-    );
-  }
+  const empty = !data || data.summaries.length === 0;
 
   return (
     <>
-      <div className="scan-layout">
-        <div className="scan-layout__main">
-          <BreakoutTable
-            rows={data.summaries}
-            sort={sort}
-            dir={dir}
-            onSort={onSort}
-            onRowClick={(row) => onSelect(row.symbol)}
-            selectedSymbol={selected}
-          />
-        </div>
-        <aside className="scan-layout__side" aria-label="Open breakouts">
-          <h2 className="scan-layout__side-title">Open now</h2>
-          <OpenBreakouts breakouts={data.open_breakouts} k={k} onSelect={onSelect} />
-        </aside>
-      </div>
+      {empty ? (
+        <EmptyState heading="No symbols scanned">
+          No bars are stored for the scan universe yet.
+        </EmptyState>
+      ) : (
+        <>
+          <div className="scan-layout">
+            <div className="scan-layout__main">
+              <DataTableFrame
+                title="Breakout continuation"
+                readingCue="Continuation rate and follow-through for each symbol's breakout events in the current lookback window."
+              >
+                <BreakoutTable
+                  rows={data.summaries}
+                  sort={sort}
+                  dir={dir}
+                  onSort={onSort}
+                  onRowClick={(row) => onSelect(row.symbol)}
+                  selectedSymbol={selected}
+                />
+              </DataTableFrame>
+            </div>
+            <aside className="scan-layout__side" aria-label="Open breakouts">
+              <h2 className="scan-layout__side-title">Open now</h2>
+              <OpenBreakouts breakouts={data.open_breakouts} k={k} onSelect={onSelect} />
+            </aside>
+          </div>
 
-      {data.excluded.length > 0 && (
-        <details className="scan-excluded">
-          <summary>
-            {data.excluded.length} symbol{data.excluded.length === 1 ? '' : 's'} excluded for
-            gaps
-          </summary>
-          <ul>
-            {data.excluded.map((entry) => (
-              <li key={entry.symbol}>
-                <strong>{entry.symbol}</strong> — {entry.reason}
-              </li>
-            ))}
-          </ul>
-        </details>
+          {data.excluded.length > 0 && (
+            <details className="scan-excluded">
+              <summary>
+                {data.excluded.length} symbol{data.excluded.length === 1 ? '' : 's'} excluded for
+                gaps
+              </summary>
+              <ul>
+                {data.excluded.map((entry) => (
+                  <li key={entry.symbol}>
+                    <strong>{entry.symbol}</strong> — {entry.reason}
+                  </li>
+                ))}
+              </ul>
+            </details>
+          )}
+        </>
       )}
 
-      {selected && (
-        <BreakoutDetail
-          symbol={selected}
-          n={n}
-          k={k}
-          lookback={lookback}
-          onClose={() => onSelect(null)}
-        />
-      )}
+      <DetailDrawer
+        open={selected != null}
+        onClose={() => onSelect(null)}
+        title={selected ? `${selected} breakout detail` : ''}
+      >
+        {selected && <BreakoutDetail symbol={selected} n={n} k={k} lookback={lookback} />}
+      </DetailDrawer>
     </>
   );
 }
@@ -257,25 +254,35 @@ function TrendView({
   selected: string | null;
   onSelect: (symbol: string | null) => void;
 }) {
-  if (rows.length === 0) {
-    return (
-      <EmptyState heading="No symbols scored">
-        No bars are stored for the scan universe yet.
-      </EmptyState>
-    );
-  }
-
   return (
     <>
-      <TrendTable
-        rows={rows}
-        sort={sort}
-        dir={dir}
-        onSort={onSort}
-        onRowClick={(row) => onSelect(row.symbol)}
-        selectedSymbol={selected}
-      />
-      {selected && <TrendDetail symbol={selected} onClose={() => onSelect(null)} />}
+      {rows.length === 0 ? (
+        <EmptyState heading="No symbols scored">
+          No bars are stored for the scan universe yet.
+        </EmptyState>
+      ) : (
+        <DataTableFrame
+          title="Trend and chop"
+          readingCue="Composite is the mean of four cross-sectional percentile ranks (ADX, ER, CHOP, VR). IV/RV is shown but is not part of it."
+        >
+          <TrendTable
+            rows={rows}
+            sort={sort}
+            dir={dir}
+            onSort={onSort}
+            onRowClick={(row) => onSelect(row.symbol)}
+            selectedSymbol={selected}
+          />
+        </DataTableFrame>
+      )}
+
+      <DetailDrawer
+        open={selected != null}
+        onClose={() => onSelect(null)}
+        title={selected ? `${selected} trend detail` : ''}
+      >
+        {selected && <TrendDetail symbol={selected} />}
+      </DetailDrawer>
     </>
   );
 }

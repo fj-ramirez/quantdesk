@@ -19,15 +19,42 @@
  *  - **Say when we cannot say.** The IV regime label is null on a single-snapshot database and
  *    renders as "insufficient history"; a noise-dominated chain (DIA) shows that label instead
  *    of a direction. Neither is a loading state and neither should be styled as a failure.
+ *
+ * **T67.** This page carried 82 inline-`style` clusters (`01-ux-baseline.md`'s baseline audit)
+ * — the heaviest inline-style debt in the app — because every value here reads `vizPaletteFor`
+ * for its colour, including plain card chrome that was never actually a chart/level colour.
+ * Rebuilt onto T64's shared primitives (`Surface`, `MetricCard`, `DataTableFrame`, `EmptyState`,
+ * `PageHeader`) with one deliberate exception, the same one `KeyLevels.tsx` already established
+ * for its net-GEX sign dot: `LevelChip`'s support/resistance colour is a genuine chart/level
+ * colour (T40's red/green pair, documented in `theme/vizPalette.ts`) and stays driven by
+ * `vizPaletteFor`, set inline on that one element's border and dot only, never on text. Every
+ * other colour in this file now reads an `index.css` token instead.
+ *
+ * The page-body symbol/expiry `<select>`s this file used to render (duplicating the shell's
+ * `AssetSelector`/`ExpiryFilterSelect`) are gone — `ContextBar` is not in `SCAN_FAMILY_PATHS`
+ * for `/report` (same as `/dashboard`), so it already renders the full symbol/expiry/snapshot
+ * controls above this page, reading and writing the same `symbol`/`filter` URL params via the
+ * same `useDashboardParams` hook this component calls. The CFD-spot input has no shell
+ * equivalent (it is unique to this page) and stays here, now in `PageHeader`'s `actions` slot.
+ *
+ * **T69 — density pass.** The five sections that used to always render expanded --  Gamma
+ * exposure, Premium selling screen, Playbook, Risk alerts, and Executive summary ("Summary")
+ * -- are each now a native `<details>` disclosure, collapsed by default, matching Rotation's
+ * "About this chart" precedent and consistent with `FullReportPanel`'s own `aria-expanded`
+ * collapse below (left untouched -- both idioms now sit on the page, `<details>` for the new
+ * sections, the existing button+`aria-expanded` panel for the full text). "Levels straddling
+ * spot" and the three top summary cards (Current price/Volatility/Market sentiment) are
+ * deliberately left outside any disclosure -- the plan's named "concise, load-bearing read".
+ * Every section's own `<h2>` moved inside its `<summary>` rather than being dropped, so heading
+ * -order navigation for assistive tech is unaffected; only its visible position changed (from
+ * inside the region to the clickable row above it). No value, disclaimer string, CFD logic, or
+ * the capture-now flow changed -- this only moves existing JSX into disclosure wrappers.
  */
 import { useCallback, useMemo, useState } from 'react';
 import { ApiError } from '../api/client';
 import { useCaptureSnapshot, useReport, useReportText } from '../api/queries';
 import {
   CFD_INSTRUMENTS,
-  EXPIRY_FILTERS,
-  EXPIRY_FILTER_LABELS,
-  UNDERLYINGS,
   type CfdLevel,
   type CfdPlaybookEntry,
   type ExpiryFilter,
@@ -37,6 +64,7 @@ import {
   type ReportLevel,
   type Underlying,
 } from '../api/types';
+import { EmptyState } from '../components/EmptyState';
 import {
   formatCount,
   formatDistancePct,
@@ -48,7 +76,11 @@ import {
 import { formatFreshness } from '../lib/time';
 import { useDashboardParams } from '../state/urlState';
 import { useTheme } from '../theme/ThemeContext';
-import { vizPaletteFor, type VizPalette } from '../theme/vizPalette';
+import { vizPaletteFor } from '../theme/vizPalette';
+import { DataTableFrame } from '../components/ui/DataTableFrame';
+import { MetricCard } from '../components/ui/MetricCard';
+import { PageHeader } from '../components/ui/PageHeader';
+import { Surface } from '../components/ui/Surface';
 
 const DASH = '—';
 
@@ -71,36 +103,6 @@ function formatRatio(value: number | null | undefined): string {
 // Small presentational pieces
 // ---------------------------------------------------------------------------------------
 
-function Card({
-  title,
-  palette,
-  children,
-}: {
-  title: string;
-  palette: VizPalette;
-  children: React.ReactNode;
-}) {
-  return (
-    <section
-      aria-label={title}
-      style={{
-        background: palette.surface,
-        color: palette.textPrimary,
-        border: `1px solid ${palette.gridline}`,
-        borderRadius: 8,
-        padding: 16,
-        flex: '1 1 220px',
-        minWidth: 220,
-      }}
-    >
-      <h3 style={{ margin: '0 0 8px', fontSize: 12, textTransform: 'uppercase', letterSpacing: 0.5, color: palette.textSecondary }}>
-        {title}
-      </h3>
-      {children}
-    </section>
-  );
-}
-
 /**
  * One support or resistance chip.
  *
@@ -108,7 +110,8 @@ function Card({
  * `theme/vizPalette.ts` for why (the light-mode red is 3.85:1, below the 4.5:1 text
  * threshold) and for why red/green is safe here despite being the canonical CVD failure: the
  * signed distance and the section heading both restate the side in text, so hue is never the
- * only channel.
+ * only channel. This is the one place on this page that still reads `vizPaletteFor` directly
+ * — every other colour on this page is a plain `index.css` token.
  */
 /** `strike -> CfdLevel`, built once per render from a `CfdTranslation` side. `native_strike`
  * is the join key back to the `ReportLevel` it was translated from -- see
@@ -121,35 +124,31 @@ function cfdLevelIndex(levels: CfdLevel[] | undefined): Map<number, CfdLevel> {
   return map;
 }
 
-function LevelChip({ level, cfd, instrument, palette }: { level: ReportLevel; cfd?: CfdLevel; instrument?: string; palette: VizPalette }) {
+function LevelChip({
+  level,
+  cfd,
+  instrument,
+  theme,
+}: {
+  level: ReportLevel;
+  cfd?: CfdLevel;
+  instrument?: string;
+  theme: 'light' | 'dark';
+}) {
+  const palette = vizPaletteFor(theme);
   const color = level.side === 'SUPPORT' ? palette.levelSupport : level.side === 'RESISTANCE' ? palette.levelResistance : palette.textMuted;
   return (
-    <li
-      style={{
-        display: 'inline-flex',
-        alignItems: 'baseline',
-        gap: 8,
-        border: `1px solid ${color}`,
-        borderRadius: 999,
-        padding: '4px 12px',
-        background: palette.surface,
-        color: palette.textPrimary,
-        listStyle: 'none',
-      }}
-    >
-      <span
-        aria-hidden="true"
-        style={{ width: 8, height: 8, borderRadius: '50%', background: color, alignSelf: 'center' }}
-      />
-      <strong style={{ fontSize: 15 }}>{formatStrike(level.strike)}</strong>
-      <span style={{ fontSize: 12, color: palette.textSecondary }}>{formatPctValue(level.distance_pct)}</span>
-      <span style={{ fontSize: 12, color: palette.textMuted }}>{formatGex(level.net_gex)}</span>
+    <li className="report-level-chip" style={{ borderColor: color }}>
+      <span aria-hidden="true" className="report-level-chip__dot" style={{ background: color }} />
+      <strong className="report-level-chip__strike">{formatStrike(level.strike)}</strong>
+      <span className="report-level-chip__distance">{formatPctValue(level.distance_pct)}</span>
+      <span className="report-level-chip__gex">{formatGex(level.net_gex)}</span>
       {/* T41: the same level in the CFD's terms, alongside the native strike -- never in its
           place. The percentage distance above is deliberately not repeated here: it is
           identical in both units by construction, so showing it twice would only invite the
           reader to wonder whether it should differ. */}
       {cfd && instrument && cfd.strike != null && (
-        <span style={{ fontSize: 12, color: palette.textMuted }}>
+        <span className="report-level-chip__cfd">
           [{instrument} {formatStrike(cfd.strike)}]
         </span>
       )}
@@ -163,91 +162,84 @@ function LevelChips({
   cfdLevels,
   instrument,
   emptyMessage,
-  palette,
+  theme,
 }: {
   heading: string;
   levels: ReportLevel[];
   cfdLevels?: CfdLevel[];
   instrument?: string;
   emptyMessage: string;
-  palette: VizPalette;
+  theme: 'light' | 'dark';
 }) {
   const cfdIndex = useMemo(() => cfdLevelIndex(cfdLevels), [cfdLevels]);
   return (
-    <section aria-label={heading} style={{ marginTop: 16 }}>
-      <h3 style={{ margin: '0 0 8px', fontSize: 14, color: palette.textPrimary }}>{heading}</h3>
+    <Surface as="section" aria-label={heading} className="report-section" bordered={false} padded={false}>
+      <h2 className="report-section-title">{heading}</h2>
       {levels.length === 0 ? (
-        <p style={{ margin: 0, fontSize: 13, color: palette.textMuted }}>{emptyMessage}</p>
+        <p className="report-muted">{emptyMessage}</p>
       ) : (
-        <ul style={{ display: 'flex', flexWrap: 'wrap', gap: 8, margin: 0, padding: 0 }}>
+        <ul className="report-level-chips">
           {levels.map((level) => (
             <LevelChip
               key={`${level.side}-${level.strike}`}
               level={level}
               cfd={level.strike == null ? undefined : cfdIndex.get(level.strike)}
               instrument={instrument}
-              palette={palette}
+              theme={theme}
             />
           ))}
         </ul>
       )}
-    </section>
+    </Surface>
   );
 }
 
 /** The banner every trade-suggestion section carries. Wording is deliberate and is the same
  * sentence the backend's plain-text renderer prints: this is a screen over the current chain,
- * not advice, and the app never routes an order (PLAN.md's amended scope line). */
-function ScreeningNotice({ palette, children }: { palette: VizPalette; children: React.ReactNode }) {
-  return (
-    <p
-      style={{
-        margin: '0 0 12px',
-        fontSize: 12,
-        color: palette.textSecondary,
-        borderLeft: `3px solid ${palette.baseline}`,
-        paddingLeft: 10,
-      }}
-    >
-      {children}
-    </p>
-  );
+ * not advice, and the app never routes an order (PLAN.md's amended scope line). Also reused for
+ * the CFD translation note (T41) -- same "quiet callout" visual role, different content. */
+function ScreeningNotice({ children }: { children: React.ReactNode }) {
+  return <p className="report-note">{children}</p>;
 }
 
-function CandidateTable({ rows, palette, caption }: { rows: PremiumCandidate[]; palette: VizPalette; caption: string }) {
-  if (rows.length === 0) {
-    return (
-      <p style={{ margin: '0 0 12px', fontSize: 13, color: palette.textMuted }}>
-        {caption}: nothing quoted beyond this wall in the screened window.
-      </p>
-    );
-  }
+function CandidateTable({ rows, caption }: { rows: PremiumCandidate[]; caption: string }) {
   return (
-    <table style={{ width: '100%', marginBottom: 12 }}>
-      <caption style={{ textAlign: 'left', fontSize: 13, color: palette.textSecondary, paddingBottom: 4 }}>{caption}</caption>
-      <thead>
-        <tr>
-          <th scope="col">Strike</th>
-          <th scope="col">Mid</th>
-          <th scope="col">IV</th>
-          <th scope="col">DTE</th>
-          <th scope="col">From spot</th>
-          <th scope="col">OI</th>
-        </tr>
-      </thead>
-      <tbody>
-        {rows.map((row) => (
-          <tr key={row.occ_symbol}>
-            <td>{formatStrike(row.strike)}</td>
-            <td>{row.mid == null ? DASH : formatPrice(row.mid)}</td>
-            <td>{formatIv(row.iv)}</td>
-            <td>{row.dte}</td>
-            <td>{formatPctValue(row.distance_pct)}</td>
-            <td>{formatCount(row.open_interest)}</td>
-          </tr>
-        ))}
-      </tbody>
-    </table>
+    <DataTableFrame title={caption}>
+      {rows.length === 0 ? (
+        <p className="report-muted">Nothing quoted beyond this wall in the screened window.</p>
+      ) : (
+        // T68: unwrapped, this 6-column table forced page-level horizontal overflow at
+        // 390px. `.scan-table-container` (overflow-x: auto) is the same contained-scroll
+        // wrapper every scan-family table already uses -- no column/value changed.
+        <div className="scan-table-container" tabIndex={0}>
+        <table className="report-candidate-table">
+          <caption className="sr-only">{caption}</caption>
+          <thead>
+            <tr>
+              <th scope="col">Strike</th>
+              <th scope="col">Mid</th>
+              <th scope="col">IV</th>
+              <th scope="col">DTE</th>
+              <th scope="col">From spot</th>
+              <th scope="col">OI</th>
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((row) => (
+              <tr key={row.occ_symbol}>
+                <td>{formatStrike(row.strike)}</td>
+                <td>{row.mid == null ? DASH : formatPrice(row.mid)}</td>
+                <td>{formatIv(row.iv)}</td>
+                <td>{row.dte}</td>
+                <td>{formatPctValue(row.distance_pct)}</td>
+                <td>{formatCount(row.open_interest)}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+        </div>
+      )}
+    </DataTableFrame>
   );
 }
 
@@ -255,12 +247,10 @@ function PlaybookCard({
   entry,
   cfdEntry,
   instrument,
-  palette,
 }: {
   entry: PlaybookEntry;
   cfdEntry?: CfdPlaybookEntry;
   instrument?: string;
-  palette: VizPalette;
 }) {
   const rows: { label: string; value: number | null; cfdValue: number | null | undefined; hint: string }[] = [
     { label: 'Trigger', value: entry.trigger, cfdValue: cfdEntry?.trigger, hint: entry.trigger_label },
@@ -268,30 +258,29 @@ function PlaybookCard({
     { label: 'Invalidation', value: entry.invalidation, cfdValue: cfdEntry?.invalidation, hint: entry.invalidation_label },
   ];
   return (
-    <section
-      aria-label={entry.name}
-      style={{ border: `1px solid ${palette.gridline}`, borderRadius: 8, padding: 12, flex: '1 1 240px' }}
-    >
-      <h4 style={{ margin: '0 0 8px', fontSize: 14 }}>{entry.name}</h4>
-      <dl style={{ margin: 0, fontSize: 13 }}>
+    <section aria-label={entry.name} className="report-playbook-card">
+      {/* T68: was h4 directly under "Playbook"'s h2 (the container above), skipping h3 --
+          axe-core "heading-order". `.report-playbook-card__title` only ever sets margin/
+          font-size, and h3's UA-default bold weight matches h4's, so retagging is visually
+          a no-op. */}
+      <h3 className="report-playbook-card__title">{entry.name}</h3>
+      <dl className="report-playbook-card__rows">
         {rows.map((row) => (
-          <div key={row.label} style={{ display: 'flex', justifyContent: 'space-between', gap: 8, padding: '2px 0' }}>
-            <dt style={{ color: palette.textSecondary }} title={row.hint}>
+          <div key={row.label} className="report-playbook-card__row">
+            <dt className="report-playbook-card__label" title={row.hint}>
               {row.label}
             </dt>
             {/* A null is a real answer: no computed level sits there. Never a derived number. */}
-            <dd style={{ margin: 0, fontVariantNumeric: 'tabular-nums' }}>
+            <dd className="report-playbook-card__value">
               {formatStrike(row.value)}
               {instrument && row.cfdValue != null && (
-                <span style={{ marginLeft: 6, fontSize: 11, color: palette.textMuted }}>
-                  [{instrument} {formatStrike(row.cfdValue)}]
-                </span>
+                <span className="report-muted-inline"> [{instrument} {formatStrike(row.cfdValue)}]</span>
               )}
             </dd>
           </div>
         ))}
       </dl>
-      <p style={{ margin: '8px 0 0', fontSize: 12, color: palette.textMuted }}>{entry.strategy}</p>
+      <p className="report-playbook-card__strategy">{entry.strategy}</p>
     </section>
   );
 }
@@ -313,12 +302,10 @@ function FullReportPanel({
   symbol,
   filter,
   cfdSpot,
-  palette,
 }: {
   symbol: Underlying;
   filter: ExpiryFilter;
   cfdSpot?: number;
-  palette: VizPalette;
 }) {
   const [open, setOpen] = useState(false);
   const [copyState, setCopyState] = useState<'idle' | 'copied' | 'failed'>('idle');
@@ -335,18 +322,13 @@ function FullReportPanel({
   }, [data]);
 
   return (
-    <section aria-label="Full report" style={{ marginTop: 24 }}>
-      <button
-        type="button"
-        aria-expanded={open}
-        onClick={() => setOpen((previous) => !previous)}
-        style={{ fontSize: 14 }}
-      >
+    <Surface as="section" aria-label="Full report" className="report-section" bordered={false} padded={false}>
+      <button type="button" aria-expanded={open} onClick={() => setOpen((previous) => !previous)}>
         {open ? 'Hide full report' : 'View full report'}
       </button>
 
       {open && (
-        <div style={{ marginTop: 12 }}>
+        <div className="report-section">
           {isLoading && <p aria-live="polite">Loading the full report…</p>}
           {isError && (
             <p role="alert">
@@ -355,64 +337,54 @@ function FullReportPanel({
           )}
           {data && (
             <>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 8 }}>
+              <div className="report-fulltext-actions">
                 <button type="button" onClick={() => void onCopy()}>
                   Copy to clipboard
                 </button>
-                <span aria-live="polite" style={{ fontSize: 12, color: palette.textSecondary }}>
+                <span aria-live="polite" className="report-fulltext-copy-status">
                   {copyState === 'copied' ? 'Copied.' : copyState === 'failed' ? 'Copying is not available in this browser context.' : ''}
                 </span>
               </div>
-              <pre
-                data-testid="report-text"
-                style={{
-                  maxHeight: 420,
-                  overflow: 'auto',
-                  background: palette.surface,
-                  color: palette.textPrimary,
-                  border: `1px solid ${palette.gridline}`,
-                  borderRadius: 6,
-                  padding: 12,
-                  fontSize: 12,
-                  lineHeight: 1.45,
-                  margin: 0,
-                }}
-              >
+              <pre data-testid="report-text" className="report-fulltext">
                 {data}
               </pre>
             </>
           )}
         </div>
       )}
-    </section>
+    </Surface>
   );
 }
 
 // ---------------------------------------------------------------------------------------
-// Empty and error states (T37)
+// Empty state (T37)
 // ---------------------------------------------------------------------------------------
 
 /** A symbol with no snapshot yet. The expected state on first run and after
- * `docker compose down -v` — not a failure, and it must offer the one POST that fixes it. */
-function NoDataYet({ symbol, palette }: { symbol: Underlying; palette: VizPalette }) {
+ * `docker compose down -v` — not a failure, and it must offer the one POST that fixes it.
+ * Built on the shared `EmptyState` primitive (T64) rather than a bespoke section -- this is
+ * exactly the pattern that component's own docstring says it generalized from. */
+function NoDataYet({ symbol }: { symbol: Underlying }) {
   const capture = useCaptureSnapshot(symbol);
   return (
-    <section aria-label="No data yet" style={{ maxWidth: 560 }}>
-      <h2 style={{ fontSize: 18 }}>No {symbol} snapshot captured yet</h2>
-      <p style={{ color: palette.textSecondary, fontSize: 14 }}>
-        This is the normal state before the first capture. The end-of-day job runs at 16:20 ET
-        on trading days, and a catch-up runs when the backend starts, so {symbol} will fill in
-        on its own. You can also capture it now — it takes a couple of seconds.
-      </p>
-      <button type="button" onClick={() => capture.mutate()} disabled={capture.isPending}>
-        {capture.isPending ? 'Capturing…' : 'Capture now'}
-      </button>
-      {capture.isError && (
-        <p role="alert" style={{ fontSize: 13 }}>
-          Capture failed: {capture.error instanceof ApiError ? capture.error.message : 'unexpected error'}
-        </p>
-      )}
-    </section>
+    <EmptyState
+      heading={`No ${symbol} snapshot captured yet`}
+      action={{
+        label: 'Capture now',
+        onClick: () => capture.mutate(),
+        pending: capture.isPending,
+        pendingLabel: 'Capturing…',
+      }}
+      errorMessage={
+        capture.isError ? (
+          <>Capture failed: {capture.error instanceof ApiError ? capture.error.message : 'unexpected error'}</>
+        ) : undefined
+      }
+    >
+      This is the normal state before the first capture. The end-of-day job runs at 16:20 ET
+      on trading days, and a catch-up runs when the backend starts, so {symbol} will fill in
+      on its own. You can also capture it now — it takes a couple of seconds.
+    </EmptyState>
   );
 }
 
@@ -425,13 +397,13 @@ function ReportBody({
   symbol,
   filter,
   cfdSpot,
-  palette,
+  theme,
 }: {
   report: ReportData;
   symbol: Underlying;
   filter: ExpiryFilter;
   cfdSpot?: number;
-  palette: VizPalette;
+  theme: 'light' | 'dark';
 }) {
   const { positioning, iv_regime: iv, ratios, levels, max_pain: maxPain, premium, playbook, alerts, summary, cfd } = report;
   const cfdPlaybookByKey = useMemo(() => {
@@ -443,73 +415,78 @@ function ReportBody({
 
   return (
     <>
-      {/* T34: the data's honest age, above the analysis rather than below it. */}
-      <p style={{ margin: '0 0 16px', fontSize: 12, color: palette.textMuted }} aria-live="polite">
-        {formatFreshness(report.snapshot)}
-        {report.snapshot.is_eod ? ' · EOD' : ''} · {report.filter}
-      </p>
-
       {/* T41: the CFD spot the user typed, the ratio it implies, and the honesty text that
           must travel with every converted number below -- shown once, near the top, rather
           than repeated section by section. */}
       {cfd && (
-        <p
-          style={{
-            margin: '0 0 16px',
-            fontSize: 12,
-            color: palette.textSecondary,
-            borderLeft: `3px solid ${palette.baseline}`,
-            paddingLeft: 10,
-          }}
-        >
+        <ScreeningNotice>
           {cfd.instrument} {formatPrice(cfd.cfd_spot)} / {symbol} {formatPrice(cfd.underlying_spot)} = ratio{' '}
           {cfd.ratio.toFixed(4)}. {cfd.note}
-        </p>
+        </ScreeningNotice>
       )}
 
-      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12 }}>
-        <Card title="Current price" palette={palette}>
-          <p style={{ margin: 0, fontSize: 26, fontVariantNumeric: 'tabular-nums' }}>{formatPrice(report.spot)}</p>
-          {cfd && (
-            <p style={{ margin: '2px 0 0', fontSize: 15, color: palette.textSecondary, fontVariantNumeric: 'tabular-nums' }}>
-              {cfd.instrument} {formatPrice(cfd.cfd_spot)}
-            </p>
-          )}
-          <p style={{ margin: '4px 0 0', fontSize: 13, color: palette.textSecondary }}>
-            Max pain {formatStrike(maxPain.strike)} ({formatPctValue(maxPain.distance_pct)})
-            {cfd?.max_pain?.strike != null && (
-              <span style={{ color: palette.textMuted }}> [{cfd.instrument} {formatStrike(cfd.max_pain.strike)}]</span>
-            )}
-          </p>
-        </Card>
+      <div className="report-summary-cards">
+        <section aria-label="Current price" className="report-summary-card">
+          <MetricCard
+            label="Current price"
+            value={formatPrice(report.spot)}
+            hint={
+              <>
+                {cfd && (
+                  <span className="report-summary-card__subvalue">
+                    {cfd.instrument} {formatPrice(cfd.cfd_spot)}
+                  </span>
+                )}
+                <span className="report-summary-card__line">
+                  Max pain {formatStrike(maxPain.strike)} ({formatPctValue(maxPain.distance_pct)})
+                  {cfd?.max_pain?.strike != null && (
+                    <span className="report-muted-inline"> [{cfd.instrument} {formatStrike(cfd.max_pain.strike)}]</span>
+                  )}
+                </span>
+              </>
+            }
+          />
+        </section>
 
-        <Card title="Volatility" palette={palette}>
-          <p style={{ margin: 0, fontSize: 26, fontVariantNumeric: 'tabular-nums' }}>{formatIv(iv.atm_iv)}</p>
-          <p style={{ margin: '4px 0 0', fontSize: 13, color: palette.textSecondary }}>
-            ATM ~{iv.target_dte}d
-            {iv.interpolated && iv.lower_dte != null && iv.upper_dte != null
-              ? `, interpolated ${iv.lower_dte}–${iv.upper_dte} DTE`
-              : ''}
-          </p>
-          {/* The label is null on a single-snapshot database and that is the correct answer,
-              not a loading state. Never substitute a band. */}
-          <p style={{ margin: '4px 0 0', fontSize: 13, color: iv.label ? palette.textPrimary : palette.textMuted }}>
-            {iv.label ?? `Insufficient history — a regime label needs ${iv.min_history_required} prior snapshots, there are ${iv.history_observations}.`}
-          </p>
-        </Card>
+        <section aria-label="Volatility" className="report-summary-card">
+          <MetricCard
+            label="Volatility"
+            value={formatIv(iv.atm_iv)}
+            hint={
+              <>
+                <span className="report-summary-card__line">
+                  ATM ~{iv.target_dte}d
+                  {iv.interpolated && iv.lower_dte != null && iv.upper_dte != null
+                    ? `, interpolated ${iv.lower_dte}–${iv.upper_dte} DTE`
+                    : ''}
+                </span>
+                {/* The label is null on a single-snapshot database and that is the correct
+                    answer, not a loading state. Never substitute a band. */}
+                <span className={iv.label ? 'report-iv-label' : 'report-iv-label report-iv-label--muted'}>
+                  {iv.label ?? `Insufficient history — a regime label needs ${iv.min_history_required} prior snapshots, there are ${iv.history_observations}.`}
+                </span>
+              </>
+            }
+          />
+        </section>
 
-        <Card title="Market sentiment" palette={palette}>
-          <p style={{ margin: 0, fontSize: 26, fontVariantNumeric: 'tabular-nums' }}>
-            {ratios.open_interest_ratio == null ? DASH : ratios.open_interest_ratio.toFixed(2)}
-          </p>
-          <p style={{ margin: '4px 0 0', fontSize: 13, color: palette.textSecondary }}>
-            Put/call ratio on open interest (volume {ratios.volume_ratio == null ? DASH : ratios.volume_ratio.toFixed(2)})
-          </p>
-          <p style={{ margin: '8px 0 0', fontSize: 14, fontWeight: 600 }} data-testid="positioning-label">
-            {positioning.label}
-          </p>
-          <p style={{ margin: '4px 0 0', fontSize: 12, color: palette.textSecondary }}>{positioning.description}</p>
-        </Card>
+        <section aria-label="Market sentiment" className="report-summary-card">
+          <MetricCard
+            label="Market sentiment"
+            value={ratios.open_interest_ratio == null ? DASH : ratios.open_interest_ratio.toFixed(2)}
+            hint={
+              <>
+                <span className="report-summary-card__line">
+                  Put/call ratio on open interest (volume {ratios.volume_ratio == null ? DASH : ratios.volume_ratio.toFixed(2)})
+                </span>
+                <span className="report-positioning-label" data-testid="positioning-label">
+                  {positioning.label}
+                </span>
+                <span className="report-positioning-desc">{positioning.description}</span>
+              </>
+            }
+          />
+        </section>
       </div>
 
       <LevelChips
@@ -518,7 +495,7 @@ function ReportBody({
         cfdLevels={cfd?.resistance}
         instrument={cfd?.instrument}
         emptyMessage="No positive-gamma strike sits above spot in this expiry scope."
-        palette={palette}
+        theme={theme}
       />
       <LevelChips
         heading="Top support levels"
@@ -526,32 +503,35 @@ function ReportBody({
         cfdLevels={cfd?.support}
         instrument={cfd?.instrument}
         emptyMessage="No negative-gamma strike sits below spot in this expiry scope."
-        palette={palette}
+        theme={theme}
       />
 
       {/* A real market condition, labelled rather than sorted away. The example report merged
           these into its support and resistance lists and ended up printing support above
           resistance. */}
       {levels.overlapping && (
-        <section aria-label="Levels straddling spot" style={{ marginTop: 16 }}>
-          <h3 style={{ margin: '0 0 8px', fontSize: 14 }}>Straddling spot</h3>
-          <p style={{ margin: '0 0 8px', fontSize: 13, color: palette.textSecondary }}>{levels.overlap_note}</p>
-          <ul style={{ display: 'flex', flexWrap: 'wrap', gap: 8, margin: 0, padding: 0 }}>
+        <Surface as="section" aria-label="Levels straddling spot" className="report-section" bordered={false} padded={false}>
+          <h2 className="report-section-title">Straddling spot</h2>
+          <p className="report-muted--spaced">{levels.overlap_note}</p>
+          <ul className="report-level-chips">
             {levels.straddling.map((level) => (
               <LevelChip
                 key={`straddle-${level.strike}`}
                 level={level}
                 cfd={level.strike == null ? undefined : cfdStraddlingByStrike.get(level.strike)}
                 instrument={cfd?.instrument}
-                palette={palette}
+                theme={theme}
               />
             ))}
           </ul>
-        </section>
+        </Surface>
       )}
 
-      <section aria-label="Gamma exposure" style={{ marginTop: 24 }}>
-        <h3 style={{ margin: '0 0 8px', fontSize: 14 }}>Gamma exposure</h3>
+      <details className="report-disclosure">
+        <summary className="report-disclosure__summary">
+          <h2 className="report-section-title">Gamma exposure</h2>
+        </summary>
+        <Surface as="section" aria-label="Gamma exposure" className="report-section">
         <table>
           <tbody>
             <tr>
@@ -566,7 +546,7 @@ function ReportBody({
               <th scope="row">|Net| / gross</th>
               <td>
                 {formatRatio(positioning.ratio)}
-                <span style={{ color: palette.textMuted }}> (floor {formatRatio(positioning.ratio_floor)})</span>
+                <span className="report-muted-inline"> (floor {formatRatio(positioning.ratio_floor)})</span>
               </td>
             </tr>
             <tr>
@@ -574,7 +554,7 @@ function ReportBody({
               <td>
                 {formatStrike(levels.call_wall)}
                 {cfd?.call_wall?.strike != null && (
-                  <span style={{ color: palette.textMuted }}> [{cfd.instrument} {formatStrike(cfd.call_wall.strike)}]</span>
+                  <span className="report-muted-inline"> [{cfd.instrument} {formatStrike(cfd.call_wall.strike)}]</span>
                 )}
               </td>
             </tr>
@@ -583,7 +563,7 @@ function ReportBody({
               <td>
                 {formatStrike(levels.put_wall)}
                 {cfd?.put_wall?.strike != null && (
-                  <span style={{ color: palette.textMuted }}> [{cfd.instrument} {formatStrike(cfd.put_wall.strike)}]</span>
+                  <span className="report-muted-inline"> [{cfd.instrument} {formatStrike(cfd.put_wall.strike)}]</span>
                 )}
               </td>
             </tr>
@@ -591,103 +571,117 @@ function ReportBody({
               <th scope="row">Gamma flip</th>
               <td>
                 {formatStrike(levels.flip_point)}
-                <span style={{ color: palette.textMuted }}> ({formatDistancePct(levels.flip_point, report.spot)})</span>
+                <span className="report-muted-inline"> ({formatDistancePct(levels.flip_point, report.spot)})</span>
                 {cfd?.flip_point?.strike != null && (
-                  <span style={{ color: palette.textMuted }}> [{cfd.instrument} {formatStrike(cfd.flip_point.strike)}]</span>
+                  <span className="report-muted-inline"> [{cfd.instrument} {formatStrike(cfd.flip_point.strike)}]</span>
                 )}
               </td>
             </tr>
           </tbody>
         </table>
-      </section>
+        </Surface>
+      </details>
 
-      <section aria-label="Premium selling screen" style={{ marginTop: 24 }}>
-        <h3 style={{ margin: '0 0 8px', fontSize: 14 }}>Premium selling screen</h3>
-        <ScreeningNotice palette={palette}>
+      <details className="report-disclosure">
+        <summary className="report-disclosure__summary">
+          <h2 className="report-section-title">Premium selling screen</h2>
+        </summary>
+        <Surface as="section" aria-label="Premium selling screen" className="report-section">
+        <ScreeningNotice>
           Screening output computed from the current chain, not a recommendation. These are the
           quoted contracts sitting beyond the computed walls between {premium.dte_min} and{' '}
           {premium.dte_max} DTE. This app never routes an order.
         </ScreeningNotice>
         <CandidateTable
           rows={premium.calls}
-          palette={palette}
           caption={`Calls at or above the ${formatStrike(premium.call_boundary)} call wall`}
         />
         <CandidateTable
           rows={premium.puts}
-          palette={palette}
           caption={`Puts at or below the ${formatStrike(premium.put_boundary)} put wall`}
         />
-        {premium.note && <p style={{ margin: 0, fontSize: 12, color: palette.textMuted }}>{premium.note}</p>}
-      </section>
+        {premium.note && <p className="report-muted">{premium.note}</p>}
+        </Surface>
+      </details>
 
-      <section aria-label="Playbook" style={{ marginTop: 24 }}>
-        <h3 style={{ margin: '0 0 8px', fontSize: 14 }}>Playbook</h3>
-        <ScreeningNotice palette={palette}>
+      <details className="report-disclosure">
+        <summary className="report-disclosure__summary">
+          <h2 className="report-section-title">Playbook</h2>
+        </summary>
+        <Surface as="section" aria-label="Playbook" className="report-section">
+        <ScreeningNotice>
           Screening output, not a recommendation. Every trigger, target and invalidation below
           is a level computed from this chain, or a dash where no computed level sits — none is
           a percentage of spot or a rule of thumb.
         </ScreeningNotice>
         {playbook.entries.length === 0 ? (
-          <p style={{ margin: 0, fontSize: 13, color: palette.textMuted }}>
+          <p className="report-muted">
             No scenarios: this expiry scope produced no walls to build them from.
           </p>
         ) : (
-          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12 }}>
+          <div className="report-playbook-cards">
             {playbook.entries.map((entry) => (
               <PlaybookCard
                 key={entry.key}
                 entry={entry}
                 cfdEntry={cfdPlaybookByKey.get(entry.key)}
                 instrument={cfd?.instrument}
-                palette={palette}
               />
             ))}
           </div>
         )}
         {playbook.spot_in_range && (
-          <p style={{ margin: '8px 0 0', fontSize: 13, color: palette.textSecondary }}>
+          <p className="report-muted--spaced">
             Spot sits inside the {formatStrike(playbook.range_low)}–{formatStrike(playbook.range_high)} wall range, with
             open interest centred on {formatStrike(playbook.range_magnet)}.
           </p>
         )}
-      </section>
+        </Surface>
+      </details>
 
       {alerts.length > 0 && (
-        <section aria-label="Risk alerts" style={{ marginTop: 24 }}>
-          <h3 style={{ margin: '0 0 8px', fontSize: 14 }}>Risk alerts</h3>
-          <ul style={{ margin: 0, paddingLeft: 18 }}>
-            {alerts.map((alert) => (
-              <li key={alert.code} style={{ fontSize: 13, marginBottom: 4 }}>
-                <strong>{alert.severity === 'WARNING' ? 'Warning' : 'Note'}:</strong> {alert.message}
-              </li>
-            ))}
-          </ul>
-        </section>
+        <details className="report-disclosure">
+          <summary className="report-disclosure__summary">
+            <h2 className="report-section-title">Risk alerts</h2>
+          </summary>
+          <Surface as="section" aria-label="Risk alerts" className="report-section" bordered={false} padded={false}>
+            <ul className="report-alerts">
+              {alerts.map((alert) => (
+                <li key={alert.code}>
+                  <strong>{alert.severity === 'WARNING' ? 'Warning' : 'Note'}:</strong> {alert.message}
+                </li>
+              ))}
+            </ul>
+          </Surface>
+        </details>
       )}
 
       {summary.length > 0 && (
-        <section aria-label="Executive summary" style={{ marginTop: 24 }}>
-          <h3 style={{ margin: '0 0 8px', fontSize: 14 }}>Summary</h3>
-          {summary.map((line) => (
-            <p key={line} style={{ margin: '0 0 8px', fontSize: 13, color: palette.textSecondary }}>
-              {line}
-            </p>
-          ))}
-        </section>
+        <details className="report-disclosure">
+          <summary className="report-disclosure__summary">
+            <h2 className="report-section-title">Summary</h2>
+          </summary>
+          <Surface as="section" aria-label="Executive summary" className="report-section" bordered={false} padded={false}>
+            {summary.map((line) => (
+              <p key={line} className="report-muted--spaced">
+                {line}
+              </p>
+            ))}
+          </Surface>
+        </details>
       )}
 
-      <FullReportPanel symbol={symbol} filter={filter} cfdSpot={cfdSpot} palette={palette} />
+      <FullReportPanel symbol={symbol} filter={filter} cfdSpot={cfdSpot} />
     </>
   );
 }
 
 export function Report() {
   // Same URL state as the dashboard and history pages, so `/report?symbol=GLD&filter=ALL`
-  // deep-links and the nav carries the selection between pages (AppShell forwards `search`).
-  const { symbol, filter, cfdSpot: cfdSpotRaw, setSymbol, setFilter, setCfdSpot } = useDashboardParams();
+  // deep-links and the nav carries the selection between pages. The symbol/expiry themselves
+  // are now controlled only from `ContextBar` (T67) -- see this file's module docstring.
+  const { symbol, filter, cfdSpot: cfdSpotRaw, setCfdSpot } = useDashboardParams();
   const { theme } = useTheme();
-  const palette = vizPaletteFor(theme);
 
   // T41: parse and validate the typed CFD spot client-side, so a value in progress (empty, a
   // stray letter, a momentarily negative sign while typing "-5" the user is about to correct)
@@ -709,62 +703,55 @@ export function Report() {
 
   return (
     <div className="report-page">
-      <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'baseline', gap: 12, marginBottom: 12 }}>
-        <h2 style={{ margin: 0, fontSize: 20 }}>{symbol} Analysis Results</h2>
-        <label style={{ fontSize: 13 }}>
-          Symbol{' '}
-          <select value={symbol} onChange={(event) => setSymbol(event.target.value as Underlying)}>
-            {UNDERLYINGS.map((value) => (
-              <option key={value} value={value}>
-                {value}
-              </option>
-            ))}
-          </select>
-        </label>
-        <label style={{ fontSize: 13 }}>
-          Expiries{' '}
-          <select value={filter} onChange={(event) => setFilter(event.target.value as ExpiryFilter)}>
-            {EXPIRY_FILTERS.map((value) => (
-              <option key={value} value={value}>
-                {EXPIRY_FILTER_LABELS[value]}
-              </option>
-            ))}
-          </select>
-        </label>
-        {/* T41: the CFD instrument the user actually trades. Optional and URL-backed
-            (`?cfd=`), so `/report?symbol=GLD&cfd=4412.50` deep-links. Leaving it blank leaves
-            the report exactly as it is without T41 -- no converted block, no placeholder.
-            T47: `cfdInstrument` is `undefined` for a symbol `CFD_INSTRUMENTS` does not cover
-            (every sector/industry ETF today) -- the input degrades to "no CFD mapping" by not
-            rendering at all, mirroring `app/api/report.py`'s degrade rather than showing a
-            broken "undefined spot" label or an input that would 422 if ever submitted. */}
-        {cfdInstrument ? (
-          <label style={{ fontSize: 13 }}>
-            {cfdInstrument} spot{' '}
-            <input
-              type="text"
-              inputMode="decimal"
-              placeholder="e.g. 4412.50"
-              aria-label={`${cfdInstrument} spot`}
-              value={cfdSpotRaw ?? ''}
-              onChange={(event) => setCfdSpot(event.target.value.length > 0 ? event.target.value : null)}
-              style={{ width: 110 }}
-            />
-          </label>
-        ) : (
-          <span style={{ fontSize: 13, color: palette.textMuted }}>No CFD mapping for {symbol}</span>
-        )}
-      </div>
+      <PageHeader
+        title={`${symbol} Analysis Results`}
+        description="Options-intelligence report, key levels and playbook for the selected symbol -- screening output, not advice."
+        caveat={
+          data ? (
+            <span data-testid="report-freshness">
+              {formatFreshness(data.snapshot)}
+              {data.snapshot.is_eod ? ' · EOD' : ''} · {data.filter}
+            </span>
+          ) : undefined
+        }
+        actions={
+          <div className="report-header-actions">
+            {/* T41: the CFD instrument the user actually trades. Optional and URL-backed
+                (`?cfd=`), so `/report?symbol=GLD&cfd=4412.50` deep-links. Leaving it blank
+                leaves the report exactly as it is without T41 -- no converted block, no
+                placeholder. T47: `cfdInstrument` is `undefined` for a symbol `CFD_INSTRUMENTS`
+                does not cover (every sector/industry ETF today) -- the input degrades to "no
+                CFD mapping" by not rendering at all, mirroring `app/api/report.py`'s degrade
+                rather than showing a broken "undefined spot" label or an input that would 422
+                if ever submitted. */}
+            {cfdInstrument ? (
+              <label>
+                {cfdInstrument} spot{' '}
+                <input
+                  type="text"
+                  inputMode="decimal"
+                  placeholder="e.g. 4412.50"
+                  aria-label={`${cfdInstrument} spot`}
+                  value={cfdSpotRaw ?? ''}
+                  onChange={(event) => setCfdSpot(event.target.value.length > 0 ? event.target.value : null)}
+                />
+              </label>
+            ) : (
+              <span className="report-cfd-missing">No CFD mapping for {symbol}</span>
+            )}
+          </div>
+        }
+      />
 
       {cfdSpotInvalid && cfdInstrument && (
-        <p role="alert" style={{ fontSize: 12, color: palette.textSecondary, marginTop: -6 }}>
+        <p role="alert" className="report-cfd-error">
           {cfdInstrument} spot must be a positive number — the CFD translation is off until this is fixed.
         </p>
       )}
 
       {isLoading && <p aria-live="polite">Loading the {symbol} report…</p>}
 
-      {noDataYet && <NoDataYet symbol={symbol} palette={palette} />}
+      {noDataYet && <NoDataYet symbol={symbol} />}
 
       {isError && !noDataYet && (
         <p role="alert">
@@ -773,7 +760,7 @@ export function Report() {
         </p>
       )}
 
-      {data && <ReportBody report={data} symbol={symbol} filter={filter} cfdSpot={cfdSpotValid} palette={palette} />}
+      {data && <ReportBody report={data} symbol={symbol} filter={filter} cfdSpot={cfdSpotValid} theme={theme} />}
     </div>
   );
 }

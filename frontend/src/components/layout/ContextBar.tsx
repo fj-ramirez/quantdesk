@@ -1,7 +1,12 @@
 /**
- * Top bar: asset dropdown, expiry filter, snapshot selector, theme toggle — the T12
- * deliverable list, verbatim. All three data controls read/write URL state
- * (`useDashboardParams`) so nothing here holds its own copy of "what's selected".
+ * T63 — renamed from `TopBar.tsx` (the plan's `ContextBar` primitive; see
+ * `plans/ui-ux-refresh/README.md`'s design-system contract table). Behavior is otherwise
+ * unchanged from T55's TopBar: asset dropdown, expiry filter, snapshot selector, theme
+ * toggle on a symbol page; a compact bars-freshness toolbar on a scan-family route. Only the
+ * outer wrapper's class (`topbar` -> `context-bar`, now `position: sticky` in index.css) and
+ * the exported name changed — every control below (`AssetSelector`, the expiry/snapshot
+ * selects, the freshness badge, `ThemeToggle`) is untouched, so every existing URL param
+ * still flows through exactly as it did as `TopBar`.
  *
  * T55: route-aware. The asset dropdown, expiry filter, snapshot selector and freshness
  * badge only make sense for a *symbol* page (`/`, `/report`, `/history`) — the scan family
@@ -25,8 +30,8 @@ import { AssetSelector } from './AssetSelector';
 import { BarsFreshness } from '../scan/BarsFreshness';
 
 /** The scan family, per 07-ui.md's "Information architecture" -- kept as one list here so a
- * future scan-family route only needs adding in one place (this set, and `AppShell`'s nav)
- * rather than being independently taught to both. */
+ * future scan-family route only needs adding in one place (this set, and `navConfig.ts`'s
+ * `NAV_GROUPS`) rather than being independently taught to both. */
 const SCAN_FAMILY_PATHS: ReadonlySet<string> = new Set([
   // `/` is in this set because Overview became the landing page on 2026-09-10 -- it is a
   // universe page, so the root route now renders the scan toolbar rather than the symbol
@@ -102,13 +107,13 @@ function DataFreshnessBadge({ symbol, filter, snapshotId }: { symbol: Underlying
   );
 }
 
-export function TopBar() {
+export function ContextBar() {
   const location = useLocation();
   const { symbol, filter, snapshotId, setSymbol, setFilter, setSnapshotId } = useDashboardParams();
 
   if (SCAN_FAMILY_PATHS.has(location.pathname)) {
     return (
-      <header className="topbar topbar--scan">
+      <header className="context-bar context-bar--scan">
         <BarsFreshness />
         <div className="topbar-meta">
           <ThemeToggle />
@@ -118,7 +123,7 @@ export function TopBar() {
   }
 
   return (
-    <header className="topbar">
+    <header className="context-bar">
       <AssetSelector symbol={symbol} onChange={setSymbol} />
       <div className="topbar-fields">
         <ExpiryFilterSelect filter={filter} onChange={setFilter} />

@@ -41,17 +41,53 @@
  * renders its own loading/error/empty state, so one endpoint being slow or down never blanks
  * the panels that don't depend on it -- the same "a page never gates on the slowest query"
  * discipline `Scan.tsx` already follows for its own two views.
+ *
+ * **T65.** Applies `plans/ui-ux-refresh/README.md`'s reading order ("Tape/freshness -> concise
+ * market read -> ranked signals -> links to evidence") and its shared primitives, without
+ * touching any fetch, ranking, or link target:
+ *  - A `PageHeader` names the page and states what it answers (the plan's own framing: "what
+ *    is the market state now?"), where before there was no page-level heading at all.
+ *  - The Tape block now opens with `CaptureFreshnessStrip` (the 5-symbol SPX/SPY/QQQ/GLD/DIA
+ *    option-chain capture freshness, `components/overview/CaptureFreshnessStrip.tsx`) above
+ *    the unmodified `RegimeStrip`, so "tape" now reads as *both* halves 07-ui.md's own
+ *    reading-order step names (freshness, then cross-asset regime) instead of only the
+ *    latter. This is a new, first-time surfacing of `useCaptureHealth`'s `symbols` block (no
+ *    page rendered it before) -- not a recomputation of anything: every value is the API's own
+ *    field, read once already by `BarsFreshness`/`Flows.tsx` for the same endpoint's other
+ *    blocks.
+ *  - `OverviewBlock` (T65, that file) now renders each panel on a `Surface` card; nothing
+ *    about a block's heading, link, or content changed.
+ *  - Every bare `<p className="scan-page__loading">` loading paragraph below is now
+ *    `LoadingState` (same wording, `aria-live="polite"` added) -- the one thing T64 already
+ *    extracted this shared triad member for.
+ *
+ * **T69 -- density pass.** The user's own review (informed by a ChatGPT critique,
+ * `plans/ui-ux-refresh/02-first-pass-review`) found the mobile Overview made the reader scroll
+ * past several rows of freshness cards and a nine-tile regime strip before reaching the ranked
+ * signals. Two changes, no fetch/ranking/link-target touched:
+ *  - `Tape` now holds only `CaptureFreshnessStrip`, itself compacted from five `MetricCard`s to
+ *    one `density="compact"` status line with the per-symbol breakdown behind a `<details>`
+ *    (see that component's own docstring).
+ *  - `RegimeStrip` moved out of `Tape` and now renders, in `compact` mode (primary vol/term-
+ *    structure tiles up front, the rest behind a disclosure -- see `RegimeStrip`'s own
+ *    docstring for the split and why), *after* "Where continuation is" instead of immediately
+ *    after the freshness line -- the plan's own instruction ("so it reads before the full
+ *    RegimeStrip, not after it"). `/regime` itself is untouched and still renders the complete,
+ *    unabbreviated strip via a bare `<RegimeStrip />`.
  */
 import { useMemo } from 'react';
 import { useBreakouts, useRegime, useTrend } from '../api/queries';
 import { RegimeStrip } from '../components/regime/RegimeStrip';
 import { OpenBreakouts } from '../components/scan/OpenBreakouts';
+import { CaptureFreshnessStrip } from '../components/overview/CaptureFreshnessStrip';
 import { EmptyState } from '../components/EmptyState';
 import { ErrorState } from '../components/ErrorState';
+import { LoadingState } from '../components/LoadingState';
 import { OverviewBlock } from '../components/overview/OverviewBlock';
 import { BreakoutMiniTable } from '../components/overview/BreakoutMiniTable';
 import { TrendMiniTable } from '../components/overview/TrendMiniTable';
 import { RegimeMiniTable } from '../components/overview/RegimeMiniTable';
+import { PageHeader } from '../components/ui/PageHeader';
 import {
   REGIME_HREF,
   continuationRegimeRows,
@@ -78,8 +114,13 @@ export function Overview() {
 
   return (
     <div className="overview-page">
-      <OverviewBlock heading="Tape" to={REGIME_HREF} linkLabel="Open regime board →">
-        <RegimeStrip />
+      <PageHeader
+        title="Overview"
+        description="What is the market state now, and where is continuation happening across the tracked universe?"
+      />
+
+      <OverviewBlock heading="Tape" to={REGIME_HREF} linkLabel="Open regime board →" headingLevel="h2">
+        <CaptureFreshnessStrip />
       </OverviewBlock>
 
       <section aria-label="Where continuation is" className="overview-section">
@@ -106,6 +147,13 @@ export function Overview() {
         </OverviewBlock>
       </section>
 
+      {/* T69: moved out of `Tape` and down past "Where continuation is" (plan's own
+          instruction), and rendered in `compact` mode -- `/regime` still gets the complete,
+          unabbreviated strip via a bare `<RegimeStrip />`. */}
+      <OverviewBlock heading="Cross-asset regime" to={REGIME_HREF} linkLabel="Open regime board →" headingLevel="h2">
+        <RegimeStrip compact />
+      </OverviewBlock>
+
       <section aria-label="Open now" className="overview-section">
         <h2 className="overview-section__title">Open now</h2>
 
@@ -114,7 +162,7 @@ export function Overview() {
             {breakouts.isError ? (
               <ErrorState message="Could not load the breakout ledger." />
             ) : breakouts.isPending ? (
-              <p className="scan-page__loading">Scanning the universe for range breaks…</p>
+              <LoadingState message="Scanning the universe for range breaks…" />
             ) : (
               <OpenBreakouts breakouts={breakouts.data?.open_breakouts ?? []} k={breakouts.data?.k ?? 5} />
             )}
@@ -123,7 +171,7 @@ export function Overview() {
             {regime.isError ? (
               <ErrorState message="Could not load the regime board." />
             ) : regime.isPending ? (
-              <p className="scan-page__loading">Scoring dealer positioning across the universe…</p>
+              <LoadingState message="Scoring dealer positioning across the universe…" />
             ) : continuationRows.length === 0 ? (
               <EmptyState heading="No continuation verdicts">
                 No symbol on the regime board currently reads a `continuation` verdict.
@@ -148,7 +196,7 @@ function BreakoutsRankedBody({
   caption: string;
 }) {
   if (query.isError) return <ErrorState message="Could not load the breakout ledger." />;
-  if (query.isPending) return <p className="scan-page__loading">Scanning the universe for range breaks…</p>;
+  if (query.isPending) return <LoadingState message="Scanning the universe for range breaks…" />;
   if (!query.data || query.data.summaries.length === 0) {
     return (
       <EmptyState heading="No symbols scanned">No bars are stored for the scan universe yet.</EmptyState>
@@ -177,10 +225,7 @@ function TrendRankedBody({
   if (query.isError) return <ErrorState message="Could not load the trend scorer." />;
   if (query.isPending) {
     return (
-      <p className="scan-page__loading">
-        Scoring the universe… the trend scan reads every tracked option chain, so this takes a
-        few seconds.
-      </p>
+      <LoadingState message="Scoring the universe… the trend scan reads every tracked option chain, so this takes a few seconds." />
     );
   }
   if (!query.data || query.data.rows.length === 0) {

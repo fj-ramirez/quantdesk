@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { render, screen, waitFor } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { HttpResponse, http } from 'msw';
 import { describe, expect, it } from 'vitest';
 import { server } from '../../mocks/server';
@@ -8,12 +8,12 @@ import { RegimeStrip } from './RegimeStrip';
 import crossAssetFixture from '../../mocks/fixtures/scan/cross_asset.json';
 import crossAssetEmptyFixture from '../../mocks/fixtures/scan/cross_asset_empty.json';
 
-function renderStrip() {
+function renderStrip(compact?: boolean) {
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   return render(
     <QueryClientProvider client={queryClient}>
       <ThemeProvider>
-        <RegimeStrip />
+        <RegimeStrip compact={compact} />
       </ThemeProvider>
     </QueryClientProvider>,
   );
@@ -100,5 +100,52 @@ describe('RegimeStrip', () => {
     renderStrip();
     await waitFor(() => expect(screen.getByText('Regime strip unavailable')).toBeInTheDocument());
     expect(document.body.textContent).not.toMatch(/\{"detail"/);
+  });
+});
+
+describe('RegimeStrip compact mode (T69, Overview-only)', () => {
+  it('without `compact`, all nine tiles render with no secondary disclosure', async () => {
+    renderStrip();
+    await waitForLoaded();
+    expect(document.querySelector('details.regime-strip__more')).not.toBeInTheDocument();
+    for (const label of [
+      'VIX9D/VIX',
+      'VIX/VIX3M',
+      'VVIX',
+      'VIX 1y pct',
+      'SPY VRP',
+      'Sector corr 20d',
+      'UUP 20d',
+      'GLD 20d',
+      'TLT 20d',
+    ]) {
+      expect(screen.getByText(label)).toBeInTheDocument();
+    }
+  });
+
+  it('with `compact`, the four vol/term-structure tiles are primary and the other five sit behind a collapsed disclosure', async () => {
+    renderStrip(true);
+    await waitForLoaded();
+
+    const primary = document.querySelector('.regime-strip__primary')!;
+    for (const label of ['VIX9D/VIX', 'VIX/VIX3M', 'VVIX', 'SPY VRP']) {
+      expect(within(primary as HTMLElement).getByText(label)).toBeInTheDocument();
+    }
+
+    const details = document.querySelector('details.regime-strip__more') as HTMLDetailsElement;
+    expect(details).toBeInTheDocument();
+    expect(details.open).toBe(false);
+
+    for (const label of ['VIX 1y pct', 'Sector corr 20d', 'UUP 20d', 'GLD 20d', 'TLT 20d']) {
+      expect(within(details).getByText(label)).toBeInTheDocument();
+    }
+    // Every tile still exists exactly once -- compact regroups, it never drops or duplicates one.
+    expect(screen.getAllByText('VVIX')).toHaveLength(1);
+    expect(screen.getAllByText('TLT 20d')).toHaveLength(1);
+
+    // Native <details> is keyboard-operable without any bespoke focus-trap code (matching
+    // Rotation's precedent) -- clicking the summary opens it.
+    fireEvent.click(screen.getByText('5 more regime tiles'));
+    expect(details.open).toBe(true);
   });
 });

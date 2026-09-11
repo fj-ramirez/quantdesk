@@ -23,19 +23,24 @@ export function NoTradeList({ symbols, noChain, filterSearch }: NoTradeListProps
         <ul className="decisions-notrade__list">
           {quiet.map((s) => (
             <li key={s.underlying} className="decisions-notrade__item">
-              <details>
-                <summary>
-                  <SymbolCell symbol={s.underlying} search={filterSearch} />{' '}
-                  <span className="decisions-notrade__first">{s.no_trade_reasons[0]}</span>
-                </summary>
-                {s.no_trade_reasons.length > 1 && (
-                  <ul className="decisions-notrade__reasons">
-                    {s.no_trade_reasons.slice(1).map((r, i) => (
-                      <li key={i}>{r}</li>
-                    ))}
-                  </ul>
-                )}
-              </details>
+              {/* T68: `SymbolCell` renders a real link when the symbol has a chain -- a link
+                  inside a `<summary>` is two interactive controls nested inside each other
+                  (axe-core: "nested-interactive"), and in practice a click on the symbol also
+                  toggles the disclosure underneath it. Moved the link out to a plain sibling
+                  row; only the reason text is the disclosure trigger now. */}
+              <div className="decisions-notrade__row">
+                <SymbolCell symbol={s.underlying} search={filterSearch} />
+                <details className="decisions-notrade__details">
+                  <summary className="decisions-notrade__first">{s.no_trade_reasons[0]}</summary>
+                  {s.no_trade_reasons.length > 1 && (
+                    <ul className="decisions-notrade__reasons">
+                      {s.no_trade_reasons.slice(1).map((r, i) => (
+                        <li key={i}>{r}</li>
+                      ))}
+                    </ul>
+                  )}
+                </details>
+              </div>
             </li>
           ))}
         </ul>

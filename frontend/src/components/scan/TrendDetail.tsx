@@ -7,6 +7,13 @@
  * rolling per-day reading, and no IV history is persisted past the latest snapshot), so they
  * appear only once, under Current -- never as a flat line implying a series that was never
  * measured.
+ *
+ * T66: this used to render its own `<section>`/heading/Close button wrapper (no Escape
+ * handler, no focus trap, no focus-return — `01-ux-baseline.md` flagged it explicitly). It is
+ * now mounted as `ui/DetailDrawer`'s children (`Scan.tsx`), which owns that chrome and the
+ * focus-management behavior neither this component nor its predecessor ever had — same
+ * pattern T64 already applied to `OpportunityDetail`. This file renders only the content
+ * below the drawer's own header.
  */
 import { useSymbolTrend } from '../../api/queries';
 import { EmptyState } from '../EmptyState';
@@ -30,21 +37,13 @@ function fixed(value: number | null | undefined, digits: number): string {
 
 export interface TrendDetailProps {
   symbol: string;
-  onClose: () => void;
 }
 
-export function TrendDetail({ symbol, onClose }: TrendDetailProps) {
+export function TrendDetail({ symbol }: TrendDetailProps) {
   const query = useSymbolTrend(symbol);
 
   return (
-    <section className="scan-detail" aria-label={`${symbol} trend detail`}>
-      <header className="scan-detail__head">
-        <h2 className="scan-detail__title">{symbol}</h2>
-        <button type="button" className="scan-detail__close" onClick={onClose}>
-          Close
-        </button>
-      </header>
-
+    <>
       {query.isError ? (
         <ErrorState message={`Could not load trend detail for ${symbol}.`} />
       ) : query.isPending ? (
@@ -101,6 +100,6 @@ export function TrendDetail({ symbol, onClose }: TrendDetailProps) {
           </dl>
         </>
       )}
-    </section>
+    </>
   );
 }

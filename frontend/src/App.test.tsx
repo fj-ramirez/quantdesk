@@ -130,7 +130,10 @@ describe('T55 scan-family nav and stub routes', () => {
     renderApp('/dashboard');
     await waitFor(() => expect(screen.getByRole('heading', { name: 'SPX key levels' })).toBeInTheDocument());
 
-    for (const name of ['Dashboard', 'Report', 'History', 'Scan', 'Regime', 'Rotation', 'Flows', 'Settings', 'Overview']) {
+    // T63: the rail relabels /dashboard "GEX Explorer" and /decisions "Opportunities"
+    // (plans/ui-ux-refresh/01-ux-baseline.md's approved nav mapping) -- every other label is
+    // unchanged from the old flat NavBar.
+    for (const name of ['GEX Explorer', 'Opportunities', 'Report', 'History', 'Scan', 'Regime', 'Rotation', 'Flows', 'Settings', 'Overview']) {
       expect(screen.getByRole('link', { name })).toBeInTheDocument();
     }
   });
@@ -178,7 +181,7 @@ describe('T55 scan-family nav and stub routes', () => {
     expect(screen.queryByRole('region', { name: 'Flows is not built yet' })).not.toBeInTheDocument();
   });
 
-  it('the TopBar drops the asset dropdown on /scan and shows it again after navigating back to /', async () => {
+  it('the ContextBar drops the asset dropdown on /scan and shows it again after navigating back to /dashboard', async () => {
     renderApp('/dashboard');
     await waitFor(() => expect(screen.getByRole('heading', { name: 'SPX key levels' })).toBeInTheDocument());
     expect(screen.getByRole('button', { name: 'Symbol SPX' })).toBeInTheDocument();
@@ -190,7 +193,7 @@ describe('T55 scan-family nav and stub routes', () => {
     await screen.findByRole('group', { name: 'View' });
     expect(screen.queryByRole('button', { name: 'Symbol SPX' })).not.toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole('link', { name: 'Dashboard' }));
+    fireEvent.click(screen.getByRole('link', { name: 'GEX Explorer' }));
     await waitFor(() => expect(screen.getByRole('button', { name: 'Symbol SPX' })).toBeInTheDocument());
   });
 });

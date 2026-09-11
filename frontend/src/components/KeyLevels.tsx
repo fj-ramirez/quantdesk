@@ -7,12 +7,25 @@
  * is read as a volatility-dampening regime; negative = net short, amplifying) — never take
  * an absolute value. Per the dataviz skill ("text never wears the data color"), the sign is
  * cued with a small dot + a written label, not by coloring the number itself.
+ *
+ * T66: the section/heading/net-GEX row/footer that used to carry 9 inline `style={{...}}`
+ * clusters now render through `Surface` (the card background/border/padding) plus dedicated
+ * `.key-levels__*` classes in index.css, all reading T63's semantic text/space tokens —
+ * same values, same null-vs-zero handling (CLAUDE.md invariant #3: a `null` open-interest
+ * upstream is already excluded before this component ever sees a level, and every null level
+ * here still renders as an honest em dash via `formatStrike`/`formatDistance`, never a
+ * fabricated 0). The one color that stays computed in JS rather than moved to a CSS class is
+ * the net-GEX sign dot: it must keep exactly the blue/red pair `theme/vizPalette.ts` already
+ * defines for this chart-adjacent sign cue (`divergingPositive`/`divergingNegative`), not the
+ * app's generic green/red status tokens, which are a different semantic pairing (see this
+ * component's own history — the values are unchanged, only their container is).
  */
 import type { KeyLevels as KeyLevelsData, SnapshotInfo } from '../api/types';
 import { formatFreshness } from '../lib/time';
 import { formatDistance, formatDistancePct, formatGex, formatStrike } from '../lib/format';
 import { useTheme } from '../theme/ThemeContext';
 import { vizPaletteFor } from '../theme/vizPalette';
+import { Surface } from './ui/Surface';
 
 export interface KeyLevelsProps {
   levels: KeyLevelsData;
@@ -46,27 +59,23 @@ export function KeyLevels({ levels, snapshot }: KeyLevelsProps) {
         : 'Net gamma flat';
 
   return (
-    <section aria-label="Key levels" style={{ background: palette.surface, color: palette.textPrimary, padding: 16 }}>
-      <h2 style={{ margin: 0, fontSize: 16 }}>
-        {snapshot.underlying} key levels
-      </h2>
+    <Surface as="section" aria-label="Key levels" className="key-levels" level="raised">
+      <h2 className="key-levels__title">{snapshot.underlying} key levels</h2>
 
-      <div style={{ margin: '12px 0', display: 'flex', alignItems: 'baseline', gap: 8 }}>
-        <span
-          aria-hidden="true"
-          style={{
-            display: 'inline-block',
-            width: 10,
-            height: 10,
-            borderRadius: '50%',
-            background: netDotColor,
-          }}
-        />
-        <span style={{ fontSize: 13, color: palette.textSecondary }}>Net GEX</span>
-        <strong style={{ fontSize: 20 }}>{formatGex(levels.net_gex)}</strong>
+      <div className="key-levels__net">
+        <span aria-hidden="true" className="key-levels__net-dot" style={{ background: netDotColor }} />
+        <span className="key-levels__net-label">Net GEX</span>
+        <strong className="key-levels__net-value">{formatGex(levels.net_gex)}</strong>
       </div>
-      <p style={{ margin: '0 0 12px', fontSize: 13, color: palette.textSecondary }}>{netLabel}</p>
+      <p className="key-levels__net-note">{netLabel}</p>
 
+      {/* T68: a bare table with no scroll container let its 4 columns push the whole page
+          wider than the viewport at 390px (page-level horizontal overflow/clipping, not a
+          contained table scroll) -- wrapped in the same `.scan-table-container` (overflow-x:
+          auto) every scan-family table already uses, so a narrow viewport scrolls the table
+          only, per the plan's "contained horizontal scrolling" rule. No column/row/value
+          changed. */}
+      <div className="scan-table-container" tabIndex={0}>
       <table>
         <thead>
           <tr>
@@ -93,22 +102,23 @@ export function KeyLevels({ levels, snapshot }: KeyLevelsProps) {
           ))}
         </tbody>
       </table>
+      </div>
 
       {levels.flip_point == null && (
-        <p style={{ margin: '8px 0 0', fontSize: 12, color: palette.textMuted }}>
+        <p className="key-levels__note">
           No sign change within the profile grid, so there is no gamma flip level to show.
         </p>
       )}
 
-      {/* Same wording as the TopBar freshness badge (components/layout/TopBar.tsx
+      {/* Same wording as the TopBar freshness badge (components/layout/ContextBar.tsx
           `DataFreshnessBadge`, `lib/time.ts` `formatFreshness`) — one visual language for
           staleness across the app, not a second one invented here. T34: after the close this
           reads as "At Friday's close (4:00 PM ET)" rather than a rolling "Delayed 15m" that
           gets less honest the longer the page sits open in the evening. */}
-      <p style={{ margin: '12px 0 0', fontSize: 12, color: palette.textMuted }} aria-live="polite">
+      <p className="key-levels__freshness" aria-live="polite">
         {formatFreshness(snapshot)}
         {snapshot.is_eod ? ' · EOD' : ''}
       </p>
-    </section>
+    </Surface>
   );
 }

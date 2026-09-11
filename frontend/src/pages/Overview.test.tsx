@@ -16,7 +16,8 @@ import { ThemeProvider } from '../theme/ThemeContext';
 import { Overview } from './Overview';
 import breakoutsFixture from '../mocks/fixtures/scan/breakouts.json';
 import regimeFixture from '../mocks/fixtures/scan/regime.json';
-import type { BreakoutsResponse } from '../api/types';
+import healthCaptureFixture from '../mocks/fixtures/scan/health_capture.json';
+import type { BreakoutsResponse, CaptureHealth } from '../api/types';
 
 function renderOverview(initialPath = '/overview') {
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
@@ -47,15 +48,80 @@ async function awaitLoaded() {
 }
 
 describe('Overview page', () => {
-  it('renders the Tape block with the cross-asset strip', async () => {
+  it('renders a page header naming the page and what it answers', async () => {
+    renderOverview();
+    expect(screen.getByRole('heading', { name: 'Overview', level: 1 })).toBeInTheDocument();
+    expect(screen.getByText(/what is the market state now/i)).toBeInTheDocument();
+  });
+
+  it('renders the Tape block with only the compact capture-freshness line -- RegimeStrip moved out (T69)', async () => {
     renderOverview();
     const tape = await screen.findByRole('region', { name: 'Tape' });
     expect(within(tape).getByRole('link', { name: /open regime board/i })).toHaveAttribute(
       'href',
       '/regime',
     );
-    // RegimeStrip owns its own loading/error states; it renders unconditionally underneath.
-    expect(await within(tape).findByText('VIX9D/VIX')).toBeInTheDocument();
+
+    // T69: the five-card freshness strip is now one compact status line; RegimeStrip no longer
+    // lives inside Tape at all (it moved down, see the next test).
+    const freshness = await within(tape).findByTestId('capture-freshness');
+    const fixture = healthCaptureFixture as CaptureHealth;
+    expect(within(freshness).getByText(`${fixture.symbols.length}/${fixture.symbols.length} chains fresh`)).toBeInTheDocument();
+    expect(within(freshness).getByText('All fresh')).toBeInTheDocument();
+    expect(within(tape).queryByText('VIX9D/VIX')).not.toBeInTheDocument();
+
+    // The per-symbol breakdown lives behind a collapsed `<details>`; every symbol is still
+    // present in the DOM (nothing lost), just not spread across five always-visible cards.
+    const detail = within(freshness).getByText('Per-symbol capture detail').closest('details') as HTMLDetailsElement;
+    expect(detail.open).toBe(false);
+    for (const s of fixture.symbols) {
+      expect(within(detail).getByText(s.underlying)).toBeInTheDocument();
+    }
+  });
+
+  it('renders capture freshness honestly when a symbol has never been captured or is stale, naming it in the compact line', async () => {
+    const fixture = healthCaptureFixture as CaptureHealth;
+    const degraded: CaptureHealth = {
+      ...fixture,
+      symbols: fixture.symbols.map((s, i) =>
+        i === 0 ? { ...s, last_capture_at: null, last_eod_capture_at: null, stale: true } : s,
+      ),
+    };
+    server.use(http.get('*/api/health/capture', () => HttpResponse.json(degraded)));
+    renderOverview();
+    const tape = await screen.findByRole('region', { name: 'Tape' });
+    const freshness = await within(tape).findByTestId('capture-freshness');
+
+    // The compact line honestly reports the reduced fresh count and names the stale symbol --
+    // never "all fresh" when one genuinely is not.
+    expect(
+      within(freshness).getByText(`${fixture.symbols.length - 1}/${fixture.symbols.length} chains fresh`),
+    ).toBeInTheDocument();
+    expect(within(freshness).getByText(`1 stale: ${degraded.symbols[0].underlying}`)).toBeInTheDocument();
+
+    const detail = within(freshness).getByText('Per-symbol capture detail').closest('details') as HTMLDetailsElement;
+    expect(within(detail).getByText('No capture yet')).toBeInTheDocument();
+    expect(within(detail).getByText('Stale')).toBeInTheDocument();
+  });
+
+  it('renders RegimeStrip in compact mode after "Where continuation is", not immediately after the freshness line (T69)', async () => {
+    renderOverview();
+    await awaitLoaded();
+
+    const regimeBlock = await screen.findByRole('region', { name: 'Cross-asset regime' });
+    expect(within(regimeBlock).getByRole('link', { name: /open regime board/i })).toHaveAttribute('href', '/regime');
+    expect(await within(regimeBlock).findByText('VIX9D/VIX')).toBeInTheDocument();
+    // Compact mode: the four vol/term-structure tiles are primary, the rest sit behind a
+    // collapsed disclosure -- never dropped, just not first-screen.
+    const more = within(regimeBlock).getByText(/more regime tiles/).closest('details') as HTMLDetailsElement;
+    expect(more.open).toBe(false);
+    expect(within(more).getByText('TLT 20d')).toBeInTheDocument();
+
+    // Reading order: Tape's freshness line, then "Where continuation is", then this block.
+    const tape = screen.getByRole('region', { name: 'Tape' });
+    const continuation = screen.getByRole('region', { name: 'Where continuation is' });
+    expect(tape.compareDocumentPosition(continuation) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(continuation.compareDocumentPosition(regimeBlock) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   });
 
   it('shows the top 8 symbols by breakout rate, computed from the fixture', async () => {

@@ -104,7 +104,12 @@ export function ScanTable<Row>({
   }
 
   return (
-    <div className="scan-table-container">
+    // T68: a scrollable container with no way to reach it by keyboard fails axe-core's
+    // "scrollable-region-focusable" -- `tabIndex={0}` puts it in the tab order so arrow keys
+    // can scroll it once focused. Not `role="region"` too: the table already has its own
+    // `<caption>` when one is given, and pairing that with a same-named region here would
+    // just announce the caption twice.
+    <div className="scan-table-container" tabIndex={0}>
       <table className="scan-table">
         {caption && <caption className="scan-table__caption">{caption}</caption>}
         <thead>

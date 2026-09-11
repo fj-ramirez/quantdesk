@@ -61,7 +61,7 @@ export const THEME_COLORS: Record<Theme, GexByStrikeColors> = {
     text: '#6b6375',
     heading: '#08060d',
     border: '#e5e4e7',
-    accent: '#aa3bff',
+    accent: '#9935e6',
     call: '#2a78d6',
     put: '#e34948',
   },

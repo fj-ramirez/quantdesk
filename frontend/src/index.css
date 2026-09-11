@@ -4,9 +4,15 @@
   --bg: #fff;
   --border: #e5e4e7;
   --code-bg: #f4f3ec;
-  --accent: #aa3bff;
-  --accent-bg: rgba(170, 59, 255, 0.1);
-  --accent-border: rgba(170, 59, 255, 0.5);
+  /* T68: darkened from #aa3bff (4.39:1 on white / 3.95:1 on the --code-bg card surface,
+     both under WCAG AA's 4.5:1 text minimum -- an axe-core finding on every link/symbol-cell
+     that uses --accent as text color, which is most of them). #9935e6 is the same hue/
+     saturation, just deeper: 5.24:1 on white, 4.71:1 on --code-bg. GexByStrike.tsx's
+     `THEME_COLORS.light.accent` is a hardcoded mirror of this value (that file's own
+     docstring: "if index.css's palette changes, update this too") -- updated alongside. */
+  --accent: #9935e6;
+  --accent-bg: rgba(153, 53, 230, 0.1);
+  --accent-border: rgba(153, 53, 230, 0.5);
   --social-bg: rgba(244, 243, 236, 0.5);
   --shadow:
     rgba(0, 0, 0, 0.1) 0 10px 15px -3px, rgba(0, 0, 0, 0.05) 0 4px 6px -2px;
@@ -14,6 +20,63 @@
   --sans: system-ui, 'Segoe UI', Roboto, sans-serif;
   --heading: system-ui, 'Segoe UI', Roboto, sans-serif;
   --mono: ui-monospace, Consolas, monospace;
+
+  /*
+   * T63 semantic token layer -- the workbench shell (AppFrame/SideRail/ContextBar/
+   * CommandPalette) reads only these roles, never the raw palette variables above or a
+   * local hex. Every role below is an *alias* onto the existing palette rather than a new
+   * color, per the plan's "extend the token set, don't replace its mechanism": the raw
+   * `--text`/`--text-h`/`--bg`/`--border`/`--code-bg`/`--social-bg`/`--accent*` variables
+   * keep every page that already reads them (Report, KeyLevels, the whole `.scan-*`
+   * vocabulary) working unchanged, in both themes, with zero edits to those rules.
+   *
+   * `--status-*` is the one set of *new* literal colors here, and it is not actually new:
+   * the four values are lifted verbatim from `theme/vizPalette.ts`'s `levelSupport` /
+   * `levelResistance` / `seriesExZeroDte` / `seriesAll` per theme, so a CSS-driven status
+   * cue (a future StatusChip-as-CSS, a token-only badge) and an ECharts-drawn one always
+   * agree. `vizPalette.ts` cannot read these back (it hands ECharts plain JS strings, not
+   * CSS custom properties -- see that file's own docstring), so the two are kept in sync by
+   * hand; if one changes, change the other.
+   */
+  --surface-app: var(--bg);
+  --surface-raised: var(--code-bg);
+  --surface-subtle: var(--social-bg);
+  --text-strong: var(--text-h);
+  --text-default: var(--text);
+  /* T68: 65% measured 2.4-2.9:1 against --code-bg-based card surfaces (axe-core: "serious",
+     133 nodes on Overview alone -- every MetricCard label, SideRail group title, and similar
+     secondary text reads this token). 95% is the lightest mix that still clears 4.5:1 against
+     the darkest surface this app puts muted text on (--code-bg / --surface-raised, 4.65:1;
+     5.11:1 on plain --bg). The dark theme's own safe percentage is lower (its --text already
+     has more headroom against --bg) -- see the explicit override in both dark blocks below;
+     this formula only applies to light (or when dark styles don't reassign it, which they
+     now always do). */
+  --text-muted: color-mix(in srgb, var(--text) 95%, var(--bg));
+  --border-default: var(--border);
+  --focus-ring-color: var(--accent);
+  --focus-ring: 0 0 0 2px var(--surface-app), 0 0 0 4px var(--focus-ring-color);
+
+  --status-positive: #1f7a3d;
+  --status-negative: #e34948;
+  --status-caution: #eb6834;
+  --status-info: #2a78d6;
+
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 24px;
+  --space-6: 32px;
+
+  --radius-sm: 4px;
+  --radius-md: 8px;
+  --radius-lg: 12px;
+
+  --elevation-1: rgba(0, 0, 0, 0.08) 0 1px 3px, rgba(0, 0, 0, 0.06) 0 1px 2px;
+  --elevation-2: var(--shadow);
+
+  --rail-width: 216px;
+  --rail-width-collapsed: 76px;
 
   font: 18px/145% var(--sans);
   letter-spacing: 0.18px;
@@ -50,6 +113,14 @@
     --social-bg: rgba(47, 48, 58, 0.5);
     --shadow:
       rgba(0, 0, 0, 0.4) 0 10px 15px -3px, rgba(0, 0, 0, 0.25) 0 4px 6px -2px;
+    --status-positive: #4aad68;
+    --status-negative: #e66767;
+    --status-caution: #d95926;
+    --status-info: #3987e5;
+    /* T68: dark theme's --text already has more headroom against --bg than light's does, so
+       95% here would barely differ from full-strength text -- 80% is the lightest mix that
+       still clears 4.5:1 against the darkest surface (--code-bg, 4.61:1; 4.95:1 on --bg). */
+    --text-muted: color-mix(in srgb, var(--text) 80%, var(--bg));
   }
 
   :root:not([data-theme='light']) #social .button-icon {
@@ -69,18 +140,25 @@
   --social-bg: rgba(47, 48, 58, 0.5);
   --shadow:
     rgba(0, 0, 0, 0.4) 0 10px 15px -3px, rgba(0, 0, 0, 0.25) 0 4px 6px -2px;
+  --status-positive: #4aad68;
+  --status-negative: #e66767;
+  --status-caution: #d95926;
+  --status-info: #3987e5;
+  --text-muted: color-mix(in srgb, var(--text) 80%, var(--bg));
 }
 
 :root[data-theme='dark'] #social .button-icon {
   filter: invert(1) brightness(2);
 }
 
+/*
+ * T63: the old `#root` was the marketing-template shell this app started from -- a fixed
+ * 1126px card, centered text, a border on both sides. Every page had to fight that (see the
+ * removed `.app-shell`/`.dashboard` `text-align: left` resets below, in this diff's history --
+ * both are gone now because there is no longer a centered default to undo). `#root` is now
+ * just the full-height mount point; `.app-frame` inside it does the actual layout.
+ */
 #root {
-  width: 1126px;
-  max-width: 100%;
-  margin: 0 auto;
-  text-align: center;
-  border-inline: 1px solid var(--border);
   min-height: 100svh;
   display: flex;
   flex-direction: column;
@@ -89,6 +167,7 @@
 
 body {
   margin: 0;
+  overflow-x: hidden;
 }
 
 h1,
@@ -135,24 +214,274 @@ code {
   background: var(--code-bg);
 }
 
-/*
- * App shell: top bar + nav (T36). `#root`'s `text-align: center` (a leftover from the
- * marketing template this app started from) reaches every descendant that doesn't reset
- * it, `.dashboard` already resets it for the charts below -- these do the same for the
- * header/nav, which sit outside `.dashboard` and were inheriting the same centering (the
- * "symbol switcher is centred oddly" defect).
- */
-.app-shell {
-  text-align: left;
+/* ---------------------------------------------------------------------------------------
+ * T63 — workbench shell: AppFrame (full-height surface), SideRail (grouped nav, collapsible
+ * desktop / drawer at narrow widths), ContextBar (the route-aware bar TopBar used to be,
+ * renamed and now sticky), CommandPalette (Ctrl/Cmd+K). Replaces the old `.app-shell` +
+ * `.navbar`/`.navlink` + centered `#root` card. Tokens only, per this file's own long-
+ * standing discipline for every block below `.scan-page` -- no local hex here.
+ * ------------------------------------------------------------------------------------- */
+
+.app-frame {
+  display: flex;
+  min-height: 100svh;
+  background: var(--surface-app);
+  color: var(--text-default);
+  align-items: stretch;
 }
 
-.topbar {
+.app-frame__main {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.app-frame__content {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+/* The rail. `position: sticky` (not `fixed`) so it scrolls away with the rest of the page
+ * only if the page itself is taller than the viewport in some exotic case, but in practice
+ * pins to the viewport height while `.app-frame__content` scrolls underneath/beside it. */
+.side-rail {
+  flex: 0 0 auto;
+  width: var(--rail-width);
+  position: sticky;
+  top: 0;
+  height: 100svh;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  border-right: 1px solid var(--border-default);
+  background: var(--surface-app);
+  box-sizing: border-box;
+  padding: var(--space-3) 0;
+}
+
+.side-rail--collapsed {
+  width: var(--rail-width-collapsed);
+}
+
+.side-rail__collapse-toggle {
+  align-self: flex-end;
+  margin: 0 var(--space-2) var(--space-2);
+  font: inherit;
+  font-size: 12px;
+  color: var(--text-muted);
+  background: none;
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-sm);
+  padding: 4px 6px;
+  cursor: pointer;
+  line-height: 0;
+}
+
+.side-rail__collapse-toggle:hover {
+  border-color: var(--accent-border);
+  color: var(--text-strong);
+}
+
+.side-rail__nav {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  padding: 0 var(--space-2);
+}
+
+.side-rail__group {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.side-rail__group-title {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-muted);
+  padding: var(--space-1) var(--space-2);
+}
+
+/* Collapsing the rail is a density choice, not an information loss -- every nav *item* below
+ * keeps its icon and its label (the plan's "icon is never the sole signal" rule); only the
+ * section dividers (TODAY/ANALYZE/REVIEW) shrink to a screen-reader-only text node, since
+ * they're layout chrome rather than a link a keyboard/AT user needs to read one at a time. */
+.side-rail--collapsed .side-rail__group-title {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
+
+.side-rail__group--bottom {
+  margin-top: auto;
+  padding-top: var(--space-4);
+  border-top: 1px solid var(--border-default);
+}
+
+.side-rail__pair {
+  display: flex;
+  flex-direction: column;
+}
+
+.side-rail__link {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: 6px var(--space-2);
+  border-radius: var(--radius-sm);
+  color: var(--text-default);
+  text-decoration: none;
+  font-size: 14px;
+  min-width: 0;
+}
+
+.side-rail__link:hover {
+  background: var(--surface-subtle);
+}
+
+.side-rail__link:focus-visible {
+  outline: 2px solid var(--focus-ring-color);
+  outline-offset: -2px;
+}
+
+.side-rail__link--active {
+  background: var(--accent-bg);
+  color: var(--text-strong);
+  font-weight: 500;
+}
+
+.side-rail__icon {
+  flex: 0 0 auto;
+  width: 18px;
+  height: 18px;
+}
+
+.side-rail__label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Collapsed desktop rail: icon on top, label beneath it in a smaller size -- still present,
+ * per the rule above, just stacked to fit a narrower column instead of removed. */
+.side-rail--collapsed .side-rail__link {
+  flex-direction: column;
+  gap: 2px;
+  text-align: center;
+  padding: 6px 2px;
+}
+
+.side-rail--collapsed .side-rail__label {
+  font-size: 10px;
+  max-width: 100%;
+}
+
+/* Hamburger toggle for the narrow-width drawer -- hidden on desktop, shown only under the
+ * rail's own collapse breakpoint (see the `@media` block near the bottom of this section). */
+.side-rail__menu-toggle {
+  display: none;
+  align-items: center;
+  gap: var(--space-2);
+  font: inherit;
+  font-size: 13px;
+  color: var(--text-default);
+  background: var(--surface-app);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-sm);
+  padding: 6px 10px;
+  margin: var(--space-2);
+  cursor: pointer;
+  position: sticky;
+  top: var(--space-2);
+  z-index: 30;
+  align-self: flex-start;
+}
+
+.side-rail__menu-toggle svg {
+  width: 18px;
+  height: 18px;
+}
+
+.side-rail__drawer-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.4);
+  z-index: 40;
+  display: flex;
+}
+
+.side-rail__drawer {
+  width: min(280px, 86vw);
+  max-width: 100%;
+  height: 100%;
+  overflow-y: auto;
+  background: var(--surface-app);
+  border-right: 1px solid var(--border-default);
+  box-shadow: var(--elevation-2);
+  padding: var(--space-3) 0;
+  display: flex;
+  flex-direction: column;
+  box-sizing: border-box;
+}
+
+.side-rail__drawer-close {
+  align-self: flex-end;
+  margin: 0 var(--space-2) var(--space-2);
+  background: none;
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-sm);
+  color: var(--text-default);
+  padding: 4px 8px;
+  cursor: pointer;
+}
+
+.side-rail__drawer-close svg {
+  width: 16px;
+  height: 16px;
+}
+
+@media (max-width: 900px) {
+  .side-rail {
+    display: none;
+  }
+
+  .side-rail__menu-toggle {
+    display: inline-flex;
+  }
+}
+
+/* ContextBar (T63, formerly TopBar). Sticky under the viewport top, same field vocabulary
+ * (`.topbar-fields`/`.topbar-field`/`.topbar-meta`/`.freshness-badge`/`.asset-selector*`
+ * below, all unchanged) -- only the outer wrapper is new. */
+.context-bar {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
   gap: 12px 20px;
   padding: 12px 16px;
-  border-bottom: 1px solid var(--border);
+  border-bottom: 1px solid var(--border-default);
+  background: var(--surface-app);
+  position: sticky;
+  top: 0;
+  z-index: 10;
+}
+
+.context-bar--scan {
+  justify-content: space-between;
+}
+
+/* Asset dropdown -- replaces the old flat wall of up to 28 always-visible symbol buttons
+ * (two `role="group"` rows) with a single trigger that opens a grouped listbox on click. */
+.asset-selector {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
 }
 
 /* Asset dropdown -- replaces the old flat wall of up to 28 always-visible symbol buttons
@@ -291,49 +620,19 @@ code {
   min-width: 0;
 }
 
-.navbar {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 4px;
-  padding: 0 16px 12px;
-  border-bottom: 1px solid var(--border);
-}
-
-.navlink {
-  font-size: 14px;
-  padding: 6px 12px;
-  border-radius: 6px;
-  color: var(--text);
-  text-decoration: none;
-}
-
-.navlink:hover {
-  background: var(--social-bg);
-}
-
-.navlink--active {
-  background: var(--accent-bg);
-  color: var(--text-h);
-  font-weight: 500;
-}
-
 /*
- * Dashboard (T16). `#root` above sets `text-align: center` for the marketing-template
- * shell this app started from; a table of levels and two data charts read better left-
- * aligned, so the dashboard resets it locally rather than fighting centered text on every
- * child component.
- *
- * Breakpoint: charts stack in one column up to 880px (a phone, and a laptop window that
- * isn't maximized), and sit side by side above it -- GexByStrike and GammaProfile are each
- * built with an internal min sensible width (their ECharts canvases have a fixed `height`
- * but scale their own width), so neither needs a bespoke breakpoint of its own.
+ * Dashboard (T16). Breakpoint: charts stack in one column up to 880px (a phone, and a
+ * laptop window that isn't maximized), and sit side by side above it -- GexByStrike and
+ * GammaProfile are each built with an internal min sensible width (their ECharts canvases
+ * have a fixed `height` but scale their own width), so neither needs a bespoke breakpoint
+ * of its own. (T63: this used to also reset `text-align: left` against the old `#root`'s
+ * `text-align: center` -- gone now that the root shell doesn't center text at all.)
  */
 .dashboard {
   display: flex;
   flex-direction: column;
   gap: 16px;
   padding: 16px;
-  text-align: left;
 }
 
 .dashboard-charts {
@@ -347,25 +646,46 @@ code {
   }
 }
 
-.dashboard-hint {
-  margin: 0;
-  font-size: 12px;
-  color: var(--text);
-}
-
-.dashboard-hint kbd {
-  font-family: var(--mono);
-  border: 1px solid var(--border);
-  border-radius: 3px;
-  padding: 0 4px;
+/* T69: below the same 880px breakpoint `.dashboard-charts` itself uses, the four-tile
+   spot/net-GEX/wall/flip strip becomes a 2-column grid instead of wrapping into three rows
+   (the user's own density review). `.metric-strip`'s own flex/wrap rule is untouched --
+   every other `MetricStrip` caller (Decisions/Regime/Rotation/Flows/Report) that doesn't pass
+   this class renders exactly as before. */
+@media (max-width: 879px) {
+  .dashboard-metric-strip {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: var(--space-3);
+  }
+  .dashboard-metric-strip .metric-card {
+    min-width: 0;
+    flex: unset;
+  }
 }
 
 /*
+ * T66 — KeyLevels' card. The outer background/border/padding now comes from `Surface`
+ * (`.ui-surface--raised/--bordered/--padded`); these rules only style the content inside it.
+ * Tokens only, same discipline as the rest of this file — the one exception is the net-GEX
+ * dot's `background`, set inline per-render from `theme/vizPalette.ts` (see the component's
+ * own docstring for why that one value stays out of CSS).
+ */
+.key-levels__title { margin: 0; font-size: 16px; color: var(--text-strong); }
+.key-levels__net { margin: var(--space-3) 0; display: flex; align-items: baseline; gap: var(--space-2); }
+.key-levels__net-dot { display: inline-block; width: 10px; height: 10px; border-radius: 50%; }
+.key-levels__net-label { font-size: 13px; color: var(--text-default); }
+.key-levels__net-value { font-size: 20px; }
+.key-levels__net-note { margin: 0 0 var(--space-3); font-size: 13px; color: var(--text-default); }
+.key-levels__note { margin: var(--space-2) 0 0; font-size: 12px; color: var(--text-muted); }
+.key-levels__freshness { margin: var(--space-3) 0 0; font-size: 12px; color: var(--text-muted); }
+
+/*
  * T55 shared kit (EmptyState, ErrorState, ScanTable, PercentileBar, StatusChip, SymbolCell,
- * BarsFreshness) plus the TopBar's route-aware scan toolbar. Every colour below is a CSS
- * custom-property token (`--text`, `--text-h`, `--bg`, `--border`, `--accent*`, `--mono`);
- * per-series/data colours (percentile fill, status-chip dot) are set inline from
- * `vizPaletteFor` at the component, not here, per `theme/vizPalette.ts`'s own rule.
+ * BarsFreshness) plus the ContextBar's route-aware scan toolbar (`.context-bar--scan` above).
+ * Every colour below is a CSS custom-property token (`--text`, `--text-h`, `--bg`,
+ * `--border`, `--accent*`, `--mono`); per-series/data colours (percentile fill, status-chip
+ * dot) are set inline from `vizPaletteFor` at the component, not here, per
+ * `theme/vizPalette.ts`'s own rule.
  */
 
 .empty-state {
@@ -392,10 +712,6 @@ code {
 
 .error-state {
   margin: 0;
-}
-
-.topbar--scan {
-  justify-content: space-between;
 }
 
 .scan-table-container {
@@ -527,7 +843,7 @@ code {
    --------------------------------------------------------------------------- */
 
 .scan-page { padding: 16px; display: flex; flex-direction: column; gap: 12px; }
-.scan-page__loading, .scan-detail__loading { color: var(--text); opacity: 0.7; margin: 8px 0; }
+.scan-page__loading, .scan-detail__loading, .loading-state { color: var(--text); opacity: 0.7; margin: 8px 0; }
 
 .scan-toolbar { display: flex; flex-wrap: wrap; gap: 16px; align-items: center; }
 .scan-toolbar__group { display: flex; align-items: center; gap: 4px; }
@@ -612,11 +928,32 @@ code {
 .rotation-page { padding: 16px; display: flex; flex-direction: column; gap: 12px; }
 
 /* Chart square, min 480px (07-ui.md); rank table + breadth stacked in a fixed side column,
-   dropping below the chart on narrow screens -- the same stacking rule /scan's layout uses. */
+   dropping below the chart on narrow screens -- the same stacking rule /scan's layout uses.
+   T68: the two-column grid (480px-min chart + 360px side + 16px gap = 856px minimum) still
+   forced page-level horizontal overflow at 1024px, where the content column (viewport minus
+   the rail and page padding) has less than 856px to give it -- a `min(480px, 100%)` attempt
+   on the track/chart min-width did not help; percentages inside a grid track's `minmax()`
+   don't reliably resolve here because this grid's own container is itself sized by a flex
+   ancestor (`.rotation-page`), so the grid's available width isn't known when the browser
+   would need to resolve that percentage. Widening the single-column breakpoint to 1150px
+   (comfortably above the 856px floor plus the rail/padding this app's shell reserves) is the
+   same one-property fix `/scan`'s never-overflowed layout uses -- no fixed floor above the
+   breakpoint it can't satisfy, single column stacking below it, same as always. */
 .rotation-layout { display: grid; grid-template-columns: minmax(480px, 1fr) 360px; gap: 16px; align-items: start; }
-@media (max-width: 900px) { .rotation-layout { grid-template-columns: 1fr; } }
-.rotation-layout__chart { min-width: 480px; aspect-ratio: 1; max-width: 100%; }
+@media (max-width: 1150px) { .rotation-layout { grid-template-columns: 1fr; } }
+/* T68, second half of the same finding: squeezing the RRG chart itself below 480px (which a
+   naive `min-width: min(480px, 100%)` here would do below the breakpoint) doesn't just shrink
+   it -- ECharts' axis labels and quadrant text aren't designed to reflow at that size and
+   visibly overlap well before 390px. `.rotation-layout__chart` itself now just needs to be a
+   normal shrinkable grid item (`min-width: 0`, same override `.rotation-layout__side` already
+   had); the actual 480px floor moves to `.rotation-chart-scroll`'s child box below, which is
+   free to overflow its own (`overflow-x: auto`) scroll viewport instead of either the page or
+   ECharts. Same "contained horizontal scroll is fine and expected" rule this plan already
+   applies to tables -- extended to a chart that has a genuine minimum legible size. */
+.rotation-layout__chart { min-width: 0; max-width: 100%; }
 .rotation-layout__side { min-width: 0; display: flex; flex-direction: column; gap: 16px; }
+.rotation-chart-scroll { overflow-x: auto; max-width: 100%; }
+.rotation-chart-box { min-width: 480px; aspect-ratio: 1; }
 
 .rotation-chart-head { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; }
 
@@ -736,6 +1073,15 @@ code {
   cursor: help;
 }
 
+/* T69 -- `compact` mode (Overview only; `/regime` never sets this). The primary vol/term
+   -structure tiles reuse `.regime-strip`'s own flex-wrap layout; the secondary five sit in the
+   same layout again, just inside a native `<details>` styled like `.rotation-info`. */
+.regime-strip--compact { flex-direction: column; align-items: stretch; gap: var(--space-2); }
+.regime-strip__primary { display: flex; flex-wrap: wrap; gap: 10px; }
+.regime-strip__secondary { display: flex; flex-wrap: wrap; gap: 10px; margin-top: var(--space-2); }
+.regime-strip__more { font-size: 12px; color: var(--text); }
+.regime-strip__more summary { cursor: pointer; color: var(--accent); }
+
 /* ---------------------------------------------------------------------------
    T53 -- /flows page. Same token discipline as every scan-family page above: no literal
    colours here; FlowBars/FlowSparkline read theme/vizPalette.ts directly for their diverging
@@ -824,6 +1170,13 @@ code {
 
 .overview-block { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
 
+/* T69 -- CaptureFreshnessStrip's compact status line + collapsed per-symbol disclosure. Same
+   minimal "native <details>, only style cursor/color" treatment `.rotation-info` established. */
+.capture-freshness { display: flex; flex-direction: column; gap: var(--space-2); }
+.capture-freshness__detail { font-size: 12px; color: var(--text); }
+.capture-freshness__detail summary { cursor: pointer; color: var(--accent); }
+.capture-freshness__detail .metric-strip { margin-top: var(--space-2); }
+
 .overview-block__head {
   display: flex;
   align-items: baseline;
@@ -865,6 +1218,12 @@ code {
 .decisions-grade { font-family: var(--mono); white-space: nowrap; }
 .decisions-setup { white-space: nowrap; }
 
+/* T64: this used to be `.scan-detail decisions-detail` (the layout/gap came from the removed
+ * `.scan-detail` class, on the wrapper `OpportunityDetail` no longer renders itself now that
+ * `ui/DetailDrawer` owns that chrome) -- restated here so the section-to-section spacing is
+ * unchanged. */
+.decisions-detail { display: flex; flex-direction: column; gap: var(--space-3); }
+
 .decisions-detail__chips { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
 .decisions-detail__rejection { margin: 0; font-size: 12px; color: var(--text); opacity: 0.85; }
 .decisions-detail__h {
@@ -892,7 +1251,11 @@ code {
 
 .decisions-notrade__list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
 .decisions-notrade__item { border: 1px solid var(--border); border-radius: 3px; padding: 6px 10px; font-size: 12px; }
-.decisions-notrade__item summary { cursor: pointer; }
+/* T68: symbol link + disclosure are now siblings, not link-inside-summary -- see
+   NoTradeList.tsx. `align-items: baseline` keeps them reading as one line, same as before. */
+.decisions-notrade__row { display: flex; align-items: baseline; gap: 6px; }
+.decisions-notrade__details { flex: 1 1 auto; min-width: 0; }
+.decisions-notrade__details summary { cursor: pointer; }
 .decisions-notrade__first { color: var(--text); opacity: 0.8; }
 .decisions-notrade__reasons { margin: 6px 0 0 16px; padding: 0; }
 .decisions-notrade__nochain { font-size: 12px; color: var(--text); opacity: 0.7; margin: 8px 0 0; }
@@ -911,3 +1274,372 @@ code {
 .track-record__r--neg { opacity: 0.85; }
 .track-record__unrealized { font-size: 11px; opacity: 0.6; margin-left: 4px; }
 .track-record__notecell { max-width: 36ch; white-space: normal; font-size: 11px; color: var(--text); opacity: 0.75; }
+
+/* ---------------------------------------------------------------------------------------
+ * T63 — CommandPalette (Ctrl/Cmd+K). A modal-ish overlay, dismissed the same way the side
+ * rail's narrow drawer is (`useOverlayDismiss`): Escape, a click on the backdrop, and focus
+ * returned to whatever had focus before it opened.
+ * ------------------------------------------------------------------------------------- */
+
+.command-palette-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.4);
+  z-index: 50;
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding-top: 12vh;
+}
+
+.command-palette {
+  width: min(560px, 92vw);
+  max-height: 70vh;
+  background: var(--surface-app);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--elevation-2);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.command-palette__input-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-3) var(--space-4);
+  border-bottom: 1px solid var(--border-default);
+}
+
+.command-palette__icon {
+  flex: 0 0 auto;
+  width: 18px;
+  height: 18px;
+  color: var(--text-muted);
+}
+
+.command-palette__input {
+  flex: 1 1 auto;
+  min-width: 0;
+  font: inherit;
+  font-size: 15px;
+  color: var(--text-strong);
+  background: transparent;
+  border: none;
+  outline: none;
+}
+
+.command-palette__list {
+  list-style: none;
+  margin: 0;
+  padding: var(--space-2);
+  overflow-y: auto;
+}
+
+.command-palette__item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  padding: 8px var(--space-3);
+  border-radius: var(--radius-sm);
+  color: var(--text-default);
+  cursor: pointer;
+}
+
+.command-palette__item--active {
+  background: var(--accent-bg);
+  color: var(--text-strong);
+}
+
+.command-palette__item-label {
+  font-size: 14px;
+  color: inherit;
+}
+
+.command-palette__item-hint {
+  font-size: 11px;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.command-palette__empty {
+  padding: var(--space-3);
+  color: var(--text-muted);
+  font-size: 13px;
+}
+
+/* A visible keyboard-focus ring on every interactive element the new shell adds. Existing
+ * page-level controls keep whatever focus treatment they already had (out of scope here --
+ * T64 generalizes focus styling app-wide); this rule only reaches AppFrame/SideRail/
+ * ContextBar/CommandPalette because it's scoped under `.app-frame`. */
+.app-frame :is(a, button, input, [role='option'], [tabindex]):focus-visible {
+  outline: 2px solid var(--focus-ring-color);
+  outline-offset: 2px;
+}
+
+/* ---------------------------------------------------------------------------------------
+ * T64 — shared data-display primitives (components/ui/*, plus components/LoadingState.tsx).
+ * Every rule below reads only T63's semantic tokens (--surface-*, --text-*, --border-default,
+ * --status-*, --space-*, --radius-*, --elevation-*); nothing here introduces a new hex or
+ * palette value. `.scan-toolbar*` classes are deliberately reused as-is by `ui/Toolbar.tsx`
+ * rather than duplicated -- see that file's own docstring.
+ * ------------------------------------------------------------------------------------- */
+
+.ui-surface--app { background: var(--surface-app); }
+.ui-surface--raised { background: var(--surface-raised); }
+.ui-surface--subtle { background: var(--surface-subtle); }
+.ui-surface--bordered {
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-md);
+  box-shadow: var(--elevation-1);
+}
+.ui-surface--padded { padding: var(--space-4); }
+
+.page-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: var(--space-4);
+  flex-wrap: wrap;
+  margin-bottom: var(--space-4);
+}
+.page-header__main { min-width: 0; display: flex; flex-direction: column; gap: var(--space-1); }
+.page-header__title { margin: 0; font-size: 20px; color: var(--text-strong); }
+.page-header__description { margin: 0; font-size: 13px; color: var(--text-default); max-width: 70ch; }
+.page-header__caveat { font-size: 12px; color: var(--text-muted); max-width: 80ch; }
+.page-header__actions { display: flex; align-items: center; gap: var(--space-2); flex-shrink: 0; }
+
+.metric-strip { display: flex; flex-wrap: wrap; gap: var(--space-3); }
+.metric-card { display: flex; flex-direction: column; gap: 4px; min-width: 140px; flex: 1 1 140px; }
+.metric-card__label { font-size: 11px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--text-muted); }
+.metric-card__value {
+  font-size: 22px; font-family: var(--mono); color: var(--text-strong); font-variant-numeric: tabular-nums;
+}
+.metric-card__hint { font-size: 12px; color: var(--text-muted); }
+.metric-card__status {
+  display: inline-flex; align-items: center; gap: 6px; font-size: 12px; color: var(--text-default);
+  width: fit-content;
+}
+.metric-card__status-dot { width: 7px; height: 7px; border-radius: 50%; }
+.metric-card__status--positive .metric-card__status-dot { background: var(--status-positive); }
+.metric-card__status--negative .metric-card__status-dot { background: var(--status-negative); }
+.metric-card__status--caution .metric-card__status-dot { background: var(--status-caution); }
+.metric-card__status--info .metric-card__status-dot { background: var(--status-info); }
+.metric-card__status--neutral .metric-card__status-dot { background: var(--text-muted); }
+
+/* T69: `density="compact"` -- a one-line status card (Overview's capture-freshness summary)
+   instead of a stacked stat card. Row layout; the (visually hidden, `.sr-only`) label no
+   longer reserves its own line. Every other `.metric-card` (no `--compact` class) is
+   untouched. */
+.metric-card--compact {
+  flex-direction: row;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  min-width: 0;
+  flex: 0 1 auto;
+  padding: var(--space-2) var(--space-3);
+}
+.metric-card--compact .metric-card__value { font-size: 14px; font-family: inherit; }
+.metric-card--compact .metric-card__hint { margin: 0; }
+.metric-card--compact .metric-card__status { margin: 0; }
+
+/* T68: flex/grid items default to an automatic min-width of "content's min-content size",
+   not 0 -- a plain `overflow-x: auto` one level down (`.scan-table-container`, inside this
+   frame) only stops *that* element from forcing its own ancestor flex/grid track wider; it
+   does nothing for this frame's own min-width when *this* frame is itself a flex item of a
+   narrower column (e.g. `.rotation-layout__side`'s fixed 360px side column). Without this,
+   a wide table pushed the whole page wider than the viewport instead of only scrolling
+   inside its own container. `min-width: 0` is exactly the override `.rotation-layout__side`
+   itself already carries, one layer further in. */
+.data-table-frame { display: flex; flex-direction: column; gap: var(--space-2); min-width: 0; }
+.data-table-frame__head {
+  display: flex; justify-content: space-between; align-items: flex-start; gap: var(--space-3); flex-wrap: wrap;
+}
+.data-table-frame__title {
+  margin: 0; font-size: 12px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--text-strong);
+}
+.data-table-frame__cue { margin: 2px 0 0; font-size: 12px; color: var(--text-muted); max-width: 70ch; }
+.data-table-frame__timing { margin: 0; font-size: 12px; color: var(--text-muted); max-width: 80ch; }
+.data-table-frame__actions { display: flex; align-items: center; gap: var(--space-2); }
+
+/* DetailDrawer: docked in normal page flow at desktop (no scrim -- `.detail-drawer-scrim` is
+ * an inert, non-positioned wrapper); a fixed, dimmed, full-viewport overlay sliding from the
+ * bottom at or below 640px. The panel itself keeps identical focus/dialog semantics at every
+ * width -- only its CSS position changes. */
+.detail-drawer-scrim { display: block; }
+.detail-drawer {
+  border-top: 1px solid var(--border-default);
+  margin-top: var(--space-2);
+  padding-top: var(--space-3);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  background: var(--surface-app);
+}
+.detail-drawer__head { display: flex; justify-content: space-between; align-items: baseline; gap: var(--space-3); }
+.detail-drawer__title {
+  font-size: 12px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--text-strong); margin: 0;
+}
+.detail-drawer__close {
+  font: inherit; font-size: 12px; cursor: pointer; background: none;
+  border: 1px solid var(--border-default); border-radius: var(--radius-sm); padding: 2px 8px; color: var(--text-default);
+}
+.detail-drawer__body { display: flex; flex-direction: column; gap: var(--space-3); }
+
+@media (max-width: 640px) {
+  .detail-drawer-scrim {
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.4);
+    z-index: 60;
+    display: flex;
+    align-items: flex-end;
+    justify-content: center;
+  }
+  .detail-drawer {
+    width: 100%;
+    max-height: 88vh;
+    overflow-y: auto;
+    border-top: none;
+    border-radius: var(--radius-lg) var(--radius-lg) 0 0;
+    box-shadow: var(--elevation-2);
+    padding: var(--space-4);
+    margin-top: 0;
+  }
+}
+
+/* Generic visually-hidden utility -- same recipe `.scan-table caption` and the collapsed
+   rail's group title already use inline, named once so a new caller doesn't have to repeat
+   it (T67 adds the second and third callers, both table captions on /report). */
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
+
+/* ---------------------------------------------------------------------------------------
+ * T67 -- /report page. Same token discipline as every block above: no literal colours except
+ * the vizPaletteFor-driven support/resistance chip border+dot (`.report-level-chip`'s
+ * `border-color`/`.report-level-chip__dot`'s `background`, set inline per-render) -- the one
+ * deliberate exception, same rule `KeyLevels`' net-GEX dot already follows. Replaces 82 inline
+ * -style clusters that used to read `theme/vizPalette.ts`'s generic surface/text/gridline
+ * roles for plain card chrome; those become ordinary CSS tokens here since they were never
+ * actually chart/level colours, just card/text chrome that happened to be styled via the
+ * chart palette instead of `index.css` (see Report.tsx's module docstring for the full
+ * reasoning). `history-page`/`settings-page` are the small companion rulesets for the other
+ * two pages this task touches.
+ * ------------------------------------------------------------------------------------- */
+
+.report-page { padding: 16px; display: flex; flex-direction: column; gap: var(--space-3); }
+
+.report-header-actions { display: flex; align-items: center; gap: var(--space-2); font-size: 13px; }
+.report-header-actions input { width: 110px; font: inherit; }
+.report-cfd-missing { font-size: 13px; color: var(--text-muted); }
+.report-cfd-error { margin: 0; font-size: 12px; color: var(--text-default); }
+
+.report-note {
+  margin: 0 0 var(--space-3);
+  font-size: 12px;
+  color: var(--text-default);
+  border-left: 3px solid var(--border-default);
+  padding-left: 10px;
+}
+
+.report-summary-cards { display: flex; flex-wrap: wrap; gap: var(--space-3); }
+.report-summary-card { flex: 1 1 220px; min-width: 220px; }
+.report-summary-card .metric-card__value { font-size: 26px; }
+.report-summary-card__line { display: block; }
+.report-summary-card__subvalue { display: block; font-size: 15px; color: var(--text-default); }
+.report-iv-label { display: block; color: var(--text-strong); }
+.report-iv-label--muted { color: var(--text-muted); }
+.report-positioning-label { display: block; font-size: 14px; font-weight: 600; color: var(--text-strong); }
+.report-positioning-desc { display: block; font-size: 12px; color: var(--text-default); }
+
+/* T69 -- Gamma exposure/Premium selling screen/Playbook/Risk alerts/Summary become native
+   <details> disclosures, collapsed by default (Levels-straddling-spot and the three top
+   summary cards stay outside this, always visible). Same minimal "style cursor/colour only"
+   treatment `.rotation-info` already established -- no bespoke focus-trap code, `<details>`
+   is natively keyboard-operable. The heading lives inside `<summary>` (an h2, so heading-order
+   navigation is unaffected), so it never repeats once the section is opened. */
+.report-disclosure { margin-top: var(--space-4); }
+.report-disclosure > summary { cursor: pointer; list-style: revert; }
+.report-disclosure > summary .report-section-title { display: inline; margin: 0; }
+.report-disclosure .report-section { margin-top: var(--space-3); }
+
+.report-section { margin-top: var(--space-4); }
+/* T68: was `<h3>` with nothing else on the page above `h2` -- every one of these sections
+   sits directly under PageHeader's `h1`, so `h3` skipped a level (axe-core "heading-order").
+   Now `<h2>`; `font-weight: 700` pins the same bold weight the browser's default h3 styling
+   already gave it, since the generic `h1, h2 { font-weight: 500 }` rule two rules above this
+   one would otherwise make it visibly lighter once retagged. */
+.report-section-title { margin: 0 0 var(--space-2); font-size: 14px; font-weight: 700; color: var(--text-strong); }
+.report-muted { margin: 0; font-size: 13px; color: var(--text-muted); }
+.report-muted--spaced { margin: 0 0 8px; font-size: 13px; color: var(--text-muted); }
+.report-muted-inline { color: var(--text-muted); }
+
+.report-level-chips { display: flex; flex-wrap: wrap; gap: var(--space-2); margin: 0; padding: 0; }
+.report-level-chip {
+  display: inline-flex;
+  align-items: baseline;
+  gap: var(--space-2);
+  border: 1px solid;
+  border-radius: 999px;
+  padding: 4px 12px;
+  background: var(--surface-raised);
+  color: var(--text-strong);
+  list-style: none;
+}
+.report-level-chip__dot { width: 8px; height: 8px; border-radius: 50%; align-self: center; }
+.report-level-chip__strike { font-size: 15px; }
+.report-level-chip__distance { font-size: 12px; color: var(--text-default); }
+.report-level-chip__gex { font-size: 12px; color: var(--text-muted); }
+.report-level-chip__cfd { font-size: 12px; color: var(--text-muted); }
+
+.report-candidate-table { width: 100%; margin-bottom: var(--space-2); border-collapse: collapse; font-size: 13px; }
+.report-candidate-table th, .report-candidate-table td { padding: 4px 8px 4px 0; text-align: left; }
+.report-candidate-table th { color: var(--text-muted); font-weight: 500; }
+
+.report-playbook-cards { display: flex; flex-wrap: wrap; gap: var(--space-3); }
+.report-playbook-card {
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-md);
+  padding: var(--space-3);
+  flex: 1 1 240px;
+}
+.report-playbook-card__title { margin: 0 0 var(--space-2); font-size: 14px; }
+.report-playbook-card__rows { margin: 0; font-size: 13px; }
+.report-playbook-card__row { display: flex; justify-content: space-between; gap: var(--space-2); padding: 2px 0; }
+.report-playbook-card__label { color: var(--text-default); }
+.report-playbook-card__value { margin: 0; font-variant-numeric: tabular-nums; }
+.report-playbook-card__strategy { margin: var(--space-2) 0 0; font-size: 12px; color: var(--text-muted); }
+
+.report-alerts { margin: 0; padding-left: 18px; }
+.report-alerts li { font-size: 13px; margin-bottom: 4px; }
+
+.report-fulltext-actions { display: flex; align-items: center; gap: var(--space-3); margin-bottom: var(--space-2); }
+.report-fulltext-copy-status { font-size: 12px; color: var(--text-default); }
+.report-fulltext {
+  max-height: 420px;
+  overflow: auto;
+  background: var(--surface-raised);
+  color: var(--text-strong);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-md);
+  padding: var(--space-3);
+  font-size: 12px;
+  line-height: 1.45;
+  margin: 0;
+  font-family: var(--mono);
+}
+
+.history-page { padding: 16px; display: flex; flex-direction: column; gap: var(--space-3); }
+
+.settings-page { padding: 16px; display: flex; flex-direction: column; gap: var(--space-3); max-width: 640px; }
+.settings-section { display: flex; flex-direction: column; gap: var(--space-2); }

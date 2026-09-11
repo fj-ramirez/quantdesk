@@ -24,6 +24,18 @@
  * `flow_pct` at each of the three supported windows, so this page fetches all three
  * (`useFlows(5|20|60)`) regardless of which one the toolbar has active, and plots exactly
  * those three real points.
+ *
+ * **T66.** `PageHeader` names the page and what it answers. Per the plan's own example
+ * ("Flows' source-lag banner content" as the caveat-slot fit), `FlowsBanner` -- the 4th state
+ * beyond the usual error/pending/empty triad -- now renders inside `PageHeader`'s `caveat`
+ * slot rather than as a freestanding section between the toolbar and the chart: same
+ * component, same props, same conditional content (families lag / unsupported-fund count),
+ * only moved earlier in the reading order (page question -> caveat/freshness -> toolbar ->
+ * chart/table), per the plan's own template for this page group. The Window toggle now
+ * renders through `ui/Toolbar`'s `SegmentedControl`; the compact per-fund table is wrapped in
+ * `DataTableFrame`. Nothing about the banner's, the "no flow data" list's, or the table's own
+ * fetch/render logic changed -- the 4-state model (loading, error, empty, and this banner-plus
+ * -no_flow_data state) is otherwise untouched.
  */
 import { useCallback } from 'react';
 import { useFlows, useCaptureHealth } from '../api/queries';
@@ -34,8 +46,12 @@ import { ScanTable } from '../components/scan/ScanTable';
 import { SymbolCell } from '../components/scan/SymbolCell';
 import { EmptyState } from '../components/EmptyState';
 import { ErrorState } from '../components/ErrorState';
+import { LoadingState } from '../components/LoadingState';
 import { FlowBars } from '../components/flows/FlowBars';
 import { FlowSparkline, type FlowSparklinePoint } from '../components/flows/FlowSparkline';
+import { PageHeader } from '../components/ui/PageHeader';
+import { SegmentedControl, Toolbar } from '../components/ui/Toolbar';
+import { DataTableFrame } from '../components/ui/DataTableFrame';
 import { formatBarsThrough } from '../lib/time';
 import { formatSignedPct } from '../lib/format';
 
@@ -45,27 +61,6 @@ const FAMILY_LABEL: Record<string, string> = {
 };
 
 const FLOWS_DEFAULT_SORT = 'flow_pct';
-
-function WindowToolbar({ active, onChange }: { active: number; onChange: (next: number) => void }) {
-  return (
-    <div className="scan-toolbar__group" role="group" aria-label="Window">
-      <span className="scan-toolbar__label">Window</span>
-      {SCAN_WINDOW_VALUES.map((value) => (
-        <button
-          key={value}
-          type="button"
-          className={
-            value === active ? 'scan-toolbar__btn scan-toolbar__btn--active' : 'scan-toolbar__btn'
-          }
-          aria-pressed={value === active}
-          onClick={() => onChange(value)}
-        >
-          {value}d
-        </button>
-      ))}
-    </div>
-  );
-}
 
 /** Reads one symbol's `flow_pct` out of a (possibly still-loading) window response. `null`
  * both when the symbol genuinely has no computed flow and while the query hasn't resolved yet
@@ -146,20 +141,26 @@ export function Flows() {
 
   return (
     <div className="flows-page">
-      <div className="scan-toolbar">
-        <WindowToolbar active={activeWindow} onChange={setWindow} />
-      </div>
-
-      <FlowsBanner
-        families={captureHealth.data?.flows.families}
-        fallbackSources={active.data?.sources}
-        noFlowData={active.data?.no_flow_data}
+      <PageHeader
+        title="Flows"
+        description="ETF creation/redemption flow per fund, relative to AUM."
+        caveat={
+          <FlowsBanner
+            families={captureHealth.data?.flows.families}
+            fallbackSources={active.data?.sources}
+            noFlowData={active.data?.no_flow_data}
+          />
+        }
       />
+
+      <Toolbar>
+        <SegmentedControl label="Window" values={SCAN_WINDOW_VALUES} active={activeWindow} render={(v) => `${v}d`} onChange={setWindow} />
+      </Toolbar>
 
       {active.isError ? (
         <ErrorState message="Could not load ETF flow data." />
       ) : active.isPending ? (
-        <p className="scan-page__loading">Reading ETF flow data…</p>
+        <LoadingState message="Reading ETF flow data…" />
       ) : !active.data ? (
         <EmptyState heading="No flow data available" />
       ) : (
@@ -184,15 +185,20 @@ export function Flows() {
             </section>
           )}
 
-          <ScanTable<FlowRow>
-            columns={columns}
-            rows={toRows(active.data.symbols)}
-            sort={effectiveSort}
-            dir={dir}
-            onSort={onSort}
-            rowKey={(row) => row.symbol}
-            caption="Per-fund flow percent and trend across the three supported windows"
-          />
+          <DataTableFrame
+            title="Flow percent and trend"
+            readingCue="Per-fund flow percent and trend across the three supported windows."
+          >
+            <ScanTable<FlowRow>
+              columns={columns}
+              rows={toRows(active.data.symbols)}
+              sort={effectiveSort}
+              dir={dir}
+              onSort={onSort}
+              rowKey={(row) => row.symbol}
+              caption="Per-fund flow percent and trend across the three supported windows"
+            />
+          </DataTableFrame>
         </>
       )}
     </div>

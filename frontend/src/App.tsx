@@ -1,5 +1,5 @@
 import { Route, Routes } from 'react-router-dom';
-import { AppShell } from './components/layout/AppShell';
+import { AppFrame } from './components/layout/AppFrame';
 import { Dashboard } from './pages/Dashboard';
 import { History } from './pages/History';
 import { Report } from './pages/Report';
@@ -21,7 +21,7 @@ import { Decisions } from './pages/Decisions';
 export function App() {
   return (
     <Routes>
-      <Route element={<AppShell />}>
+      <Route element={<AppFrame />}>
         {/* The user made Overview the landing page on 2026-09-10 (07-ui.md's T56 spec left
             this open: "becomes the nav's default landing when the user says so"). `/overview`
             still resolves to the same page, so every link, bookmark and test that names it

@@ -15,6 +15,12 @@
  * The `RegimeStrip` at the top is T54's component, wired in here once that task landed. It
  * owns its own query and its own loading/error/`n/a` states, so this page renders it
  * unconditionally rather than gating it -- and never a placeholder row of dashes (07-ui.md).
+ *
+ * T66: `PageHeader` names the page and what it answers; the filter button row (this file's
+ * own hand-rolled `FilterToolbar`) now renders through `ui/Toolbar`'s
+ * `Toolbar`/`SegmentedControl` -- identical DOM/classes/`aria-pressed` behavior, same URL
+ * state. The board is wrapped in `DataTableFrame`. No row here opens a detail panel, so
+ * `DetailDrawer` does not apply to this page.
  */
 import { useCallback } from 'react';
 import { useRegime } from '../api/queries';
@@ -25,33 +31,16 @@ import { RegimeTable } from '../components/regime/RegimeTable';
 import { toRegimeRows, REGIME_DEFAULT_SORT } from '../components/regime/regimeRows';
 import { EmptyState } from '../components/EmptyState';
 import { ErrorState } from '../components/ErrorState';
+import { LoadingState } from '../components/LoadingState';
+import { PageHeader } from '../components/ui/PageHeader';
+import { SegmentedControl, Toolbar } from '../components/ui/Toolbar';
+import { DataTableFrame } from '../components/ui/DataTableFrame';
 
 /** The board's own toolbar only offers the three filters `07-ui.md` names -- the dashboard's
  * full `EXPIRY_FILTERS` enum also has `THIS_WEEK`/`MONTHLY_ONLY`, which this board doesn't
  * expose (a hand-edited or old URL carrying one of those still round-trips through
  * `useDashboardParams`'s own validator; it just has no active button here). */
 const REGIME_FILTERS: readonly ExpiryFilter[] = ['ALL', 'ZERO_DTE', 'EX_ZERO_DTE'];
-
-function FilterToolbar({ active, onChange }: { active: ExpiryFilter; onChange: (next: ExpiryFilter) => void }) {
-  return (
-    <div className="scan-toolbar__group" role="group" aria-label="Filter">
-      <span className="scan-toolbar__label">Filter</span>
-      {REGIME_FILTERS.map((value) => (
-        <button
-          key={value}
-          type="button"
-          className={
-            value === active ? 'scan-toolbar__btn scan-toolbar__btn--active' : 'scan-toolbar__btn'
-          }
-          aria-pressed={value === active}
-          onClick={() => onChange(value)}
-        >
-          {EXPIRY_FILTER_LABELS[value]}
-        </button>
-      ))}
-    </div>
-  );
-}
 
 export function Regime() {
   const { filter, setFilter } = useDashboardParams();
@@ -72,30 +61,43 @@ export function Regime() {
 
   return (
     <div className="regime-page">
+      <PageHeader title="Regime" description="Dealer-positioning regime for each symbol, right now." />
+
       {/* T54's cross-asset strip, wired in by the supervisor once that task landed. It owns
           its own query and its own empty/error states, so it is rendered unconditionally. */}
       <RegimeStrip />
 
-      <div className="scan-toolbar">
-        <FilterToolbar active={filter} onChange={setFilter} />
-      </div>
+      <Toolbar>
+        <SegmentedControl
+          label="Filter"
+          values={REGIME_FILTERS}
+          active={filter}
+          render={(value) => EXPIRY_FILTER_LABELS[value]}
+          onChange={setFilter}
+        />
+      </Toolbar>
 
       {regime.isError ? (
         <ErrorState message="Could not load the regime board." />
       ) : regime.isPending ? (
-        <p className="scan-page__loading">Scoring dealer positioning across the universe…</p>
+        <LoadingState message="Scoring dealer positioning across the universe…" />
       ) : !regime.data || regime.data.rows.length === 0 ? (
         <EmptyState heading="No symbols scored">
           No option chains are captured for the regime board yet.
         </EmptyState>
       ) : (
-        <RegimeTable
-          rows={toRegimeRows(regime.data.rows)}
-          filterSearch={`filter=${filter}`}
-          sort={effectiveSort}
-          dir={dir}
-          onSort={onSort}
-        />
+        <DataTableFrame
+          title="Dealer positioning regime"
+          readingCue="Sorted by group by default: continuation, then mixed, then fade, then noise-dominated, then stale."
+        >
+          <RegimeTable
+            rows={toRegimeRows(regime.data.rows)}
+            filterSearch={`filter=${filter}`}
+            sort={effectiveSort}
+            dir={dir}
+            onSort={onSort}
+          />
+        </DataTableFrame>
       )}
     </div>
   );

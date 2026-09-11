@@ -63,14 +63,22 @@ describe('Decisions page', () => {
     }
   });
 
-  it('clicking a row opens the detail panel with the thesis, invalidation and levels', async () => {
+  it('clicking a row opens the focus-managed detail drawer with the thesis, invalidation and levels', async () => {
     renderDecisions();
     await awaitLoaded();
     const first = fixture.ranked[0];
     const table = await screen.findByRole('table', { name: /ranked opportunities/i });
-    fireEvent.click(within(table).getAllByRole('row')[1]);
+    const firstRow = within(table).getAllByRole('row')[1];
+    // `.focus()` first, matching `SideRail.test.tsx`'s pattern for a `useOverlayDismiss`
+    // caller -- jsdom's `fireEvent.click` does not itself move focus the way a real browser's
+    // default click action does, so the row must already have focus for the drawer's
+    // focus-return-to-trigger behavior to be observable below.
+    firstRow.focus();
+    fireEvent.click(firstRow);
 
-    const panel = await screen.findByRole('region', { name: `${first.underlying} opportunity detail` });
+    const panel = await screen.findByRole('dialog', { name: new RegExp(`^${first.underlying} `) });
+    // Focus moved into the drawer (the first focusable element -- its own Close button).
+    expect(panel).toContainElement(document.activeElement as HTMLElement);
     for (const line of first.thesis) expect(within(panel).getByText(line)).toBeInTheDocument();
     for (const line of first.invalidation) expect(within(panel).getByText(line)).toBeInTheDocument();
     expect(within(panel).getByText(first.structure)).toBeInTheDocument();
@@ -81,7 +89,60 @@ describe('Decisions page', () => {
     expect(within(panel).getByText(`${first.score}/100`)).toBeInTheDocument();
 
     fireEvent.click(within(panel).getByRole('button', { name: 'Close' }));
-    expect(screen.queryByRole('region', { name: `${first.underlying} opportunity detail` })).not.toBeInTheDocument();
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    // Focus returns to the row that opened it.
+    expect(firstRow).toHaveFocus();
+  });
+
+  it('opens and closes the detail drawer entirely by keyboard -- Tab to the row, Enter to open, Escape to close, focus returns to the row', async () => {
+    renderDecisions();
+    await awaitLoaded();
+    const first = fixture.ranked[0];
+    const table = await screen.findByRole('table', { name: /ranked opportunities/i });
+    const firstRow = within(table).getAllByRole('row')[1];
+
+    // Tab reaches the row: it is a real Tab stop (`tabIndex={0}` from `ScanTable`), so
+    // moving focus onto it directly is the same outcome a keyboard user's Tab traversal
+    // would produce -- jsdom has no layout/tab-order engine to drive an actual Tab keypress
+    // across a whole page, so this asserts the row is reachable and focusable, then drives
+    // the rest of the interaction with real key events.
+    firstRow.focus();
+    expect(firstRow).toHaveFocus();
+
+    // Enter opens the drawer (not a click) -- `ScanTable`'s own onKeyDown handler.
+    fireEvent.keyDown(firstRow, { key: 'Enter' });
+    const panel = await screen.findByRole('dialog', { name: new RegExp(`^${first.underlying} `) });
+    expect(panel).toContainElement(document.activeElement as HTMLElement);
+
+    // Escape closes it (not the Close button) -- `useOverlayDismiss`'s document-level handler.
+    fireEvent.keyDown(document, { key: 'Escape' });
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    // Focus returns to the row that opened it.
+    expect(firstRow).toHaveFocus();
+  });
+
+  it('Space also activates a focused row, matching Enter', async () => {
+    renderDecisions();
+    await awaitLoaded();
+    const first = fixture.ranked[0];
+    const table = await screen.findByRole('table', { name: /ranked opportunities/i });
+    const firstRow = within(table).getAllByRole('row')[1];
+    firstRow.focus();
+    fireEvent.keyDown(firstRow, { key: ' ' });
+    expect(await screen.findByRole('dialog', { name: new RegExp(`^${first.underlying} `) })).toBeInTheDocument();
+  });
+
+  it('reads status summary before filter/threshold before the ranked table, per the plan\'s Opportunities hierarchy', async () => {
+    const { container } = renderDecisions();
+    await awaitLoaded();
+    // `compareDocumentPosition`: DOCUMENT_POSITION_FOLLOWING (4) means the first node comes
+    // before the second in document order -- i.e. reading/tab order, not visual position.
+    const summary = screen.getByRole('group', { name: 'Opportunities at a glance' });
+    const toolbar = screen.getByRole('group', { name: 'Filter' });
+    const table = screen.getByRole('table', { name: /ranked opportunities/i });
+    expect(summary.compareDocumentPosition(toolbar) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(toolbar.compareDocumentPosition(table) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(container).toBeInTheDocument();
   });
 
   it('?min_score=75 drives the toolbar and trims the ranking to A grades', async () => {
