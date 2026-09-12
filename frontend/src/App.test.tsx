@@ -92,7 +92,12 @@ describe('App', () => {
 
     fireEvent.click(screen.getByRole('link', { name: 'History' }));
 
-    await waitFor(() => expect(screen.getByText(/level-history rows loaded for SPY/)).toBeInTheDocument());
+    // T15 replaced the row-count placeholder this used to assert on with the real chart and
+    // table. The chart region's aria-label still encodes the symbol, which is what this test
+    // is actually about -- that navigating to /history carried SPY over rather than resetting.
+    await waitFor(() =>
+      expect(screen.getByLabelText('SPY level history chart')).toBeInTheDocument(),
+    );
   });
 
   it('deep link ?symbol=XLK (a T47 extended symbol) renders cleanly rather than crashing the shell', async () => {

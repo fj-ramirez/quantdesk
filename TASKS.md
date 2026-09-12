@@ -187,6 +187,26 @@ Acceptance: both components render with mock and live data.
 ### T15 · Sonnet · T12, T11
 **Price chart with levels and level history**
 
+**Second bullet done 2026-09-11** (the user pointed at the "Table/chart mounts here (T15)"
+placeholder that had been on `/history` since T12's scaffold). `LevelHistory` (ECharts line
+chart: flip point, call wall, put wall and spot on one axis) and `LevelHistoryTable` now render
+there, both fed by the existing `useLevelsHistory` rows.
+
+Per the `dataviz` skill, invoked before writing the chart: colours are imported from
+`GexByStrike`'s `THEME_COLORS` rather than re-chosen, so calls stay blue and puts stay red
+across both charts; spot takes the app accent and flip takes primary ink, matching how
+`GexByStrike` already draws its derived net line. `validate_palette.js` passes all six checks in
+light; in dark it passes CVD/chroma/contrast and fails only the lightness band on `#c084fc`,
+the app's existing dark accent -- kept deliberately, since giving spot a different colour here
+would break the one-system requirement. Nulls are gaps, never zeros. Verified by rendering: both
+themes screenshotted in a real browser, no console errors, no horizontal overflow.
+
+**First bullet is obsolete, not outstanding.** It called for a new
+`GET /api/prices/{underlying}?days=30` sourcing daily OHLC from the Cboe delayed quote. T42
+superseded that entirely: `daily_bars` and `GET /api/bars/{symbol}` are the price source now,
+and T74 added intraday bars on top. A `PriceChart` with level overlays would be worth building
+on *that* data, as its own task, rather than resurrecting this bullet's endpoint.
+
 - `PriceChart`: Lightweight Charts candlesticks from a new endpoint `GET /api/prices/{underlying}?days=30` (add it to the backend; source daily OHLC from the Cboe delayed quote for the underlying, or from MarketData.app candles when configured). Overlay horizontal lines for call wall, put wall, flip.
 - `/history` page: table and small line chart of flip, call wall, put wall over time versus close, from the T11 history endpoint.
 

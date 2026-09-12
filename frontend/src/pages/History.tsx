@@ -5,15 +5,21 @@ import { ErrorState } from '../components/ErrorState';
 import { LoadingState } from '../components/LoadingState';
 import { PageHeader } from '../components/ui/PageHeader';
 import { Surface } from '../components/ui/Surface';
+import { DataTableFrame } from '../components/ui/DataTableFrame';
+import { LevelHistory } from '../components/charts/LevelHistory';
+import { LevelHistoryTable } from '../components/LevelHistoryTable';
 
 /**
- * `/history` shell. The table + line chart of flip/call wall/put wall vs. close over time
- * is T15's deliverable — this page only proves the data layer (`useLevelsHistory`) is
- * wired to the same URL state as the Dashboard, so a link to `/history?symbol=QQQ&...`
- * lands on QQQ's history, not a reset to SPX.
+ * `/history`. T15's chart and table, finally: how the flip point, call wall and put wall have
+ * moved against spot for the selected symbol. The page had carried a "Table/chart mounts here
+ * (T15)" placeholder since T12's scaffold; the user pointed at it on 2026-09-11.
+ *
+ * Chart above, table below, both fed by the same `useLevelsHistory` rows — the table is not a
+ * duplicate but the chart's required accessible equivalent (ECharts paints to `<canvas>`, which
+ * a screen reader cannot read) and the exact-value view a line chart only approximates.
  *
  * T67: gained the shared `PageHeader`/`LoadingState`/`ErrorState`/`EmptyState` treatment for
- * consistency with the rest of the app -- no table/chart is built here (still T15's job).
+ * consistency with the rest of the app.
  *
  * **Gap found while doing this task, worth flagging explicitly rather than silently
  * papering over:** the brief for this task assumed History already had a documented
@@ -47,17 +53,22 @@ export function History() {
       {isError && <ErrorState message={`Failed to load ${symbol} level history.`} />}
       {!isLoading && !isError && data && (
         data.length > 0 ? (
-          <Surface as="section" aria-label="Level history">
-            {/* TODO(T15): table + line chart of flip/call wall/put wall vs. close, from `data` */}
-            <p>
-              {data.length} level-history rows loaded for {symbol} ({filter}). Table/chart mounts
-              here (T15).
-            </p>
-          </Surface>
+          <>
+            <Surface as="section" aria-label={`${symbol} level history chart`}>
+              <LevelHistory rows={data} symbol={symbol} />
+            </Surface>
+            <DataTableFrame
+              title="Captures"
+              readingCue={`Every stored capture for ${symbol} (${filter}), newest first. A dash means the filter admitted no contracts at that capture, not a level of zero.`}
+              sourceTiming={`${data.length} capture${data.length === 1 ? '' : 's'} stored.`}
+            >
+              <LevelHistoryTable rows={data} />
+            </DataTableFrame>
+          </>
         ) : (
           <EmptyState heading="No level history yet">
-            No level-history rows are stored yet for {symbol} ({filter}). The table and chart
-            (T15) will appear here once rows exist.
+            No level-history rows are stored yet for {symbol} ({filter}). They accumulate as
+            captures run — the chart and table appear here once the first one is stored.
           </EmptyState>
         )
       )}
