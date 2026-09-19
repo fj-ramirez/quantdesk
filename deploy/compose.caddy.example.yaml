@@ -1,0 +1,50 @@
+# Caddy's own stack -- the missing half of the deployment. It lives OUTSIDE this repo (its own
+# directory, e.g. /srv/docker/caddy/), because it fronts every stack on the host, not just this
+# one. Copied here as an example because the GEX stack is unreachable without something like it.
+#
+# The division of labour:
+#   * the GEX stack publishes NO host ports and is reachable only on the `edge` network
+#   * this stack publishes 80/443 and is the single way in
+#
+# Put the site block from deploy/Caddyfile.example into ./Caddyfile next to this file, then:
+#     docker network create edge          # once per host, if it does not exist yet
+#     docker compose up -d
+
+services:
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    ports:
+      # The only published ports on the whole host. 443 is only needed if you give Caddy real
+      # hostnames to serve (see deploy/Caddyfile.example); a plain `:80` site block does not
+      # use it, but leaving it mapped costs nothing and saves editing this later.
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      # Certificates and Caddy's own state. Named volumes rather than bind mounts because
+      # nothing here needs to be readable from the host, and losing them only costs a
+      # re-issue -- unlike the GEX data, which is bind-mounted precisely so it can be tarred.
+      - caddy_data:/data
+      - caddy_config:/config
+    networks:
+      # THE critical line. Without it Caddy resolves nothing: `gex-backend` and `gex-frontend`
+      # are network aliases that exist only on `edge`, so a Caddy that is not attached fails
+      # every proxied request with "dial tcp: lookup gex-backend: no such host" while Caddy
+      # itself looks perfectly healthy.
+      - edge
+    logging:
+      driver: json-file
+      options:
+        max-size: 10m
+        max-file: "3"
+
+networks:
+  edge:
+    # The same network the GEX stack attaches to. External in both stacks: neither owns it,
+    # and whichever starts second must join the existing one rather than create a rival.
+    external: true
+
+volumes:
+  caddy_data:
+  caddy_config:

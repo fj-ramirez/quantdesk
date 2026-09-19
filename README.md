@@ -138,6 +138,17 @@ sudo systemctl start compose@gex
 
 ### 4. Add the Caddy site block
 
+Caddy runs as its **own** stack, outside this repo, because it fronts every stack on the host.
+The GEX stack publishes nothing; Caddy publishes 80/443 and is the single way in. If you do
+not have one yet, [`deploy/compose.caddy.example.yaml`](deploy/compose.caddy.example.yaml) is
+a working starting point — copy it and the Caddyfile into their own directory (e.g.
+`/srv/docker/caddy/`) and `docker compose up -d`.
+
+**Caddy must be attached to the `edge` network.** `gex-backend` and `gex-frontend` are network
+aliases that exist only there, so a Caddy that is not attached fails every proxied request
+with `dial tcp: lookup gex-backend: no such host` while looking perfectly healthy itself. This
+is the single most likely reason a correctly-deployed stack appears unreachable.
+
 Copy the block from [`deploy/Caddyfile.example`](deploy/Caddyfile.example) into your
 Caddyfile. The short version:
 
