@@ -1,0 +1,112 @@
+# Base stack definition -- shared by dev and prod. Not usable on its own, by design.
+#
+# `docker compose up` reads this file **plus** `compose.override.yaml` automatically, which is
+# what reproduces the historical dev setup (bind-mounted source, hot reload, published ports,
+# Vite dev server). Production is the explicit opt-in:
+#
+#     docker compose -f compose.yaml -f compose.prod.yaml up -d
+#
+# What lives where:
+#   * here          service identity, images, build contexts, app config, ordering
+#   * override      everything that only makes sense on a developer's machine
+#   * prod          hardening: no host ports, no bind-mounted source, restart, logs, healthchecks
+#
+# Deliberately absent from this file: `ports`, `networks`, and any mount of source code. Each
+# of those differs so completely between the two environments that a shared value would be a
+# value neither side wants. `networks` in particular cannot live here: prod attaches to an
+# `external: true` network named `edge`, and declaring that in the base file would make plain
+# `docker compose up` fail on any machine where Caddy's network does not exist -- i.e. every
+# developer machine.
+
+# No `name:` here, deliberately. The compose project name defaults to the directory name,
+# which is what keeps existing resources attached: this checkout lives in `gex-trading/`, so
+# the dev database stays in the `gex-trading_pgdata` volume it has always been in. Pinning a
+# name would silently repoint `docker compose up` at a *different*, empty volume and make a
+# populated database look like it had vanished.
+#
+# On the homeserver the stack directory is `/srv/docker/gex/`, so the project is `gex` there
+# without anything having to say so -- matching the `compose@gex` systemd unit.
+
+services:
+  postgres:
+    image: postgres:16
+    environment:
+      # Defaults are the historical dev credentials, so `docker compose up` on a laptop with no
+      # .env keeps working exactly as before. compose.prod.yaml re-declares all three with the
+      # `:?` form, which makes them mandatory *there* and nowhere else -- see that file.
+      POSTGRES_USER: ${POSTGRES_USER:-gex}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-gex}
+      POSTGRES_DB: ${POSTGRES_DB:-gex}
+      # UTC, deliberately, and not America/New_York like the backend. Every timestamp this app
+      # stores is tz-aware UTC enforced at the DB boundary by `UTCDateTime` (invariant 4), so
+      # the server's own zone should never enter into it; keeping it UTC means a `psql` session
+      # renders what is actually stored rather than a NY-shifted view of it. The market-time
+      # logic lives in the backend, which reads `settings.TZ`.
+      TZ: UTC
+      PGTZ: UTC
+    healthcheck:
+      # `$$` escapes the variable so compose passes it through for the *shell inside the
+      # container* to expand, rather than interpolating it at parse time from the host env.
+      # Without the escape this check would silently test the wrong database once the
+      # credentials stop being the `gex`/`gex` default.
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB} -q"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  backend:
+    build:
+      context: ./backend
+      # Named stages, so dev and prod are the same Dockerfile and cannot drift. The override
+      # file selects `dev`; this default is the hardened image (no dev dependencies, non-root,
+      # no reloader) so that a plain `docker compose build` and CI both exercise the artifact
+      # that actually ships.
+      target: runtime
+    environment:
+      # Assembled from the same three variables postgres itself uses, so the credentials have
+      # exactly one source. Note for whoever sets these: this is a URL, so a password
+      # containing `@`, `:`, `/`, `?` or `#` must be percent-encoded here or the connection
+      # string parses wrong -- easiest to just choose a password without them.
+      DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-gex}:${POSTGRES_PASSWORD:-gex}@postgres:5432/${POSTGRES_DB:-gex}
+      DATA_DIR: /data
+      PROVIDER: ${PROVIDER:-cboe}
+      SYMBOLS: ${SYMBOLS:-SPX,SPY,QQQ,GLD,DIA}
+      # Market time, and deliberate: `app/jobs/scheduler.py`'s cron triggers and
+      # `app/jobs/calendar.py`'s holiday checks both read `settings.TZ`. A host defaulting to
+      # UTC would fire every job at the wrong wall-clock hour while looking perfectly healthy.
+      TZ: ${TZ:-America/New_York}
+      # T18/T32. Taken from the root `.env` via substitution, with the same defaults the
+      # settings themselves carry, so that file is the single knob for both.
+      #
+      # Historical note, now defused: this service declares `environment:` and no `env_file:`,
+      # so the root `.env` is only ever used for substitution *into* this file. Under the old
+      # dev-only setup the source bind mount also exposed `backend/.env` inside the container
+      # as `/app/.env`, where pydantic-settings would read it -- which is the trap that made "I
+      # enabled intraday in .env" a no-op on 2026-09-11. The production image has no bind mount
+      # and therefore no `/app/.env` at all, so the root `.env` is unambiguously the only knob.
+      # (It always outranked the dotenv file anyway: real environment variables win in
+      # pydantic-settings. The confusion was about which file was being edited, not precedence.)
+      INTRADAY_ENABLED: ${INTRADAY_ENABLED:-false}
+      INTRADAY_STRIKE_RETENTION_DAYS: ${INTRADAY_STRIKE_RETENTION_DAYS:-30}
+      INTRADAY_BARS_ENABLED: ${INTRADAY_BARS_ENABLED:-false}
+    volumes:
+      # DATA_DIR. A bind mount in both environments: the Parquet tree is the one artifact in
+      # this stack that is genuinely unbackfillable (the free Cboe endpoint serves only "now"),
+      # so it stays visible and copyable on the host rather than hiding in a named volume.
+      - ./data:/data
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  frontend:
+    build:
+      context: ./frontend
+      target: runtime
+    depends_on:
+      # `service_started`, not `service_healthy`. The production frontend is nginx serving a
+      # static bundle -- it does not talk to the backend at all (the browser does, via the
+      # reverse proxy). Gating it on backend health would mean a Postgres outage takes down the
+      # UI too, so the user gets a connection refused instead of an app that loads and reports
+      # the error it is perfectly capable of reporting.
+      backend:
+        condition: service_started

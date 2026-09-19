@@ -1,0 +1,138 @@
+# Production overlay for the homeserver. Never loaded automatically -- it must be named:
+#
+#     docker compose -f compose.yaml -f compose.prod.yaml up -d
+#
+# Naming it explicitly also means `compose.override.yaml` is NOT read, which is the point: the
+# dev file's bind mounts and published ports are absent here because they were never merged in,
+# not because something undid them.
+#
+# Four things this file is responsible for:
+#   1. Nothing publishes a host port. Docker writes its own iptables rules and bypasses ufw
+#      entirely, so a published port is reachable from the whole LAN regardless of the
+#      firewall. Reachability comes from Caddy on the `edge` network instead.
+#   2. Postgres is on a stack-private network that `edge` cannot reach.
+#   3. The containers survive a reboot and do not fill the disk with logs.
+#   4. Healthchecks that mean something, and ordering that respects them.
+
+services:
+  postgres:
+    environment:
+      # Required, not defaulted. `${VAR:?message}` makes compose abort *before* starting
+      # anything, naming the variable and printing the message -- which is the difference
+      # between "POSTGRES_PASSWORD is required" at deploy time and a container that came up
+      # happily on the password `gex` and is now serving the LAN.
+      #
+      # These override the `:-gex` dev defaults in compose.yaml. See .env.example for the full
+      # list of keys the server's .env must contain.
+      POSTGRES_USER: ${POSTGRES_USER:?required - set it in .env (see .env.example)}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?required - set it in .env (see .env.example); changing it here does NOT change an existing database, see README}
+      POSTGRES_DB: ${POSTGRES_DB:?required - set it in .env (see .env.example)}
+    volumes:
+      # Bind mount rather than a named volume, so the entire stack -- database, Parquet tree,
+      # compose files and .env -- is one directory that tars as a unit.
+      #
+      # This directory must exist and be owned by uid/gid 999 (the postgres user inside
+      # postgres:16) BEFORE the first `up`, or initdb fails: Docker creates a missing
+      # bind-mount source as root:root and postgres refuses to use it. See the README's deploy
+      # steps. Moving an existing database here is a dump/restore, not a copy -- also in the
+      # README.
+      - ./data/postgres:/var/lib/postgresql/data
+    networks:
+      # `internal` only. Not on `edge`, so Caddy -- and anything else sharing that proxy
+      # network -- has no route to 5432 at all. Combined with publishing no host port, the
+      # database is reachable only from `backend`.
+      internal: {}
+    restart: unless-stopped
+    logging:
+      driver: json-file
+      options:
+        max-size: 10m
+        max-file: "3"
+
+  backend:
+    # Distinct from the dev tag (see compose.override.yaml) so the two builds cannot overwrite
+    # each other. If this image does not exist yet, compose builds it -- correctly targeted --
+    # rather than reusing a dev image that happens to share a name.
+    image: gex-backend:prod
+    environment:
+      DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:?required - set it in .env}:${POSTGRES_PASSWORD:?required - set it in .env}@postgres:5432/${POSTGRES_DB:?required - set it in .env}
+    networks:
+      # Both: `internal` to reach postgres, `edge` so Caddy can reach it on 8001. This is the
+      # only service on both networks, and it is the only path from `edge` to the database.
+      internal: {}
+      edge:
+        aliases:
+          # An explicit, stack-prefixed name for Caddy to target. Compose also registers the
+          # bare service name (`backend`) as an alias, but `edge` is shared with every other
+          # stack behind this proxy -- and a second stack with a service called `backend`
+          # would make that name ambiguous, resolving to whichever container answers first.
+          # `gex-backend` is what the Caddyfile uses.
+          - gex-backend
+    restart: unless-stopped
+    healthcheck:
+      # Hits GET /health (root level -- the routers are all under /api, this one is not) and
+      # requires `db: ok`, so a backend whose Postgres has gone away reports unhealthy instead
+      # of serving 500s while looking fine. Deliberately not /api/health/capture: that one
+      # queries every symbol in the ~125-symbol scan universe and is far too heavy to run on a
+      # 30-second loop.
+      #
+      # CMD rather than CMD-SHELL so the quoting inside the python snippet is not also being
+      # parsed by a shell. `python` resolves to the image's virtualenv interpreter via PATH;
+      # no curl or wget is installed in the slim base.
+      test:
+        - CMD
+        - python
+        - -c
+        - import json,urllib.request,sys; sys.exit(0 if json.load(urllib.request.urlopen('http://127.0.0.1:8001/health', timeout=5)).get('db') == 'ok' else 1)
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      # Generous, because the container runs `alembic upgrade head` before uvicorn binds. A
+      # migration on a populated database can take a while, and failing the healthcheck during
+      # it would mark a perfectly healthy deploy as broken.
+      start_period: 60s
+    logging:
+      driver: json-file
+      options:
+        max-size: 10m
+        max-file: "3"
+
+  frontend:
+    image: gex-frontend:prod
+    build:
+      args:
+        # Empty on purpose. The bundle then carries no origin and resolves every request
+        # against the page it was served from (see frontend/src/api/client.ts), which is what
+        # makes the same host work as homeserver.local on the LAN and as a Tailscale name
+        # remotely without a rebuild. Vite inlines VITE_* at BUILD time, so this genuinely has
+        # to be a build arg -- setting it as a runtime environment variable would do nothing.
+        VITE_API_BASE_URL: ""
+    networks:
+      # `edge` only. The static bundle never talks to postgres, and the browser reaches the
+      # API through Caddy, not through this container.
+      edge:
+        aliases:
+          - gex-frontend
+    restart: unless-stopped
+    healthcheck:
+      # busybox wget, present in nginx:alpine; there is no curl.
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:80/"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    logging:
+      driver: json-file
+      options:
+        max-size: 10m
+        max-file: "3"
+
+networks:
+  internal:
+    driver: bridge
+  edge:
+    # Created once, outside this stack, and shared with Caddy:
+    #     docker network create edge
+    # `external: true` means compose will refuse to start if it does not exist rather than
+    # quietly creating a `gex_edge` that Caddy is not attached to.
+    external: true

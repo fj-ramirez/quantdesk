@@ -6,7 +6,7 @@ export default defineConfig({
   plugins: [react()],
   server: {
     // `docker compose up` bind-mounts ./frontend into a Linux container from a Windows host
-    // (see docker-compose.yml). inotify events do not cross that boundary, so Vite's default
+    // (see compose.override.yaml). inotify events do not cross that boundary, so Vite's default
     // filesystem watcher never fires and the dev server keeps serving the module graph it
     // built at startup -- editing a file changes nothing in the browser, and the failure is
     // silent: the file is still served on request, just from a stale transform. Diagnosed

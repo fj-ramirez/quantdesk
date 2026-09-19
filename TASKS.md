@@ -20,7 +20,7 @@ Create the layout from PLAN.md section 2. Deliverables:
 - `backend/pyproject.toml` using `uv`, Python 3.12, deps: fastapi, uvicorn, sqlalchemy, psycopg[binary], alembic, pydantic-settings, apscheduler, httpx, numpy, pandas, pyarrow, scipy, pytest, pytest-asyncio, ruff.
 - `backend/app/__init__.py`, `backend/app/main.py` with a `/health` route, `backend/app/config.py` (pydantic-settings reading `.env`: `DATABASE_URL`, `DATA_DIR`, `PROVIDER`, `SYMBOLS=SPX,SPY,QQQ`, `TZ=America/New_York`).
 - `frontend/` via `npm create vite@latest -- --template react-ts`, add `@tanstack/react-query`, `echarts`, `echarts-for-react`, `lightweight-charts`, `vitest`, `eslint`.
-- `docker-compose.yml`: `postgres:16`, `backend`, `frontend`. Named volume for Postgres and a bind mount for `DATA_DIR`.
+- `compose.yaml` (+ `compose.override.yaml` for dev, `compose.prod.yaml` for the homeserver): `postgres:16`, `backend`, `frontend`. Named volume for Postgres in dev, a bind mount under `./data/` in prod, and a bind mount for `DATA_DIR` in both.
 - `.env.example`, `.gitignore`, `README.md` with run instructions, `Makefile` (or `justfile`) with `dev`, `test`, `lint`.
 - `git init` and an initial commit.
 
@@ -490,7 +490,7 @@ Deliverables:
 - `backend/app/models/chain.py`: add `GLD` and `DIA` to `Underlying`, and both roots to `_ROOT_TO_UNDERLYING`. The enum docstring already names this as the intended extension point; follow it exactly and add nothing else.
 - `backend/app/providers/cboe.py`: `_VENDOR_SYMBOL` entries mapping both to their bare tickers.
 - `backend/app/providers/marketdata.py`: **docstring only.** It uses the canonical `Underlying` value verbatim as the URL path segment, so there is no mangling table to update. Do not add one.
-- Config: `SYMBOLS=SPX,SPY,QQQ,GLD,DIA` in `.env.example` and `docker-compose.yml`. Note in the PR/commit body that the user's own root `.env` is gitignored and must be updated by hand, or the new symbols will not be captured on their machine.
+- Config: `SYMBOLS=SPX,SPY,QQQ,GLD,DIA` in `.env.example` and `compose.yaml`. Note in the PR/commit body that the user's own root `.env` is gitignored and must be updated by hand, or the new symbols will not be captured on their machine.
 - `frontend/src/api/types.ts`: add `'GLD'` and `'DIA'` to `UNDERLYINGS`.
 - `frontend/src/mocks/handlers.ts`: **this is the only thing that breaks the build.** Two `Record<Underlying, GexResult>` maps are exhaustive over the union, and `isUnderlying` hardcodes the three literals, so widening the union is a compile error until fixtures exist. Add `gex-gld.json`, `gex-gld-zero-dte.json`, `gex-dia.json`, `gex-dia-zero-dte.json` under `mocks/fixtures/`, generated from real captures and trimmed to match the existing ~13 KB / ~3.5 KB files.
 - `frontend/src/components/layout/TopBar.tsx`: the symbol switcher goes from three buttons to five. T36 already had to fix this bar's layout once — check it at a narrow width rather than assuming it reflows.

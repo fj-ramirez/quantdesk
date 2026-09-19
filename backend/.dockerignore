@@ -1,9 +1,29 @@
+# Keeps the build context small and, more importantly, keeps host-only files out of the
+# production image -- where there is no bind mount to shadow them and anything copied in is
+# what the app actually reads.
+
+.git
+
+# THE important one. app/config.py reads `env_file=".env"` relative to the working directory,
+# which is /app in the container. The dev setup bind-mounts the source over /app, so
+# backend/.env shows up as /app/.env and pydantic-settings reads it -- the trap that made
+# "I enabled intraday in .env" a no-op on 2026-09-11. The production image has no bind mount,
+# so the only way that file could get in is by being COPYed, and this line is what stops it.
+# Configuration in production comes from the root .env via compose substitution, full stop.
+.env
+.env.*
+
+# Built by `uv sync` inside the image. A host copy would be the wrong platform anyway.
 .venv
+
 __pycache__
 *.py[oc]
-.git
-.env
 .pytest_cache
 .ruff_cache
 .test-tmp
 *.log
+
+# Not part of the backend context today, but a stray backend/data/ would otherwise be baked
+# into the image. DATA_DIR is a bind mount at runtime; nothing data-shaped belongs in a layer.
+data
+node_modules

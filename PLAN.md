@@ -105,7 +105,7 @@ gex-trading/
       api/                 TanStack Query hooks
       components/          GexByStrike, GammaProfile, KeyLevels, ExpiryFilter, LevelHistory, PriceChart
       pages/               Dashboard, History, Settings
-  docker-compose.yml       postgres, backend, frontend
+  compose.yaml             postgres, backend, frontend (+ .override dev, .prod homeserver)
   PLAN.md
 ```
 
@@ -137,7 +137,7 @@ Validation: unit tests against hand-computed Black-Scholes values; sanity compar
 ## 4. Phases
 
 ### Phase 0 — Scaffold (1 day)
-- Repo layout above, `pyproject.toml` (uv), `docker-compose.yml`, `.env.example`, linting (ruff, eslint), pytest and vitest wired up, README.
+- Repo layout above, `pyproject.toml` (uv), the compose files, `.env.example`, linting (ruff, eslint), pytest and vitest wired up, README.
 
 ### Phase 1 — Ingestion, EOD (2–3 days)
 - `CboeDelayedProvider` and `MarketDataAppProvider` behind the base interface.

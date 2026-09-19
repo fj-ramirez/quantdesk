@@ -1,8 +1,28 @@
+# Keeps the build context small and host-only files out of the image.
+
+.git
+
+# `.env` alone does not match `.env.local`, and that distinction matters here: Vite loads
+# `.env.local` in *every* mode, production builds included. The checked-out file sets
+# VITE_API_BASE_URL=http://localhost:8001 and VITE_ENABLE_MOCKS=true, so leaving it in the
+# context would put a developer's localhost origin inside the build.
+#
+# (Real process environment variables outrank .env files in Vite, so the Dockerfile's ARG
+# would have won anyway, and MSW is gated on `import.meta.env.DEV` regardless. This is the
+# belt to that braces -- the failure mode is a bundle that silently points at the wrong host,
+# which is exactly the class of bug the same-origin setup exists to prevent.)
+.env
+.env.*
+
 node_modules
+
+# Rebuilt inside the image by `npm run build`. A stale host copy would be copied in and then
+# overwritten, or worse, partially shadow the fresh one.
 dist
 dist-ssr
-.git
-.env
-*.log
-coverage
 .vite
+
+coverage
+*.log
+
+data

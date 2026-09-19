@@ -14,8 +14,12 @@ frontend, Postgres for computed results, Parquet on disk for raw chains.
 | Test | `uv run pytest` | `npm test` |
 | Lint | `uv run ruff check .` | `npm run lint` |
 
-Everything at once: `docker compose up` (postgres + backend + frontend). `make dev|test|lint`
-wraps the same commands; `make` is optional and not installed on this Windows host.
+Everything at once: `docker compose up` (postgres + backend + frontend) -- this reads
+`compose.yaml` **plus** `compose.override.yaml`, which is what supplies the dev bind mounts,
+hot reload and published ports. Production is the explicit opt-in and never loads the
+override: `docker compose -f compose.yaml -f compose.prod.yaml up -d`. See the README's
+"Deploying to the homeserver". `make dev|prod|test|lint` wraps the same commands; `make` is
+optional and not installed on this Windows host.
 
 The backend listens on **8001**, not 8000. Health: `GET /health`; capture freshness:
 `GET /api/health/capture`.

@@ -1,0 +1,62 @@
+# Caddy site block for the GEX stack. This file belongs to Caddy's own stack, not this one --
+# copy the block into wherever your Caddyfile lives. Caddy must be attached to the `edge`
+# docker network, which is how it resolves `gex-backend` and `gex-frontend` (those are the
+# network aliases declared in compose.prod.yaml).
+#
+# ---------------------------------------------------------------------------------------
+# WHY `handle` AND NOT `handle_path`
+# ---------------------------------------------------------------------------------------
+# `handle_path` strips the matched prefix before proxying; `handle` passes the path through
+# untouched. Which one is correct depends entirely on whether the backend expects to see
+# `/api`, and in this app it does:
+#
+#     app/main.py:89-98   app.include_router(gex_router, prefix="/api")   (x10 routers)
+#
+# Every route is mounted under `/api`, so the real paths are `/api/gex/SPX/latest`,
+# `/api/health/capture`, `/api/stream/SPX` and so on. Strip the prefix with `handle_path` and
+# the backend receives `/gex/SPX/latest`, which matches nothing and 404s on every request.
+#
+# So: `handle`, prefix preserved. Verified against the router mounts, not assumed.
+# ---------------------------------------------------------------------------------------
+
+# `:80` rather than a hostname, deliberately. This host is reached as homeserver.local on the
+# LAN and under a different name over Tailscale, with no fixed IP and no port forwarding, so a
+# site block keyed on one hostname would serve only half the ways you actually reach it. A
+# bare port matches any Host header.
+#
+# For automatic HTTPS instead, replace `:80` with the names you use, e.g.
+#     homeserver.local, gex.your-tailnet.ts.net {
+# Caddy will then provision certificates -- which for a .local name means an internal CA you
+# have to trust on each client, while a Tailscale MagicDNS name can get a real certificate.
+:80 {
+	encode zstd gzip
+
+	# The API. Must come before the catch-all below: within a site block Caddy evaluates
+	# `handle` directives by matcher specificity, but keeping them in reading order is what
+	# makes the intent obvious to the next person.
+	handle /api/* {
+		reverse_proxy gex-backend:8001 {
+			# Server-Sent Events. `GET /api/stream/{underlying}` (app/api/stream.py) is a
+			# long-lived response that dribbles out one event per capture, with a keepalive
+			# comment every 15 s. Caddy detects `text/event-stream` and stops buffering on its
+			# own, so this line is belt-and-braces -- but an unflushed SSE stream fails in a
+			# particularly confusing way (the dashboard simply never updates, with no error
+			# anywhere), so it is stated rather than relied upon.
+			flush_interval -1
+		}
+	}
+
+	# `GET /health` is mounted at the ROOT, not under /api (app/main.py:101), so it does not
+	# match the block above. Without this it would fall through to the SPA and return HTML.
+	# The container healthchecks hit it directly and do not need this; it is here so you can
+	# curl the stack's health from a laptop.
+	handle /health {
+		reverse_proxy gex-backend:8001
+	}
+
+	# Everything else is the static React bundle. nginx inside that container does the SPA
+	# fallback (try_files -> /index.html), so deep links like /scan survive a reload.
+	handle {
+		reverse_proxy gex-frontend:80
+	}
+}

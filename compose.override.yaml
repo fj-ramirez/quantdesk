@@ -1,0 +1,68 @@
+# Development overrides -- applied automatically by plain `docker compose up`.
+#
+# This file exists to keep `compose.yaml` honest about what is shared and what is not. Nothing
+# here should ever be true on the homeserver: published host ports, source bind-mounted over
+# the image, hot reload, the Vite dev server, and a throwaway Postgres volume.
+#
+# The behaviour reproduced here is exactly what the single pre-split `docker-compose.yml`
+# used to do. If you change something in this file, you are changing the dev workflow.
+
+services:
+  postgres:
+    ports:
+      # Published so `psql`, a GUI client, or the backend running natively via
+      # `uv run uvicorn` can reach it from the host. Dev-only: on the homeserver this port is
+      # never published, because Docker's own iptables rules bypass ufw and a published 5432
+      # is reachable by anything on the LAN.
+      - "5432:5432"
+    volumes:
+      # A named volume, not a bind mount, and deliberately different from production here.
+      # Two reasons: bind-mounting a PGDATA directory from a Windows host into a Linux
+      # container fails on the 0700 ownership initdb insists on, and keeping the dev database
+      # in a named volume means `docker compose down -v` stays the one-command reset it has
+      # always been without touching anything under ./data.
+      - pgdata:/var/lib/postgresql/data
+
+  backend:
+    # An explicit, target-specific tag. Without one, compose names the image after the project
+    # and service (`gex-trading-backend`) in BOTH environments -- so dev and prod builds
+    # overwrite each other under one name, and `up -d` without `--build` silently starts
+    # whichever target happened to be built last. That is not hypothetical: it is exactly how
+    # a `-f compose.prod.yaml up -d` ended up running the Vite dev server.
+    image: gex-backend:dev
+    build:
+      target: dev
+    ports:
+      - "8001:8001"
+    volumes:
+      # Source over the image, so edits are live. The anonymous volume on /app/.venv is what
+      # keeps the container's Linux-built virtualenv from being shadowed by whatever the
+      # Windows host has in ./backend/.venv -- they are not interchangeable.
+      - ./backend:/app
+      - /app/.venv
+
+  frontend:
+    image: gex-frontend:dev
+    build:
+      target: dev
+    ports:
+      - "5173:5173"
+    environment:
+      # An absolute origin, which is what the dev server needs: Vite serves the app from 5173
+      # and the API lives on 8001, so requests are genuinely cross-origin and `localhost` here
+      # correctly means "the developer's own machine". This is also the origin allowed by the
+      # CORS middleware in app/main.py.
+      #
+      # Production does the opposite -- see frontend/Dockerfile's VITE_API_BASE_URL build ARG.
+      # There the bundle ships with no origin at all and resolves against the page it was
+      # loaded from, because nothing may assume a hostname.
+      VITE_API_BASE_URL: http://localhost:8001
+    volumes:
+      # Same shape as the backend: source live, node_modules kept as the container installed
+      # them. esbuild and rollup ship per-platform binaries, so the Windows-built
+      # node_modules is not usable here.
+      - ./frontend:/app
+      - /app/node_modules
+
+volumes:
+  pgdata:

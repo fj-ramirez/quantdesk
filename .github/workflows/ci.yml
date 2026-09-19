@@ -62,8 +62,16 @@ jobs:
         run: npm test
 
   docker-build:
-    name: Docker build check
+    name: Docker build check (${{ matrix.target }})
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        # Both Dockerfiles are multi-stage with two named targets, and CI has to build both:
+        # `runtime` is what deploys to the homeserver, `dev` is what every `docker compose up`
+        # on a laptop builds. Building only the default would let the dev stage rot unnoticed
+        # until someone's local stack stopped coming up.
+        target: [runtime, dev]
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -75,14 +83,57 @@ jobs:
         uses: docker/build-push-action@v6
         with:
           context: ./backend
+          target: ${{ matrix.target }}
           push: false
-          cache-from: type=gha,scope=backend
-          cache-to: type=gha,mode=max,scope=backend
+          cache-from: type=gha,scope=backend-${{ matrix.target }}
+          cache-to: type=gha,mode=max,scope=backend-${{ matrix.target }}
 
       - name: Build frontend image
         uses: docker/build-push-action@v6
         with:
           context: ./frontend
+          target: ${{ matrix.target }}
           push: false
-          cache-from: type=gha,scope=frontend
-          cache-to: type=gha,mode=max,scope=frontend
+          cache-from: type=gha,scope=frontend-${{ matrix.target }}
+          cache-to: type=gha,mode=max,scope=frontend-${{ matrix.target }}
+
+  compose-config:
+    name: Compose config (dev + prod)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # Catches an override that stops merging, a typo in a ${VAR:?} default, or a service
+      # that starts publishing a host port in production -- none of which any other job here
+      # would notice.
+      - name: Dev config parses
+        run: docker compose config --quiet
+
+      - name: Prod config parses
+        env:
+          POSTGRES_USER: ci
+          POSTGRES_PASSWORD: ci
+          POSTGRES_DB: ci
+        run: docker compose -f compose.yaml -f compose.prod.yaml config --quiet
+
+      - name: Prod refuses to start without credentials
+        run: |
+          if docker compose --env-file /dev/null -f compose.yaml -f compose.prod.yaml config --quiet 2>/dev/null; then
+            echo '::error::prod config rendered with no POSTGRES_* set; the required-variable guards are gone'
+            exit 1
+          fi
+          echo "OK: prod config refuses to render without the required variables"
+
+      - name: Prod publishes no host ports
+        env:
+          POSTGRES_USER: ci
+          POSTGRES_PASSWORD: ci
+          POSTGRES_DB: ci
+        run: |
+          if docker compose -f compose.yaml -f compose.prod.yaml config | grep -qE '^\s*published:'; then
+            echo "::error::a service publishes a host port in the production config"
+            docker compose -f compose.yaml -f compose.prod.yaml config | grep -nE 'ports:|published:'
+            exit 1
+          fi
+          echo "OK: no published host ports in the production config"
