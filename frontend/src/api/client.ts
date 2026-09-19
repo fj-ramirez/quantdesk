@@ -33,8 +33,32 @@ import type {
 // this from env so a deployed build can point elsewhere without a rebuild-time hardcode.
 const DEFAULT_BASE_URL = 'http://localhost:8001';
 
-export const API_BASE_URL: string =
-  (import.meta.env.VITE_API_BASE_URL as string | undefined) ?? DEFAULT_BASE_URL;
+/**
+ * The **origin** every request is sent to — never a path prefix.
+ *
+ * `buildUrl` below resolves with `new URL(path, API_BASE_URL)`, and every `path` in this
+ * module is already absolute and already carries its own `/api` prefix (`/api/gex/...`,
+ * `/api/stream/...`). The URL constructor discards a base's path component when the input is
+ * absolute, so the base can only ever contribute scheme + host + port. It also *requires* an
+ * absolute base: `new URL('/api/x', '/api')` throws `TypeError: Invalid base URL`.
+ *
+ * That is why a relative value is resolved against the page's own origin rather than passed
+ * through. The production build (see `frontend/Dockerfile`) is served same-origin behind a
+ * reverse proxy that routes `/api/*` to the backend, so it deliberately ships with no
+ * absolute origin baked in — nothing in the bundle may assume a hostname, since the app is
+ * reached both as `homeserver.local` on the LAN and over Tailscale. Dev is unaffected: it
+ * passes a full `http://localhost:8001`, which matches the absolute branch.
+ */
+function resolveBaseUrl(): string {
+  const configured = import.meta.env.VITE_API_BASE_URL as string | undefined;
+  if (configured && /^https?:\/\//i.test(configured)) return configured;
+  // No `window` in a non-DOM context (SSR, a bare node script). Same defensive shape as
+  // `useLiveLevels`'s `typeof EventSource` guard.
+  if (typeof window !== 'undefined') return window.location.origin;
+  return DEFAULT_BASE_URL;
+}
+
+export const API_BASE_URL: string = resolveBaseUrl();
 
 export class ApiError extends Error {
   readonly status: number;
