@@ -47,3 +47,6 @@ npm-debug.log*
 # Caveat: an editor that saves by writing a temp file and renaming it over CLAUDE.md will
 # silently break the link. `diff -q CLAUDE.md AGENTS.md` checks it in one command.
 AGENTS.md
+
+# Ad-hoc screenshots dropped in the repo root while inspecting the UI.
+Captura de pantalla*.png
