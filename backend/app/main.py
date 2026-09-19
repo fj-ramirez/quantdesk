@@ -5,6 +5,7 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from sqlalchemy import text
 
 from app.api.bars import router as bars_router
 from app.api.chains import router as chains_router
@@ -17,6 +18,7 @@ from app.api.snapshots import router as snapshots_router
 from app.api.stream import router as stream_router
 from app.api.symbols import router as symbols_router
 from app.config import settings
+from app.jobs.capture import get_session_factory
 from app.jobs.catchup import startup_catchup_job
 from app.jobs.scheduler import build_scheduler
 
@@ -87,4 +89,32 @@ app.include_router(stream_router, prefix="/api")
 
 @app.get("/health")
 async def health() -> dict:
-    return {"status": "ok", "provider": settings.PROVIDER, "symbols": settings.symbols}
+    """Liveness + database reachability, for humans and for the container healthcheck.
+
+    Deliberately kept cheap. `GET /api/health/capture` answers the *dataset* question ("is my
+    data still whole?") and costs a query per symbol across the ~125-symbol scan universe --
+    fine for a human or a monitor on a slow interval, far too heavy to run every 30 seconds as
+    a Docker healthcheck. This route issues one `SELECT 1` instead.
+
+    The `db` field is additive: the pre-existing `status`/`provider`/`symbols` keys are
+    unchanged, so nothing that already reads this endpoint has to care. `status` stays "ok"
+    whenever the process is serving -- a failed probe is reported in `db`, not by flipping
+    `status`, so "the API is up but Postgres is not" stays distinguishable from "the API is
+    down" (which is a connection error, not a response at all).
+    """
+    db = "ok"
+    try:
+        with get_session_factory()() as session:
+            session.execute(text("SELECT 1"))
+    except Exception:
+        # Never surface the exception text: `DATABASE_URL` carries the password and SQLAlchemy
+        # puts the URL in its connection-error messages. The log line below is where a human
+        # goes for the detail; this endpoint is reachable from the proxy.
+        logger.exception("health: database probe failed")
+        db = "error"
+    return {
+        "status": "ok",
+        "provider": settings.PROVIDER,
+        "symbols": settings.symbols,
+        "db": db,
+    }

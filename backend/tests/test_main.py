@@ -102,3 +102,61 @@ def test_health_and_snapshots_and_capture_health_routes_are_registered(monkeypat
         schema = client.get("/openapi.json").json()
         assert "/api/health/capture" in schema["paths"]
         client.app.state.startup_catchup_task.cancel()
+
+
+def test_health_reports_db_ok_when_the_database_answers(monkeypatch):
+    """The production container healthcheck (compose.prod.yaml) exits non-zero unless
+    `/health` reports `db: ok`, so this field is a deployment contract, not decoration.
+
+    SQLite in memory rather than a real Postgres: the probe is a bare `SELECT 1`, which says
+    nothing engine-specific, and the point here is that a reachable database produces "ok".
+    """
+
+    async def fake_startup_catchup_job():
+        return None
+
+    monkeypatch.setattr(main_module, "startup_catchup_job", fake_startup_catchup_job)
+    monkeypatch.setattr(
+        main_module, "get_session_factory", lambda: sessionmaker(bind=create_engine("sqlite://"))
+    )
+
+    with TestClient(main_module.app) as client:
+        body = client.get("/health").json()
+        assert body["db"] == "ok"
+        # Additive: the pre-existing keys are untouched by the probe.
+        assert body["status"] == "ok"
+        assert "provider" in body and "symbols" in body
+        client.app.state.startup_catchup_task.cancel()
+
+
+def test_health_still_answers_200_with_db_error_when_the_database_is_unreachable(monkeypatch):
+    """An unreachable database must be reported *in the body*, not by failing the request.
+
+    `status` deliberately stays "ok" -- the API process is up and answering, which is a
+    different fact from the database being reachable, and collapsing the two would make "the
+    backend is down" and "Postgres is down" indistinguishable to whoever is debugging at
+    16:20. The healthcheck keys off `db`, so the container still goes unhealthy.
+
+    192.0.2.1 is RFC 5737 TEST-NET-1: guaranteed to exist as an address and never answer, so
+    the failure does not depend on this machine's network. `connect_timeout=1` keeps it quick.
+    """
+
+    async def fake_startup_catchup_job():
+        return None
+
+    monkeypatch.setattr(main_module, "startup_catchup_job", fake_startup_catchup_job)
+    unreachable = create_engine(
+        "postgresql+psycopg://gex:gex@192.0.2.1:5432/gex", connect_args={"connect_timeout": 1}
+    )
+    monkeypatch.setattr(main_module, "get_session_factory", lambda: sessionmaker(bind=unreachable))
+
+    with TestClient(main_module.app) as client:
+        response = client.get("/health")
+        assert response.status_code == 200
+        body = response.json()
+        assert body["db"] == "error"
+        assert body["status"] == "ok"
+        # The password lives in DATABASE_URL and SQLAlchemy puts the URL in its connection
+        # errors, so the probe must never let the exception text reach the response body.
+        assert "gex:gex" not in response.text
+        client.app.state.startup_catchup_task.cancel()
