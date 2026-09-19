@@ -81,7 +81,7 @@ describe('<RegimeTable />', () => {
     renderTable();
     const xlk = findRow('XLK');
     expect(xlk.stale).toBe(false);
-    expect(xlk.positioning.noise_dominated).toBe(true);
+    expect(xlk.positioning?.noise_dominated).toBe(true);
     const row = rowFor('XLK');
     within(row).getByText('noise-dominated').closest('summary')!.click();
     expect(within(row).getByText(xlk.reasons[0])).toBeInTheDocument();

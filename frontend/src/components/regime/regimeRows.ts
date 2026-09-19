@@ -17,7 +17,13 @@
  */
 import type { RegimeSymbolRow, RegimeWall } from '../../api/types';
 
-export type VerdictGroup = 'continuation' | 'mixed' | 'fade' | 'noise-dominated' | 'stale';
+export type VerdictGroup =
+  | 'continuation'
+  | 'mixed'
+  | 'fade'
+  | 'noise-dominated'
+  | 'stale'
+  | 'no-data';
 
 /** Default sort order (07-ui.md's `/regime` section): continuation, mixed, fade,
  * noise-dominated, then -- this page's own addition, see the module docstring -- stale last of
@@ -28,9 +34,16 @@ const GROUP_RANK: Record<VerdictGroup, number> = {
   fade: 2,
   'noise-dominated': 3,
   stale: 4,
+  // Below stale: a stale row is at least a real reading of a real chain, just an old one.
+  // This one has no chain at all, so it cannot inform anything and sorts last.
+  'no-data': 5,
 };
 
 export function verdictGroupOf(row: RegimeSymbolRow): VerdictGroup {
+  // Checked before `stale`, which the server reports as `false` for a missing row (there is no
+  // chain whose age could exceed the threshold). Without this the row would fall through to
+  // 'noise-dominated' below and claim a reading that was never taken.
+  if (row.positioning === null) return 'no-data';
   if (row.stale) return 'stale';
   if (row.verdict) return row.verdict;
   // The only other way the backend gives a null verdict is `positioning.noise_dominated`
@@ -57,7 +70,8 @@ export interface RegimeRow {
    * `ScanTable` needing to know about compound sorting at all. */
   defaultSortKey: number;
   reasons: string[];
-  spot: number;
+  /** `null` for a symbol with no snapshot captured yet -- see `RegimeSymbolRow`'s docstring. */
+  spot: number | null;
   netGex: number | null;
   ratio: number | null;
   flipPoint: number | null;
@@ -76,13 +90,13 @@ export interface RegimeRow {
   trendPct: number | null;
   stale: boolean;
   noiseDominated: boolean;
-  chainAgeMinutes: number;
+  chainAgeMinutes: number | null;
 }
 
 export function toRegimeRows(rows: RegimeSymbolRow[]): RegimeRow[] {
   return rows.map((row) => {
     const verdictGroup = verdictGroupOf(row);
-    const ratio = row.positioning.ratio;
+    const ratio = row.positioning?.ratio ?? null;
     const defaultSortKey = (ratio ?? 0) - GROUP_RANK[verdictGroup] * 2;
     const direction: 'up' | 'down' = (row.return_5d ?? 0) >= 0 ? 'up' : 'down';
     const roomWall = direction === 'up' ? row.wall_above : row.wall_below;
@@ -95,7 +109,7 @@ export function toRegimeRows(rows: RegimeSymbolRow[]): RegimeRow[] {
       defaultSortKey,
       reasons: row.reasons,
       spot: row.spot,
-      netGex: row.positioning.net_gex,
+      netGex: row.positioning?.net_gex ?? null,
       ratio,
       flipPoint: row.flip_point,
       flipDistancePct: row.flip_distance_pct,
@@ -106,7 +120,7 @@ export function toRegimeRows(rows: RegimeSymbolRow[]): RegimeRow[] {
       ivRvRatio: row.iv_rv_ratio,
       trendPct: row.trend_pct,
       stale: row.stale,
-      noiseDominated: row.positioning.noise_dominated,
+      noiseDominated: row.positioning?.noise_dominated ?? false,
       chainAgeMinutes: row.chain_age_minutes,
     };
   });
@@ -118,7 +132,7 @@ export const REGIME_DEFAULT_SORT = 'defaultSortKey';
  * per-cell wrapper rather than a `<tr>` class -- `ScanTable` owns row markup and is not
  * modifiable here). `undefined` for a genuine verdict row, which renders completely plain. */
 export function rowTintClassFor(group: VerdictGroup): string | undefined {
-  if (group === 'stale') return 'regime-row-tint regime-row-tint--stale';
+  if (group === 'stale' || group === 'no-data') return 'regime-row-tint regime-row-tint--stale';
   if (group === 'noise-dominated') return 'regime-row-tint regime-row-tint--noise';
   return undefined;
 }

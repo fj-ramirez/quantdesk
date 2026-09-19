@@ -15,6 +15,7 @@ import { ThemeProvider } from '../theme/ThemeContext';
 import { Regime } from './Regime';
 import regimeFixture from '../mocks/fixtures/scan/regime.json';
 import regimeZeroDteFixture from '../mocks/fixtures/scan/regime_zero_dte.json';
+import regimeEmptyFixture from '../mocks/fixtures/scan/regime_empty.json';
 
 function DashboardStandIn() {
   const [params] = useSearchParams();
@@ -131,5 +132,50 @@ describe('Regime page -- error and empty states', () => {
     server.use(http.get('*/api/scan/regime', () => HttpResponse.json({ filter: 'ALL', rows: [] })));
     renderRegime();
     expect(await screen.findByRole('region', { name: /no symbols scored/i })).toBeInTheDocument();
+  });
+});
+
+describe('Regime page -- a freshly deployed, empty database', () => {
+  /**
+   * The state of every first deployment: the schema is migrated but no 16:20 capture has run,
+   * so `GET /api/scan/regime` answers with a full set of rows in which every GEX-derived field
+   * is null -- `RegimeRowOut.missing` in `app/api/scan.py`. `regime_empty.json` is that exact
+   * response, recorded from the production stack against an empty database on 2026-09-19.
+   *
+   * This used to take the whole route down. `RegimeSymbolRow` declared `positioning`
+   * non-nullable, so `toRegimeRows` read `row.positioning.ratio` and threw
+   * "Cannot read properties of null (reading 'ratio')" inside the page's `useMemo` -- a blank
+   * screen and a console stack, on the very first thing a new install shows you. TASKS.md T37
+   * is explicit that this state "is the expected state on first run" and must not be presented
+   * as a failure.
+   */
+  it('renders the board instead of crashing, and says why the rows are empty', async () => {
+    server.use(
+      http.get('*/api/scan/regime', () => HttpResponse.json(regimeEmptyFixture)),
+    );
+    renderRegime();
+    await awaitLoaded();
+
+    // The table is present with its rows, not an error boundary or a blank page.
+    expect(await screen.findByRole('table')).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'SPX' })).toBeInTheDocument();
+
+    // And the server's own sentence is what explains the emptiness -- rendered verbatim,
+    // never reworded, per the field's contract.
+    expect(
+      screen.getAllByText('no snapshot captured yet for this symbol').length,
+    ).toBeGreaterThan(0);
+  });
+
+  it('does not label a never-measured symbol "noise-dominated"', async () => {
+    // "we measured and the signal was too small to trust" and "we never measured" are
+    // different facts. Reporting the first when the second is true is a lie about the data.
+    server.use(
+      http.get('*/api/scan/regime', () => HttpResponse.json(regimeEmptyFixture)),
+    );
+    renderRegime();
+    await awaitLoaded();
+
+    expect(screen.queryByText('noise-dominated')).not.toBeInTheDocument();
   });
 });

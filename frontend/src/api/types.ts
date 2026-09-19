@@ -644,33 +644,45 @@ export interface RegimeWall {
   room_beyond_strike: number;
 }
 
-/** `verdict` is the regime board's three-way call; `null` has two distinct, named causes
- * (`plans/continuation/03-regime-board.md`'s "Verified facts"): `stale` (the chain predates
- * its trading day's close by more than the 30-minute threshold, so the verdict is suppressed
- * outright) or `positioning.noise_dominated` (a fresh chain, but net gamma too small relative
- * to gross to trust a direction from). `reasons` always explains which -- render it verbatim,
- * never reworded, re-cased or truncated. */
+/** `verdict` is the regime board's three-way call; `null` has three distinct, named causes.
+ * Two are described in `plans/continuation/03-regime-board.md`'s "Verified facts": `stale`
+ * (the chain predates its trading day's close by more than the 30-minute threshold, so the
+ * verdict is suppressed outright) or `positioning.noise_dominated` (a fresh chain, but net
+ * gamma too small relative to gross to trust a direction from). The third is a symbol with
+ * **no snapshot captured at all**, which the server builds via `RegimeRowOut.missing` in
+ * `app/api/scan.py`: every GEX-derived field below is `null`, including `positioning` itself,
+ * and `reasons` reads "no snapshot captured yet for this symbol".
+ *
+ * That third case is the normal state of a fresh deployment -- an empty database on first
+ * boot, before any 16:20 capture has run -- and it is emphatically not an error (TASKS.md
+ * T37: "A symbol with no snapshot yet is the expected state on first run"). The nullability
+ * below is therefore load-bearing, not defensive: these fields were previously typed
+ * non-nullable, TypeScript believed it, and the regime board crashed on
+ * `row.positioning.ratio` against every fresh install.
+ *
+ * `reasons` always explains which case applies -- render it verbatim, never reworded,
+ * re-cased or truncated. */
 export interface RegimeSymbolRow {
   underlying: string;
   filter: string;
-  spot: number;
+  spot: number | null;
   atr14: number | null;
   iv30: number | null;
   rv20: number | null;
   iv_rv_ratio: number | null;
   return_5d: number | null;
   /** ISO 8601 UTC -- the vendor payload instant, same caveat as `SnapshotInfo.captured_at`. */
-  as_of: string;
+  as_of: string | null;
   /** ISO 8601 UTC -- the honest "as of" instant, same convention as `SnapshotInfo.effective_at`. */
-  effective_at: string;
+  effective_at: string | null;
   /** Minutes between `effective_at` and this row's trading day's close. The staleness signal
    * itself -- `stale` is this value cleared against a 30-minute threshold server-side. */
-  chain_age_minutes: number;
+  chain_age_minutes: number | null;
   /** True when `chain_age_minutes` exceeds the 30-minute threshold. When true, `verdict` is
    * always `null` and `reasons` carries the suppression sentence -- a row this stale must
    * never be presented as equivalent to a fresh one. */
   stale: boolean;
-  positioning: RegimePositioning;
+  positioning: RegimePositioning | null;
   flip_point: number | null;
   flip_distance: number | null;
   /** Signed percent, already computed server-side as `(spot - flip_point) / spot * 100` --

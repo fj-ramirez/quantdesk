@@ -25,14 +25,14 @@ describe('verdictGroupOf', () => {
     // "stale wins" (see mocks/fixtures/scan/README.md's "Regime fixtures" note).
     const xlre = zeroDteRows.find((r) => r.underlying === 'XLRE')!;
     expect(xlre.stale).toBe(true);
-    expect(xlre.positioning.noise_dominated).toBe(true);
+    expect(xlre.positioning?.noise_dominated).toBe(true);
     expect(verdictGroupOf(xlre)).toBe('stale');
   });
 
   it('groups a fresh, null-verdict, noise-dominated row as noise-dominated', () => {
     const xlk = findRow('XLK');
     expect(xlk.stale).toBe(false);
-    expect(xlk.positioning.noise_dominated).toBe(true);
+    expect(xlk.positioning?.noise_dominated).toBe(true);
     expect(verdictGroupOf(xlk)).toBe('noise-dominated');
   });
 });
@@ -101,5 +101,78 @@ describe('REGIME_DEFAULT_SORT', () => {
     const [row] = toRegimeRows(rows);
     expect(REGIME_DEFAULT_SORT).toBe('defaultSortKey');
     expect(row).toHaveProperty(REGIME_DEFAULT_SORT);
+  });
+});
+
+describe('a symbol with no snapshot captured yet', () => {
+  /** Exactly what `RegimeRowOut.missing` (backend `app/api/scan.py`) serializes: every
+   * GEX-derived field null, `stale: false` because there is no chain whose age could exceed
+   * the threshold, and the sentence the server puts in `reasons`.
+   *
+   * Captured verbatim from `GET /api/scan/regime` against a freshly-migrated, empty database
+   * on 2026-09-19 -- the state of every first deployment, before any 16:20 capture has run.
+   * This shape previously crashed the whole regime board: the wire types declared
+   * `positioning` non-nullable, so `toRegimeRows` read `row.positioning.ratio` straight
+   * through and threw "Cannot read properties of null (reading 'ratio')" inside the page's
+   * `useMemo`, taking the route down with it. */
+  const missing: RegimeSymbolRow = {
+    underlying: 'SPX',
+    filter: 'ALL',
+    spot: null,
+    atr14: null,
+    iv30: null,
+    rv20: null,
+    iv_rv_ratio: null,
+    return_5d: null,
+    as_of: null,
+    effective_at: null,
+    chain_age_minutes: null,
+    stale: false,
+    positioning: null,
+    flip_point: null,
+    flip_distance: null,
+    flip_distance_pct: null,
+    flip_distance_atr: null,
+    wall_below: null,
+    wall_above: null,
+    zero_dte_share: null,
+    verdict: null,
+    reasons: ['no snapshot captured yet for this symbol'],
+    trend_pct: null,
+  };
+
+  it('shapes the row instead of throwing', () => {
+    expect(() => toRegimeRows([missing])).not.toThrow();
+    const [row] = toRegimeRows([missing]);
+    expect(row.symbol).toBe('SPX');
+    expect(row.ratio).toBeNull();
+    expect(row.netGex).toBeNull();
+    expect(row.spot).toBeNull();
+  });
+
+  it('groups as no-data, not as noise-dominated', () => {
+    // The distinction is the point: "we measured and the signal was too small to trust" and
+    // "we never measured" are different facts, and the fallback in `verdictGroupOf` would
+    // otherwise report the first when the second is true.
+    expect(verdictGroupOf(missing)).toBe('no-data');
+    expect(toRegimeRows([missing])[0].noiseDominated).toBe(false);
+  });
+
+  it('sorts below every row that has data, stale ones included', () => {
+    const withData = toRegimeRows(rows);
+    const [noData] = toRegimeRows([missing]);
+    const lowest = Math.min(...withData.map((r) => r.defaultSortKey));
+    // ScanTable sorts this key descending, so "last" means strictly smallest.
+    expect(noData.defaultSortKey).toBeLessThan(lowest);
+  });
+
+  it('carries the server reason through verbatim for the table to render', () => {
+    expect(toRegimeRows([missing])[0].reasons).toEqual([
+      'no snapshot captured yet for this symbol',
+    ]);
+  });
+
+  it('is tinted, so it never reads as a plain verdict row', () => {
+    expect(rowTintClassFor('no-data')).toBeTruthy();
   });
 });

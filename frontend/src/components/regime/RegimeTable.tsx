@@ -63,8 +63,10 @@ function formatWall(wall: RegimeWall | null): ReactNode {
   );
 }
 
-function formatRoomBeyond(room: RoomBeyond | null, spot: number): ReactNode {
-  if (!room) return DASH;
+function formatRoomBeyond(room: RoomBeyond | null, spot: number | null): ReactNode {
+  // `spot` is null only for a symbol with no snapshot captured yet, where `room` is null too --
+  // but the distance is a percentage *of spot*, so it is unrenderable without one either way.
+  if (!room || spot == null) return DASH;
   const arrow = room.direction === 'up' ? '↑' : '↓';
   return (
     <span className="regime-room-beyond">
