@@ -1216,6 +1216,12 @@ Monorepo skeleton. Move GEX into `app/modules/gex` and `frontend/src/modules/gex
 `app/core/` and `app/workers/`, reprefix the API to `/api/gex`, add the launcher route.
 Changes no behaviour. Spec: [plans/quantdesk/00-monorepo-skeleton.md](plans/quantdesk/00-monorepo-skeleton.md).
 
+**Done 2026-09-19** (`ff05e2e`). 990 backend / 357 frontend tests green, both linters clean,
+26 routes with only `/health` outside `/api/gex`, `alembic upgrade head` verified against a
+real Postgres, and `capture_eod` confirmed as `mon-fri 16:20` NY with next fire Monday
+2026-09-21. Two container-boot bugs were found and fixed that the unit suite could not see.
+Full account under the *Result* heading in the plan file.
+
 ## T76 · Opus · T75
 
 Postgres schemas `gex` / `research` / `terminal`, GEX's tables moved out of `public`, and the

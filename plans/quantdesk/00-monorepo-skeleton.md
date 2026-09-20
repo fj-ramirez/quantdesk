@@ -137,3 +137,107 @@ The five invariants in `CLAUDE.md` survive verbatim; update the paths they name
 - Any shared `core/` beyond settings, session and schema constants — no bars, no symbols, no
   provider ABC hoisting. That is the successor initiative.
 - Launcher design. T75 ships a plain list; T81 makes it a page worth looking at.
+
+## Result
+
+**T75 landed 2026-09-19**, commit `ff05e2e` on `t75-monorepo-skeleton`. 310 files,
++3404/−1994.
+
+### Verified by the supervisor, independently of the agent's report
+
+- `uv run pytest` **990 passed** (baseline 981), `ruff check` clean. `npm test` **357 tests in
+  47 files** (baseline 356), `npm run lint` 0 errors and the same 5 pre-existing
+  `react-refresh` warnings the frozen reference carries.
+- **Nothing deleted**: `git diff --diff-filter=D` over the commit range is empty, and the
+  test-file count went 107 → 109 (the two new files below).
+- **The `versions/` directory is byte-for-byte untouched**, confirmed by diffing the range.
+- Route surface from `app.openapi()`: **26 paths, 25 under `/api/gex/`**, exactly one outside
+  it — `/health`, unprefixed, which is the contract `compose.prod.yaml`'s healthcheck depends
+  on.
+- `main.py` has no `lifespan` parameter at all, and `on_startup`/`on_shutdown` are both empty.
+  The API process starts no background work.
+- **`alembic upgrade head` against a real Postgres 16**: all seven revisions apply, exit 0,
+  eight tables created. This is the gap `tests/test_alembic_upgrade.py` does not cover — that
+  test runs on SQLite and stops at `b2d4f6a8c0e1`, because the final revision uses
+  `ALTER TABLE … ADD CONSTRAINT`, which SQLite cannot do. Worth re-running by hand on any
+  future change to `env.py`.
+- **The capture worker booted** against that database and registered eight jobs:
+  `['retention_prune', 'bars_update_preopen', 'capture_eod', 'capture_extended', 'bars_update',
+  'decisions_update', 'flows_update', 'capture_eod_safety_net']`. Eight rather than ten because
+  both intraday flags default false.
+- **The cron survived the move**, and proving it did not have to wait for Monday: inspecting
+  the built triggers gives `capture_eod` as `cron[day_of_week='mon-fri', hour='16',
+  minute='20']` with next fire `2026-09-21 16:20:00-04:00`. Correct schedule, correct zone.
+  Being able to check that without a clock is exactly what `build_scheduler()`'s separation
+  from `.start()` buys, and that property survived the move.
+
+### The two things that went wrong, both instructive
+
+- **`sys.modules` aliasing was not enough for the frozen revisions.** Two of them do
+  `import app.models.db` and then use the dotted form `app.models.db.UTCDateTime(...)`. The
+  `sys.modules` entry satisfies the *import* but never creates the `models` **attribute** on
+  the `app` package, which is what attribute access walks. The backend container exited 1 with
+  `AttributeError: module 'app' has no attribute 'models'` while all 988 tests were green —
+  because nothing in the suite ran a migration. Fixed with an explicit `setattr`, guarded now
+  by `tests/test_alembic_upgrade.py`.
+- **That new test then broke 25 unrelated tests**, in full runs only, each passing alone:
+  `env.py`'s `fileConfig` defaults to `disable_existing_loggers=True` and silenced the
+  application's loggers for the rest of the pytest session. Fixed with Alembic's own
+  `config.attributes.get("configure_logger", True)` idiom; the CLI path is unchanged.
+
+Both are the same lesson in different clothes: a green unit suite does not exercise container
+boot. The compose checks are not optional on a task shaped like this one.
+
+### Judgment calls, as made
+
+1. **Scheduler out of the API.** `app/workers/gex_capture.py` exposes
+   `run(*, stop, wait_for_schema)` — the old lifespan in substance, both parameters injectable
+   so tests drive the real path with no clock and no database. Signals via
+   `loop.add_signal_handler`, with a `signal.signal` fallback for Windows where the former
+   raises `NotImplementedError`. The one piece of genuinely new logic is `_wait_for_schema()`:
+   before the split, `alembic upgrade head && exec uvicorn` guaranteed the schema existed
+   before catch-up ran; two containers have no such ordering, and since `startup_catchup_job`
+   never raises, the failure mode would be a *silently* skipped catch-up on every cold start.
+   It polls for 60 s (matching prod's `start_period`) and starts the scheduler either way —
+   refusing to boot because Postgres was slow would turn a recoverable delay into a missed
+   16:20. It deliberately does not run alembic; two containers racing `upgrade head` is worse.
+2. **`app/core/` extent.** Three files. `get_engine`/`get_sessionmaker` moved out of
+   `models/db.py`, because the cached factory cannot live in core without core importing
+   `app.modules.gex.models.db` — layering pointing the wrong way on day one. `Base`,
+   `UTCDateTime` and the tables stayed; hoisting `UTCDateTime` now would be guessing at
+   consumers that do not exist, and T76 will have a real reason.
+3. **Frontend boundary.** One edge crosses deliberately: `shell/AppFrame` renders `ContextBar`,
+   which reads `useDashboardParams`/`useCaptureHealth`, so `ContextBar` and `AssetSelector`
+   live in the module and `AppFrame` imports one thing from it, commented and naming T81.
+   `navConfig` stayed in the shell — T81 turns it into the module switcher's data source, and
+   moving it twice is worse.
+
+The agent rejected the separate Dockerfile worker stage this file listed as in scope: the
+worker needs an identical image and differs only in its command. It did need its own **tag** —
+`backend` and `gex-capture` both naming `gex-backend:dev` made buildx race the export and fail
+the build outright. They are `gex-capture:dev`/`:prod` now, same target, fully layer-cached.
+Good call; this plan file was wrong.
+
+### Carried forward
+
+- **The `/api/gex/gex/…` wart.** `api/gex.py`'s router already carried `prefix="/gex"`, so
+  three routes now read `/api/gex/gex/{underlying}/…`. That is the literal consequence of "all
+  ten move to `/api/gex`" plus "do not re-specify any GEX behaviour", and renaming it to
+  `/levels` was correctly not the agent's call. One line in the router, three in the frontend
+  client, plus MSW handlers, whenever someone decides.
+- **T76 should delete the aliasing block in `alembic/env.py`** when it rewrites those tables
+  into the `gex.` schema.
+- `app/core/schemas.py` defines the three schema names and nothing imports them yet. T76.
+- One `pyproject.toml` change beyond the move: `[tool.ruff.lint.isort] known-first-party =
+  ["app"]`, because ruff resolves first-party on disk and reclassified the frozen revisions'
+  `import app.models.db` as third-party once `app.models` stopped existing.
+- Old URLs are not redirected to their `/gex` equivalents; CORS still allowlists exactly
+  `http://localhost:5173`; the launcher is a plain list. T81 owns the design.
+
+### Not verified
+
+`docker compose -f compose.yaml -f compose.prod.yaml up -d` was not run: it needs the external
+`edge` network shared with Caddy and would start a second Postgres against `./data/postgres`.
+Config resolution and all three image builds were verified, and the runtime images were
+smoke-tested by running them directly. Starting the production topology on the dev host
+remains a deliberate, separate act.

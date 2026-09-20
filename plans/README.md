@@ -61,3 +61,12 @@ plans/
   by image name, never run two Opus agents concurrently, verify the artifact not the report.
 - When a task lands, append its outcome (what was verified live, what was cut) to the plan file
   under a *Result* heading and update the `TASKS.md` line. The plan file is the memory of why.
+- **A plan file is a dispatch unit, not just a spec.** Where its tasks share one model, one set
+  of paths and a strict dependency chain, hand the whole file to a single agent in one worktree
+  and drive the later tasks by message rather than re-dispatching cold. The eligibility rules,
+  the per-task verification gate that still applies, and the cases that must stay cold (review
+  passes, anything crossing a plan file) are in `context/workflow.md` § *Dispatching a cluster*.
+- An agent running a cluster keeps its working memory in `NOTES-<cluster>.md` beside the plan
+  file — verified facts, judgment calls, open items, appended after each task. It is what a
+  replacement agent reads to start warm, and the raw material for the *Result* heading above.
+  Delete it once the *Result* section is written.
