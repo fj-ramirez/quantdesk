@@ -41,7 +41,7 @@ EXPOSE 8001
 # idempotent, so this is safe on every start -- without it a fresh volume yields an empty
 # schema and every request 500s on "relation snapshots does not exist". Single-user local
 # app: auto-migrating on boot is the right trade here, unlike a shared deployment.
-CMD ["sh", "-c", "uv run alembic upgrade head && exec uv run uvicorn app.main:app --host 0.0.0.0 --port 8001 --reload --reload-dir app"]
+CMD ["sh", "-c", "uv run alembic upgrade head && uv run python -m app.core.ro_role && exec uv run uvicorn app.main:app --host 0.0.0.0 --port 8001 --reload --reload-dir app"]
 
 
 # --- runtime -------------------------------------------------------------------------------
@@ -79,4 +79,10 @@ EXPOSE 8001
 
 # Same migrate-then-serve contract as dev, without the reloader (which watches the filesystem
 # and costs CPU for nothing when the source cannot change) and without `uv run`.
-CMD ["sh", "-c", "alembic upgrade head && exec uvicorn app.main:app --host 0.0.0.0 --port 8001"]
+#
+# T76 adds the middle step. `alembic upgrade head` creates `quantdesk_ro` and its grants but
+# deliberately sets no password -- privileges are versioned schema state, a secret is not --
+# so `app.core.ro_role` applies LOGIN and `QUANTDESK_RO_PASSWORD` here, on every boot. That
+# makes rotating it an env edit plus a restart rather than a new migration. It is a no-op when
+# the variable is unset and it exits 0 even when it fails, so it can never gate uvicorn.
+CMD ["sh", "-c", "alembic upgrade head && python -m app.core.ro_role && exec uvicorn app.main:app --host 0.0.0.0 --port 8001"]

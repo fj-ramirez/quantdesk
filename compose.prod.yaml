@@ -56,6 +56,12 @@ services:
     image: gex-backend:prod
     environment: &prod_backend_environment
       DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:?required - set it in .env}:${POSTGRES_PASSWORD:?required - set it in .env}@postgres:5432/${POSTGRES_DB:?required - set it in .env}
+      # T76. Required here for the same reason the credentials above are: a production stack
+      # that silently fell back to a well-known default password for a role with SELECT on
+      # every module's data would be worse than one that refuses to start and says which
+      # variable is missing. Unlike POSTGRES_PASSWORD this one IS re-applied on every boot
+      # (`app.core.ro_role`), so changing it here and restarting really does rotate it.
+      QUANTDESK_RO_PASSWORD: ${QUANTDESK_RO_PASSWORD:?required - set it in .env (see .env.example)}
     networks:
       # Both: `internal` to reach postgres, `edge` so Caddy can reach it on 8001. This is the
       # only service on both networks, and it is the only path from `edge` to the database.

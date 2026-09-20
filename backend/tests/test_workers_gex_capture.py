@@ -222,8 +222,14 @@ async def test_wait_for_schema_returns_true_once_the_table_appears(monkeypatch):
     monkeypatch.setattr(worker, "get_engine", lambda: object())
 
     class _Inspector:
-        def has_table(self, name: str) -> bool:
+        def has_table(self, name: str, schema: str | None = None) -> bool:
+            # T76: the probe must be schema-qualified. `gex.snapshots` is not in the
+            # connection's default schema (`public`, pinned there by `connect_args_for`), so
+            # an unqualified `has_table` finds nothing and the worker waits out its whole
+            # 60-second timeout against a perfectly migrated database -- which is exactly what
+            # it did in the container before this assertion existed.
             assert name == "snapshots"
+            assert schema == "gex"
             return True
 
     monkeypatch.setattr(worker, "inspect", lambda _engine: _Inspector())

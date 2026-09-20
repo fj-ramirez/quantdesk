@@ -83,8 +83,8 @@ concurrently, per the one-Opus-agent rule in `context/workflow.md`.
 
 | | Task | Model | File |
 |---|---|---|---|
-| 1 | T75 monorepo skeleton | Opus | [00-monorepo-skeleton.md](00-monorepo-skeleton.md) |
-| 2 | T76 Postgres schemas + read-only role | Opus | [01-postgres-schemas.md](01-postgres-schemas.md) |
+| 1 | T75 monorepo skeleton ✅ | Opus | [00-monorepo-skeleton.md](00-monorepo-skeleton.md) |
+| 2 | T76 Postgres schemas + read-only role ✅ | Opus | [01-postgres-schemas.md](01-postgres-schemas.md) |
 | 3 | T77 research port, T78 research UI | Opus, Sonnet | [02-research-module.md](02-research-module.md) |
 | 4 | T79 terminal port, T80 terminal UI | Opus, Sonnet | [03-terminal-module.md](03-terminal-module.md) |
 | 5 | T81 launcher + module shell | Sonnet | [04-launcher-shell.md](04-launcher-shell.md) |
@@ -128,8 +128,9 @@ Measured on 2026-09-19, not assumed.
 - xactx is 6,628 lines. DuckDB call sites cluster in `store/` (22) with a tail in `brief.py`
   (15), `graph.py` (8), `derive.py` (4) and the analytics modules (10).
 - `backend/app/main.py` mounts ten routers at `/api`; all ten move to `/api/gex` in T75.
-- Next free task ID before this initiative: **T75**. This initiative allocates T75–T82; next
-  free after it is **T83**.
+- Next free task ID before this initiative: **T75**. This initiative allocates T75–T82; T83
+  was then logged out of T76 (an `alembic heads` breakage inherited from T75), so the next
+  free ID is **T84**.
 
 ## Out of scope for this initiative
 

@@ -34,6 +34,7 @@ import time
 from sqlalchemy import inspect
 
 from app.core.db import get_engine
+from app.core.schemas import SCHEMA_GEX
 from app.modules.gex.jobs.catchup import startup_catchup_job
 from app.modules.gex.jobs.scheduler import build_scheduler
 
@@ -58,7 +59,15 @@ SCHEMA_POLL_SECONDS = 2.0
 #: The table whose existence stands in for "migrations have run". `snapshots` is the oldest
 #: one in the schema and the one `has_eod_snapshot_today` queries, so it is the table the
 #: startup catch-up would actually trip over.
+#:
+#: T76 qualified the probe. The table is `gex.snapshots` now, and `has_table` with no schema
+#: looks in the connection's default one -- which is `public`, deliberately pinned there (see
+#: `app.core.db.connect_args_for`). Unqualified, this worker waited out its full 60 s timeout
+#: on a database that was perfectly migrated. Caught by running the stack, not by the suite:
+#: every test here injects `wait_for_schema=False` or a fake, because the point under test is
+#: the waiting, not the lookup.
 SCHEMA_SENTINEL_TABLE = "snapshots"
+SCHEMA_SENTINEL_SCHEMA = SCHEMA_GEX
 
 
 async def _wait_for_schema(*, timeout: float = SCHEMA_WAIT_SECONDS) -> bool:
@@ -95,7 +104,9 @@ async def _wait_for_schema(*, timeout: float = SCHEMA_WAIT_SECONDS) -> bool:
         attempt += 1
         try:
             found = await asyncio.to_thread(
-                lambda: inspect(engine).has_table(SCHEMA_SENTINEL_TABLE)
+                lambda: inspect(engine).has_table(
+                    SCHEMA_SENTINEL_TABLE, schema=SCHEMA_SENTINEL_SCHEMA
+                )
             )
         except Exception as exc:  # noqa: BLE001 -- see below; breadth is the point here.
             # Deliberately blind. Everything this can raise means the same thing to this

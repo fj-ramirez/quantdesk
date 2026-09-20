@@ -111,3 +111,102 @@ placement declarative so later modules cannot forget it.
   creates the empty namespaces and the rule.
 - Any cross-module view or join. Nothing joins until there is a question that needs it.
 - Connection pooling, replicas, or a separate analytics database.
+
+## Result
+
+**Done 2026-09-19.** 1,003 backend tests green (990 before, 13 added), both linters clean, and
+every acceptance check run against the live lab Postgres rather than reasoned about.
+
+What was verified, on a database seeded with rows first so the move had something to lose:
+
+- `alembic upgrade head` moved all seven gex tables out of `public` with row counts identical
+  (`snapshots=2`, `gex_levels=2`, `daily_bars=1`), and carried their seven `_id_seq` sequences
+  with them.
+- `alembic downgrade -1` put them back exactly — schemas dropped, role dropped, same counts —
+  and a second `upgrade`/`downgrade` cycle repeated it.
+- A from-scratch `upgrade head` on an empty database (`gex_fresh`) reached the identical end
+  state: three schemas, seven tables in `gex`, `public` holding only `alembic_version`.
+- Re-running `upgrade head` on an already-migrated database is a no-op, and `alembic_version`
+  stays in `public`.
+- `alembic revision --autogenerate` produces an **empty** diff — the check that the models and
+  the migrated database actually agree.
+- As `quantdesk_ro`: `select count(*) from gex.snapshots` → 2; INSERT, UPDATE and DELETE →
+  *permission denied for table snapshots*; `CREATE TABLE` in `gex` and in `research` →
+  *permission denied for schema*; `ALTER TABLE` → *must be owner*.
+- A table created in `research` **after** the migration was readable by `quantdesk_ro` with no
+  new grant, which is the `ALTER DEFAULT PRIVILEGES` half doing its job.
+- `docker compose -f compose.yaml -f compose.prod.yaml config` aborts naming
+  `QUANTDESK_RO_PASSWORD`; the dev stack defaults it.
+- The rebuilt stack boots clean: `alembic upgrade head`, then `quantdesk_ro can now log in`,
+  then uvicorn; `/health` reports `db: ok`; `/api/gex/snapshots`, `/api/gex/bars/SPY` and
+  `/api/gex/health/capture` all serve from `gex.*`; and the capture worker registers its eight
+  jobs with no wait. Frontend untouched — 357 tests and 0 lint errors, unchanged.
+
+### Judgment calls
+
+**The brief contradicted itself about the role, and this is how it was resolved.** It asks for
+`CREATE ROLE quantdesk_ro NOLOGIN` in the migration *and* for a `QUANTDESK_RO_PASSWORD`
+variable, but its own acceptance criterion requires *connecting* as the role — which NOLOGIN
+forbids. Split by kind: the migration owns **privileges** (role, `USAGE`, `SELECT`, default
+privileges) because those are versioned schema state with no secret in them, and
+`app/core/ro_role.py` owns the **password**, applied idempotently after `alembic upgrade head`
+in both Dockerfile stages. Rotation is an env edit and a restart rather than a new revision,
+and no credential enters git. It is a no-op when the variable is unset and exits 0 when it
+fails, so it can never gate uvicorn.
+
+**Schema placement is on `Base.metadata`, not per-model `__table_args__`.** The brief asked for
+the latter; every gex model already defines its own `__table_args__` tuple, so that form would
+have meant seven edits and an eighth thing for a new table to forget — the exact failure the
+requirement exists to prevent. `MetaData(schema=SCHEMA_GEX)` is one line, inherited, and
+unforgettable.
+
+**`alembic_version` stays in `public`, so the "`\dt public.*` returns nothing" criterion is met
+in spirit rather than letter.** Moving it is unsafe in a way that is not obvious: with
+`version_table_schema` pointed at `gex`, any database whose version table is still in `public`
+looks like a database at base, and Alembic re-runs the entire chain against tables that already
+exist. There is no ordering of the move and the setting that is safe both on a fresh database
+and on an existing one. `public` therefore holds exactly one table and it belongs to Alembic,
+not to a module — no module has a privileged namespace, which is what the criterion was for.
+
+### The one that would have bitten later
+
+The brief's list of likely first-contact failures named `search_path`, but for the wrong
+reason: it expected unqualified raw SQL in the GEX codebase to break. There is none (the only
+`text()` in the app is `/health`'s `SELECT 1`). The real problem was that **this project's
+database role is called `gex`, and T76 created a schema called `gex`** — so the default
+`"$user", public` search path silently made `gex` the default schema. Reflection then labelled
+the moved tables as living in the default schema while `Base.metadata` labelled them `"gex"`,
+and `--autogenerate` emitted a migration recreating all seven tables. Fixed by pinning
+`options=-csearch_path=public` as a **connect argument** on both the app engine and Alembic's:
+SQLAlchemy resolves `default_schema_name` once at first connect and caches it for the engine's
+life, so issuing `SET search_path` after connecting fixes query resolution and leaves
+autogenerate just as wrong — that was tried first, and the migration it generated still
+recreated every table.
+
+**The one the test suite could not see.** `app/workers/gex_capture.py` waits for a sentinel
+table before scheduling anything, via `inspect(engine).has_table("snapshots")` — unqualified,
+so after the move it looked in `public`, found nothing, and sat out its full 60-second timeout
+against a perfectly migrated database before starting anyway. Every test of that function
+injects `wait_for_schema=False` or a fake inspector, because what they exist to check is the
+*waiting*, so all 1,003 passed while the real worker was broken. Found by running the stack and
+reading `docker compose logs`, which is the second time in two tasks that a container-only
+failure got past a green suite (T75's was the `app.models` alias). The fake inspector now
+asserts `schema == "gex"`.
+
+**This is the shape of the risk T77 and T79 inherit**: anything that names a table outside the
+ORM — `has_table`, `information_schema` queries, `text()` SQL, a `pg_dump` argument — needs the
+schema passed explicitly now, and the unit suite will not tell you.
+
+Two smaller ones, both live-observed: `ALTER ROLE ... PASSWORD` takes no bind parameters, so
+the statement is built server-side with `format('%I %L', ...)` — whose arguments need explicit
+`CAST(:p AS text)`, because `format` is variadic and Postgres otherwise fails with "could not
+determine data type of parameter $1", and because `:p::text` stops SQLAlchemy's `text()` parser
+recognising the bind at all.
+
+### Follow-up found, not fixed
+
+`alembic heads` and `alembic history` fail from the CLI with `ModuleNotFoundError: No module
+named 'app.models'`. T75's alias for the two frozen revisions lives in `env.py`, which those
+two commands never run. `upgrade`, `downgrade`, `current` and `revision` all run `env.py` and
+are unaffected, so nothing in the container or in CI is broken — it is a developer-facing
+wart. Logged rather than fixed silently; see T83.

@@ -14,6 +14,7 @@ from sqlalchemy import engine_from_config, pool
 import app
 from alembic import context
 from app.core.config import settings
+from app.core.schemas import SCHEMAS
 from app.modules.gex.models.db import Base
 
 # --- T75: keep the frozen revision scripts importable -------------------------------------
@@ -79,6 +80,38 @@ if config.config_file_name is not None and config.attributes.get("configure_logg
 # for 'autogenerate' support
 target_metadata = Base.metadata
 
+
+# --- T76: one chain, three schemas ---------------------------------------------------------
+#
+# `include_schemas=True` is required now that the models carry a schema. Without it,
+# autogenerate compares metadata that says `gex.snapshots` against a database it only
+# inspects in the default search path, concludes every table is missing, and writes a
+# migration that creates them all again -- or, with the tables found where it did not expect
+# them, drops them. Any generated migration still gets read line by line before it is kept.
+#
+# `include_name` is the other half, and it is not optional. `include_schemas=True` on its own
+# reflects *every* non-system schema in the database; anything found in one this application
+# does not own would be diffed against metadata that has never heard of it, and autogenerate
+# would propose dropping it. Restricting reflection to `SCHEMAS` means the diff covers exactly
+# the three namespaces this app owns and nothing else.
+#
+# **`alembic_version` stays in `public`, deliberately.** Alembic's default -- no
+# `version_table_schema` is set below -- and the alternative is worse than it looks. Pointing
+# `version_table_schema` at `gex` would mean that, on any database whose version table is
+# still in `public`, Alembic looks for `gex.alembic_version`, does not find it, concludes the
+# database is at base, and re-runs the entire chain against tables that already exist. There
+# is no ordering of "move the table" and "change the setting" that is safe in both directions
+# on both a fresh and an existing database.
+#
+# So `public` holds exactly one table, and it belongs to Alembic rather than to any module.
+# That is the letter of "public stays empty" bent and its intent kept: no *module* has a
+# privileged namespace, and the read-only role's grants have the same shape for all three.
+def include_name(name: str | None, type_: str, parent_names: dict) -> bool:
+    """Confine autogenerate's reflection to the schemas this application owns."""
+    if type_ == "schema":
+        return name in SCHEMAS
+    return True
+
 # other values from the config, defined by the needs of env.py,
 # can be acquired:
 # my_important_option = config.get_main_option("my_important_option")
@@ -103,6 +136,8 @@ def run_migrations_offline() -> None:
         target_metadata=target_metadata,
         literal_binds=True,
         dialect_opts={"paramstyle": "named"},
+        include_schemas=True,
+        include_name=include_name,
     )
 
     with context.begin_transaction():
@@ -116,15 +151,49 @@ def run_migrations_online() -> None:
     and associate a connection with the context.
 
     """
+    # `-csearch_path=public` has to be a *connection* parameter, not a `SET` issued after
+    # connecting. SQLAlchemy resolves `default_schema_name` once, during the dialect's
+    # first-connect initialisation, and caches it for the engine's life -- a later `SET
+    # search_path` changes how queries resolve but leaves the inspector still reporting the
+    # old default, so autogenerate goes on comparing against the wrong schema. (Tried in that
+    # order; the migration it generated still recreated all seven tables.)
+    section = dict(config.get_section(config.config_ini_section, {}))
+    connect_args = (
+        {"options": "-csearch_path=public"}
+        if section.get("sqlalchemy.url", "").startswith("postgresql")
+        else {}
+    )
     connectable = engine_from_config(
-        config.get_section(config.config_ini_section, {}),
+        section,
         prefix="sqlalchemy.",
         poolclass=pool.NullPool,
+        connect_args=connect_args,
     )
 
     with connectable.connect() as connection:
+        # --- T76: pin the search path, or autogenerate lies -------------------------------
+        #
+        # Measured, not theorised. The application's Postgres role is called `gex` and the
+        # default `search_path` is `"$user", public` -- so the moment T76 created a schema
+        # *also* called `gex`, `$user` started resolving to it and SQLAlchemy began reporting
+        # `default_schema_name == "gex"`. Reflection then labels the gex tables as living in
+        # the default schema (`None`) while `Base.metadata` labels them `"gex"`, the two never
+        # match, and `--autogenerate` emits a migration that creates all seven tables again.
+        # That was the observed output before this line existed.
+        #
+        # Pinning the path makes the default schema `public` again, which is what the metadata
+        # is diffed against and what every pre-T76 revision assumed when it created tables
+        # unqualified. It also removes the coincidence entirely: the behaviour no longer
+        # depends on whether the database user happens to share a name with a schema, which is
+        # the kind of thing that works on one host and not the next.
+        #
+        # Alembic's own `alembic_version` lookup is unaffected -- it resolves unqualified and
+        # the table is in `public`, which is still on the path.
         context.configure(
-            connection=connection, target_metadata=target_metadata
+            connection=connection,
+            target_metadata=target_metadata,
+            include_schemas=True,
+            include_name=include_name,
         )
 
         with context.begin_transaction():

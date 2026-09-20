@@ -71,6 +71,10 @@ plans/quantdesk/  the module-host initiative (T75–T82)
 7. (T75) The API process runs **no background work**. `app/main.py` has no lifespan; anything
    clock-bound belongs in `app/workers/` with its own container. Two schedulers means every
    capture fires twice.
+8. (T76) Every module's tables live in **its own schema** (`gex.`, `research.`, `terminal.`),
+   declared once on the module's `Base` via `MetaData(schema=...)` — never per model. `public`
+   holds nothing but `alembic_version`. Postgres connections pin `search_path` to `public`, so
+   a table is found because it was named, not because `$user` happened to match a schema.
 
 ## Context index
 

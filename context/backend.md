@@ -50,6 +50,67 @@ depends on (T37); do not turn it into a 500 or a bare body.
 
 ## Database
 
+### Schemas, one per module (T76)
+
+One database, three namespaces — `gex`, `research`, `terminal` — and `public` holds nothing but
+Alembic's `alembic_version`. Full reasoning in
+[plans/quantdesk/01-postgres-schemas.md](../plans/quantdesk/01-postgres-schemas.md); the short
+version is that schemas give per-module grants (`GRANT USAGE ON SCHEMA research`), `pg_dump -n
+terminal`, and an answer to "who owns this table" that `psql \dn` prints, where a
+`module__table` prefix gives a convention nothing enforces.
+
+**Placement is declarative and cannot be forgotten.** `Base` in
+`app/modules/gex/models/db.py` carries `metadata = MetaData(schema=SCHEMA_GEX)`, so
+`class Foo(Base)` is `gex.foo` with no further thought — deliberately not a per-model
+`__table_args__ = {"schema": ...}`, which is exactly the thing a new table forgets. The names
+come from `app/core/schemas.py`; research (T77) and terminal (T79) each get their own `Base`
+the same way. String foreign keys stay unqualified (`ForeignKey("snapshots.id")`) — SQLAlchemy
+resolves them within the metadata's default schema.
+
+**SQLite tests still work, and that is not an accident.** ~30 test files build their own SQLite
+engine and call `Base.metadata.create_all`; SQLite has no schemas, so `CREATE TABLE
+gex.snapshots` is a hard error. `get_engine` applies `schema_translate_map` mapping every
+schema in `SCHEMAS` to `None` for non-Postgres URLs — SQLAlchemy's designed mechanism, covering
+DDL and queries alike. That is why T76 changed no test file. `tests/test_module_schemas.py`
+guards it, because nothing else in the suite would notice it silently stopping.
+
+**`search_path` is pinned to `public`, on both the app engine and Alembic's.** This project's
+database role is called `gex` and there is now a *schema* called `gex`, so the default
+`"$user", public` made `gex` the default schema — and `alembic revision --autogenerate` then
+compared metadata that says `gex.snapshots` against reflection that said `snapshots`, and
+emitted a migration recreating all seven tables. Observed, not theorised. It must be a
+*connect* argument (`options=-csearch_path=public`, see `connect_args_for`): SQLAlchemy
+resolves `default_schema_name` once at first connect and caches it, so a later `SET
+search_path` changes query resolution and leaves autogenerate still wrong. `env.py` also sets
+`include_schemas=True` plus an `include_name` hook confining reflection to the three schemas —
+without the hook, a schema this app does not own would be diffed against metadata that has
+never heard of it and proposed for dropping.
+
+**`alembic_version` stays in `public`, deliberately.** Pointing `version_table_schema` at `gex`
+would mean that on any database whose version table is still in `public`, Alembic finds no
+version table, concludes the database is at base, and re-runs the whole chain against tables
+that already exist. There is no ordering of "move the table" and "change the setting" safe in
+both directions on both a fresh and an existing database. So `public` holds one table, owned by
+the migration tool rather than by any module.
+
+### The read-only role (T76)
+
+`quantdesk_ro` is what the T82 MCP connector authenticates as: `USAGE` on all three schemas,
+`SELECT` on their tables, and an `ALTER DEFAULT PRIVILEGES` so **tables added later are
+readable with no new grant** — which is what stops T77 and T79 from having to remember. Default
+privileges apply per *granting* role, so the migration reads `current_user` rather than
+assuming `postgres`; set for the wrong role they silently govern nothing and the failure
+surfaces months later.
+
+Privileges and secret are split on purpose. The migration (`a3f1c7d92b64`) creates the role
+`NOLOGIN` and grants — versioned schema state, identical on every host, no secret in git.
+`app/core/ro_role.py` applies `LOGIN` and `QUANTDESK_RO_PASSWORD` immediately after `alembic
+upgrade head` in both Dockerfile stages, so **rotating the password is an env edit and a
+restart**, not a new migration. It is a no-op when the variable is unset and exits 0 even when
+it fails: nothing else in the stack needs the role, so it must never gate uvicorn.
+
+### Tables
+
 Tables, all defined in `models/db.py` (the original three plus `daily_bars`, `etf_shares_outstanding`, `decisions`):
 
 - **`snapshots`** — index of Parquet files. Thin on purpose: anything queryable without
@@ -82,7 +143,9 @@ with no opinion about what is in the database, which is what lets `core` import 
 `app.modules.*`. `Base`, `UTCDateTime` and the tables stayed in
 `app/modules/gex/models/db.py`. They are never called at import time — Alembic's `env.py`
 and tests each need a different URL. Postgres URLs get `connect_timeout=5` (T35: an
-unreachable Postgres must not hang startup); SQLite gets no connect args.
+unreachable Postgres must not hang startup) and `options=-csearch_path=public` (T76, above);
+SQLite gets no connect args and a `schema_translate_map` instead. Both are built by
+`connect_args_for`.
 
 Migrations: Alembic in `backend/alembic/`. Add a revision for any model change — models and
 migrations must both stay backend-portable (plain core types, no Postgres-only types).

@@ -26,8 +26,32 @@ from sqlalchemy.engine import Engine
 from sqlalchemy.orm import Session, sessionmaker
 
 from app.core.config import settings
+from app.core.schemas import SCHEMAS
 
-__all__ = ["get_engine", "get_session_factory", "get_sessionmaker"]
+__all__ = ["connect_args_for", "get_engine", "get_session_factory", "get_sessionmaker"]
+
+
+def connect_args_for(url: str) -> dict[str, object]:
+    """DBAPI connect arguments for `url`. Its own function so it can be asserted on.
+
+    Both entries are Postgres-only; SQLite accepts neither and `create_engine` would fail
+    outright rather than ignore them.
+
+    `connect_timeout` is T35 -- see `get_engine`.
+
+    `options` is T76, and it pins the search path rather than inheriting Postgres's default
+    `"$user", public`. This project's database role is called `gex`, and T76 created a
+    *schema* called `gex`, so `$user` started resolving to it. The application itself does not
+    care (the ORM emits fully qualified names, because the metadata carries the schema), but
+    the coincidence is the kind that quietly becomes load-bearing: unqualified raw SQL would
+    find the module's tables on this host and find nothing on a host whose database user is
+    named anything else. `alembic/env.py` sets the same option for a sharper reason -- there
+    it is the difference between autogenerate producing an empty diff and producing a
+    migration that recreates all seven tables.
+    """
+    if not url.startswith("postgresql"):
+        return {}
+    return {"connect_timeout": 5, "options": "-csearch_path=public"}
 
 
 def get_engine(database_url: str | None = None) -> Engine:
@@ -46,10 +70,28 @@ def get_engine(database_url: str | None = None) -> Engine:
     for the catch-up's own logging, how long the user waits to see it give up -- is on the
     hook for. Only applied to Postgres URLs: SQLite (every test's `session_factory`) has no
     such keyword and would fail `create_engine` outright.
+
+    T76: **the schema translation below is what lets the test suite stay on SQLite.** The
+    models now carry a schema (`gex.snapshots`, not `snapshots` -- see
+    `app.modules.gex.models.db.Base`), and SQLite has no concept of one: a plain
+    `Base.metadata.create_all` against it would emit `CREATE TABLE gex.snapshots` and fail
+    with "unknown database gex". `schema_translate_map` is SQLAlchemy's designed answer --
+    the schema is a symbolic name resolved per connection, applying to DDL and queries alike,
+    so 28 test files that each build their own SQLite engine kept working with no edit at all
+    and go on exercising the same model code production runs.
+
+    Mapping every schema in `SCHEMAS`, not just `gex`, so research (T77) and terminal (T79)
+    inherit this for free rather than each rediscovering it.
+
+    The map is applied only off Postgres. On the real database the schemas exist and the
+    qualified names are the point; translating there would silently undo the migration.
     """
     url = database_url or settings.DATABASE_URL
-    connect_args = {"connect_timeout": 5} if url.startswith("postgresql") else {}
-    return create_engine(url, connect_args=connect_args)
+    is_postgres = url.startswith("postgresql")
+    engine = create_engine(url, connect_args=connect_args_for(url))
+    if is_postgres:
+        return engine
+    return engine.execution_options(schema_translate_map=dict.fromkeys(SCHEMAS))
 
 
 def get_sessionmaker(engine: Engine) -> sessionmaker[Session]:

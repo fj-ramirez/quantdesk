@@ -56,6 +56,16 @@ class Settings(BaseSettings):
     # setting-named error if it is ever constructed without this populated.
     MARKETDATA_TOKEN: str = ""
     PROVIDER: str = "cboe"
+    # --- T76: the read-only role's password ---------------------------------------------------
+    # Empty by default, same rule as MARKETDATA_TOKEN and TIINGO_TOKEN above: a dev stack that
+    # never asked for a read-only connection is not blocked by a missing credential. When it is
+    # set, `app.core.ro_role` (run after `alembic upgrade head`) gives `quantdesk_ro` LOGIN and
+    # this password, which is what the T82 MCP connector authenticates with.
+    #
+    # Deliberately not part of DATABASE_URL: that URL is the *application* user, which writes.
+    # Rotating this is an edit here plus a restart -- the migration owns the role's privileges,
+    # never its secret.
+    QUANTDESK_RO_PASSWORD: str = ""
     # Continuously compounded annualized risk-free rate for Greeks. A parameter, never
     # fetched from a rates feed (PLAN.md / TASKS.md T07).
     RISK_FREE_RATE: float = 0.04

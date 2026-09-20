@@ -1196,7 +1196,7 @@ buckets at read time and typed so it cannot pass as a settled one.
 
 **Next:** the frontend still reads the settled daily series. Wiring `session_bar` into the
 symbol views and charting the 5-minute series is UI work, not data work, and is the obvious
-follow-on. Next free ID is **T83**.
+follow-on. Next free ID is **T84** (T83 is logged under the quantdesk initiative below).
 
 ---
 
@@ -1227,6 +1227,30 @@ Full account under the *Result* heading in the plan file.
 Postgres schemas `gex` / `research` / `terminal`, GEX's tables moved out of `public`, and the
 `quantdesk_ro` read-only role the MCP connector will use. Spec:
 [plans/quantdesk/01-postgres-schemas.md](plans/quantdesk/01-postgres-schemas.md).
+
+**Done 2026-09-19.** 1,003 backend tests green (13 added), both linters clean, and every
+acceptance check run against the live lab Postgres: seven tables moved with row counts and
+sequences intact, `downgrade -1` a clean inverse, a from-scratch upgrade reaching the identical
+state, `--autogenerate` producing an empty diff, and `quantdesk_ro` able to SELECT everywhere
+and refused INSERT/UPDATE/DELETE/CREATE/ALTER. Schema placement went on `Base.metadata` rather
+than per-model `__table_args__`, and the role's privileges (migration) were split from its
+password (`app/core/ro_role.py`, applied at boot) — both judgment calls are argued under the
+plan file's *Result* heading, along with the `$user`-resolves-to-the-`gex`-schema trap that
+made autogenerate want to recreate every table. Full account there.
+
+## T83 · Sonnet · T76
+
+`alembic heads` and `alembic history` die with `ModuleNotFoundError: No module named
+'app.models'`. Two frozen revisions import the pre-T75 path; T75's alias for them lives in
+`alembic/env.py`, which those two commands never run (`upgrade`, `downgrade`, `current` and
+`revision` do, so containers and CI are unaffected — this is a developer-facing wart only).
+
+Found during T76, logged rather than fixed silently. The fix must not edit
+`alembic/versions/**`: a migration records what was applied to a real database, and rewriting
+one to match code that did not exist when it ran is how the next rename earns the identical
+edit. Options worth weighing: a deliberate, documented `app/models/__init__.py` compatibility
+shim; or teaching the two commands to load `env.py` first. Whichever lands needs a test, since
+the unit suite never invokes those subcommands.
 
 ## T77 · Opus · T76
 

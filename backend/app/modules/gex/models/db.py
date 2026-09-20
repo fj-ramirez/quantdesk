@@ -28,12 +28,15 @@ from sqlalchemy import (
     ForeignKey,
     Index,
     Integer,
+    MetaData,
     String,
     Text,
     UniqueConstraint,
 )
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 from sqlalchemy.types import TypeDecorator
+
+from app.core.schemas import SCHEMA_GEX
 
 __all__ = [
     "Base",
@@ -90,7 +93,32 @@ class UTCDateTime(TypeDecorator):
 
 
 class Base(DeclarativeBase):
-    pass
+    """Declarative base for every gex table -- and the one place its schema is decided (T76).
+
+    Every table below lands in the `gex` schema because this metadata says so, not because
+    each model remembered to say so. That is the whole point: T76's brief asks for schema
+    placement to be *declarative, so later modules cannot forget it*, and a
+    `__table_args__ = {"schema": ...}` per model is precisely the kind of thing a new table
+    forgets. Here there is nothing to forget -- a `class Foo(Base)` added tomorrow is
+    `gex.foo` with no further thought, and `research`/`terminal` get their own `Base` with
+    their own `MetaData(schema=...)` in T77 and T79.
+
+    Two consequences worth knowing about.
+
+    **`ForeignKey("snapshots.id")` still resolves**, unqualified, in every model below.
+    SQLAlchemy resolves a string foreign-key target within the metadata's default schema, so
+    the seven existing declarations needed no edit and a new one needs no prefix. The rendered
+    DDL is `REFERENCES gex.snapshots (id)`.
+
+    **SQLite has no schemas**, and the test suite is 28 files of
+    `Base.metadata.create_all(sqlite_engine)`. Rather than teach each of them to ATTACH a
+    database called `gex`, `app.core.db.get_engine` maps the schema away for non-Postgres
+    URLs -- see the `schema_translate_map` there. That is SQLAlchemy's designed mechanism for
+    exactly this, it covers DDL and queries alike, and it means the tests kept running
+    unmodified against the same models production uses.
+    """
+
+    metadata = MetaData(schema=SCHEMA_GEX)
 
 
 class Snapshot(Base):

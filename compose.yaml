@@ -89,6 +89,14 @@ services:
       INTRADAY_ENABLED: ${INTRADAY_ENABLED:-false}
       INTRADAY_STRIKE_RETENTION_DAYS: ${INTRADAY_STRIKE_RETENTION_DAYS:-30}
       INTRADAY_BARS_ENABLED: ${INTRADAY_BARS_ENABLED:-false}
+      # T76. The read-only role the T82 MCP connector authenticates as. `alembic upgrade head`
+      # creates the role and its grants; `app.core.ro_role` (the boot step after it, see
+      # backend/Dockerfile) gives it LOGIN with this password. Defaulted in dev and required in
+      # prod, following the same pattern as the three Postgres credentials above.
+      #
+      # This is NOT the application's own credential -- DATABASE_URL above still connects as
+      # POSTGRES_USER, which writes. This role can only SELECT.
+      QUANTDESK_RO_PASSWORD: ${QUANTDESK_RO_PASSWORD:-quantdesk_ro}
     volumes:
       # DATA_DIR. A bind mount in both environments: the Parquet tree is the one artifact in
       # this stack that is genuinely unbackfillable (the free Cboe endpoint serves only "now"),
