@@ -33,6 +33,16 @@ dev = [
     "pytest",
     "pytest-asyncio",
     "ruff",
+    # T79. Needed only by `scripts/migrate_xactx.py`, the one-shot import of xactx's old
+    # DuckDB store. Deliberately dev-only: the runtime image builds with `--no-dev`, and
+    # nothing the application serves has any reason to be able to open a DuckDB file. Keeping
+    # it declared (rather than installed ad hoc when someone needs it) is what makes that
+    # migration reproducible a year from now.
+    #
+    # `pytz` was NOT carried over. It was in xactx's dependencies only because DuckDB needed it
+    # to return TIMESTAMPTZ through `fetchall`; a grep across the ported module confirms zero
+    # uses, and psycopg returns aware datetimes natively.
+    "duckdb",
 ]
 
 [tool.uv]

@@ -40,9 +40,14 @@ API process starts no background work at all.** See `plans/quantdesk/README.md`.
 backend/app/
   core/        config.py (settings), db.py (engine + session factory), schemas.py (schema names)
   main.py      mounts each module's router under /api; no lifespan, starts nothing
-  workers/     gex_capture.py, research_search.py — one container each, APScheduler
+  workers/     gex_capture.py, research_search.py, terminal_ingest.py — one container each
   config/      research.yaml — EdgeLab's search budget and cost model (T77)
   scripts/     migrate_registry.py — one-shot SQLite→Postgres registry import (T77)
+  modules/terminal/   xactx, ported in T79 from projects/market-terminal
+    store/db.py  the ONLY module that knows the engine — a DuckDB-shaped facade over psycopg
+    tables.py    the six tables (named tables.py, not models/, because xactx owns models.py)
+    analytics/ adapters/ brief.py graph.py policy.py derive.py — the science, carried over
+    cli.py       a debugging side-door; the product is the screen
   modules/research/
     router.py    APIRouter(prefix="/research") — leaderboard, trials, paper, status
     storage/repository.py  read queries + the noise ceiling (never computed client-side)
@@ -99,6 +104,11 @@ plans/quantdesk/  the module-host initiative (T75–T82)
    drops the noise ceiling is worse than none, because it looks authoritative. And there is
    **one** trial registry — `Registry` raises rather than falling back to a local SQLite file,
    because two writers against two stores fork the history with nothing going red.
+10. (T79) The terminal module's **point-in-time rule**: a revision *adds a row* and never
+    overwrites one. `as_of` is part of `terminal.observations`' primary key, and `as_of_basis`
+    records per row how that `as_of` was established — the per-row column is the authority, not
+    the series' dominant basis. Anything that makes `as_of` updatable (an upsert, a
+    "correction", a dedupe) destroys the only thing this module has that a price feed does not.
 
 ## Context index
 

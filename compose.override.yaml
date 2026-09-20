@@ -81,6 +81,16 @@ services:
       - ./backend:/app
       - /app/.venv
 
+  # T79. Same dev treatment as the other two workers: own tag, dev target, source bind-mounted.
+  terminal-ingest:
+    image: terminal-ingest:dev
+    build:
+      target: dev
+    command: ["uv", "run", "python", "-m", "app.workers.terminal_ingest"]
+    volumes:
+      - ./backend:/app
+      - /app/.venv
+
   frontend:
     image: gex-frontend:dev
     build:

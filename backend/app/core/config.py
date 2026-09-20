@@ -81,6 +81,81 @@ class Settings(BaseSettings):
     # settings so it round-trips through `.env` as one value and reads the way a crontab does.
     RESEARCH_CRON: str = "0 2 * * *"
     RESEARCH_INTERVAL_MINUTES: int = 60
+
+    # --- T79: the terminal module (xactx) ------------------------------------------------------
+    # Folded in from the standalone repo's own pydantic-settings class, **keeping its `XA_`
+    # environment-variable names exactly**: `XA_FRED_API_KEY`, `XA_ZSCORE_WINDOW` and the rest
+    # are the same variables they always were, so an existing `.env` still works. The module
+    # reads them through `app/modules/terminal/config.py`, which maps them back to the short
+    # attribute names its ~6,600 ported lines already use.
+    #
+    # There is deliberately **no `XA_DB_PATH`**. The DuckDB file is gone, and a path-shaped
+    # setting would be an invitation to point something at a stray `.duckdb` and get
+    # plausible-looking, unshared data out of it.
+    #
+    # These are not deployment knobs -- they are the analytical parameters the spec argues for
+    # (a z-score window that excludes the change being scored, a minimum sample below which a
+    # z-score is "noise wearing a statistic's clothes", a PCA that refuses to run on too few
+    # series). They live here so a board is reproducible from its own configuration, and the
+    # reasoning for each value is in `plans/quantdesk/03-terminal-module.md` and the xactx spec.
+
+    # FRED is the only source needing a credential; Treasury, Cboe, CFTC and CME are keyless.
+    # Empty by default, same rule as MARKETDATA_TOKEN: a dev stack is never blocked by a
+    # missing key, and the adapter fails with a setting-named error if it is actually needed.
+    XA_FRED_API_KEY: str = ""
+    XA_HTTP_TIMEOUT_SECONDS: float = 30.0
+
+    # Spec 7: one snapshot convention, stored in metadata and applied consistently.
+    XA_SNAPSHOT_TZ: str = "America/New_York"
+    XA_SNAPSHOT_LOCAL_TIME: str = "16:00"
+
+    # 2003-01-02 is where TIPS real yields -- and therefore breakevens -- begin. Earlier data
+    # exists for nominals, but no cross-asset window can use it. A string, not a `date`, so it
+    # round-trips through `.env` like every other setting here.
+    XA_BACKFILL_START: str = "2003-01-02"
+
+    # --- Normalized change board (spec 3.1) ---
+    # The trailing window a z-score is measured against, and which always EXCLUDES the change
+    # being scored -- otherwise a move partly defines its own normality.
+    XA_ZSCORE_WINDOW: int = 250
+    # Refuse to report a z computed from fewer past changes than this.
+    XA_MIN_ZSCORE_OBSERVATIONS: int = 60
+    # Maximum calendar days between two observations for their difference to count as a
+    # one-period change. Five covers a long weekend plus a holiday. A larger gap still yields a
+    # change but is excluded from the trailing distribution and flagged: a 10-day move is not a
+    # sample from the 1-day distribution.
+    XA_MAX_GAP_DAYS: int = 5
+    # History of the trailing volatility itself, so the board can say whether today's window is
+    # unusually compressed -- a z of 2 against a compressed window means something different.
+    XA_VOL_PERCENTILE_WINDOW: int = 750
+    XA_VOL_EXTREME_LOW_PCT: float = 10.0
+    XA_VOL_EXTREME_HIGH_PCT: float = 90.0
+    # Warn when a series' newest observation is older than this at the board's as_of. FX on
+    # FRED routinely publishes 6 days late, so an unflagged board would silently compare
+    # today's yield move with last week's currency move.
+    XA_STALE_WARN_DAYS: int = 3
+
+    # --- Factor decomposition (spec 3.2) ---
+    XA_PCA_WINDOW: int = 250
+    XA_PCA_COMPONENTS: int = 4
+    # A factor model over a handful of series describes those series, not a cross-asset system.
+    XA_PCA_MIN_SERIES: int = 10
+
+    # --- Regime classification (spec 3.4) ---
+    XA_REGIME_WINDOW_DAYS: int = 20
+    XA_REGIME_SCORE_WINDOW: int = 250
+    # Below this on every leg the classifier returns "quiet" rather than labelling noise.
+    XA_REGIME_MIN_Z: float = 0.75
+
+    # --- Transmission graph (spec 4) ---
+    XA_BETA_WINDOW: int = 250
+    XA_CORR_HISTORY_WINDOW: int = 756
+
+    XA_LOG_LEVEL: str = "INFO"
+    # The nightly ingest sequence's schedule, in `settings.TZ`. 03:00 by default: after the US
+    # close and after the sources publish, and an hour clear of the research search at 02:00 so
+    # two CPU- and network-heavy jobs do not contend on a single-box deployment.
+    XA_INGEST_CRON: str = "0 3 * * *"
     # Continuously compounded annualized risk-free rate for Greeks. A parameter, never
     # fetched from a rates feed (PLAN.md / TASKS.md T07).
     RISK_FREE_RATE: float = 0.04

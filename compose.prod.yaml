@@ -158,6 +158,25 @@ services:
         max-size: 10m
         max-file: "3"
 
+  # T79. Like `research-search`, this one gets a CPU ceiling: the nightly sequence pulls five
+  # sources and recomputes the transmission graph over the full panel, and it must not be able
+  # to starve the API. One core is ample -- the work is mostly waiting on HTTP.
+  terminal-ingest:
+    image: terminal-ingest:prod
+    environment: *prod_backend_environment
+    networks:
+      internal: {}
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: "1.0"
+    logging:
+      driver: json-file
+      options:
+        max-size: 10m
+        max-file: "3"
+
   frontend:
     image: gex-frontend:prod
     build:

@@ -165,3 +165,86 @@ Measured 2026-09-19.
 - Phase 4 (consensus) and phase 8.
 - New series, new adapters, new analytics. Port only.
 - Streaming or intraday cross-asset data. This module is daily by design.
+
+## Result — T79
+
+**Done 2026-09-19.** 1,068 backend tests green offline (6 Postgres-gated skips), 1,074 with a
+database, linter clean. 218,915 observations migrated with every vintage intact.
+
+### Verified, not assumed
+
+- **The portability claim held.** The only DDL edit the port needed was `DOUBLE` ->
+  `DOUBLE PRECISION`. `TEXT`, `BOOLEAN`, `INTEGER`, `DATE` and `TIMESTAMPTZ` came across
+  untouched, and no DuckDB-specific construct appears anywhere in the module. The schema
+  header's promise, written well before anyone tried to collect on it, was accurate.
+- **No vintage was lost.** 209,328 `(series_id, value_date)` pairs, **3,268 of them revised**,
+  every one preserved with its full vintage count. All 218,915 values compared **bit-identical**
+  (`==`, never `isclose`).
+- **The payrolls example reproduces exactly.** January 2024 nonfarm payrolls: five vintages,
+  first print 157700, current 157032 — as documented in the store's own worked example. A
+  latest-known read returns 157032; `as_of=2024-02-15` returns 157700; `as_of=2024-03-20`
+  returns the 157533 interim revision; `as_of=2024-01-15` returns **zero rows**, because the
+  world had not produced that number yet. Absent, not approximated.
+- `assert_no_lookahead` passes on a valid frame and raises `LookaheadError` on a backdated
+  evaluation time.
+- **The board builds from Postgres** at both a historical and a recent `as_of` — 75 series, 38
+  with computable z-scores, ranked by |z|, with vol-compression flags and staleness warnings
+  firing correctly (`ust.*: newest observation is 4 days before the board as_of`).
+- The worker boots, finds `terminal.observations` immediately and schedules `0 3 * * *`.
+
+### Judgment calls
+
+**The engine swap is a facade, not a rewrite.** `store/db.py`'s original docstring promised that
+"swapping in Postgres later means adding a sibling implementation here, not touching the loader,
+the query layer or the adapters". That promise is collected rather than broken: `_Connection`
+wears DuckDB's `execute` signature over psycopg, absorbing three differences — `?` vs `%s`
+placeholders, literal `%` escaping, and `fetch_df()` — so **25 SQL call sites kept their strings
+character for character**. The alternative was editing every SQL string in the module, which
+would have made the port unreviewable and put the point-in-time semantics at risk in the same
+commit that moved them.
+
+**One SQL edit was unavoidable and is documented in place.** `query.py`'s
+`(? IS NULL OR as_of <= ?)` needed explicit `CAST(? AS timestamptz)`: DuckDB infers a NULL
+parameter's type from context, Postgres refuses with "could not determine data type of parameter
+$4". Semantics unchanged.
+
+**`tables.py`, not `models/db.py`.** xactx already owns a `models.py` (its Pydantic domain
+types), and a `models/` package beside it shadows that module and breaks every adapter import.
+The ported file is the one that must not move, so the new file took the different name.
+
+**Settings fold into `app/core/config.py` with the `XA_` names preserved**, behind a small
+facade in `modules/terminal/config.py` that maps them back to the short attribute names ~6,600
+ported lines already read. Renaming `settings.zscore_window` to `settings.XA_ZSCORE_WINDOW`
+throughout would have been a large mechanical diff through exactly the code whose behaviour must
+be shown not to have changed. **`db_path` was deleted, not repointed** — there is no file any
+more, and a path-shaped setting is an invitation to point something at a stray `.duckdb`.
+
+**`board`, `regime`, `factors` and `brief` are not in the nightly sequence.** They compute on
+read, so the API can serve them at whatever `as_of` a screen asks for. Precomputing them would
+mean the board could only be viewed at the moments a cron job happened to run — the opposite of
+what a point-in-time terminal is for.
+
+### Caught by doing
+
+- **My own SQL translator had a quote bug, found by the first real query.** A `--` comment
+  containing an ordinary English possessive ("the parameter's type") was read as opening a
+  string literal, so every placeholder after it went untranslated and psycopg reported "the
+  query has 3 placeholders but 5 parameters were passed". `translate_sql` is now comment-aware
+  (line and block), and `tests/test_terminal_store.py` pins the case. The comment is the kind of
+  thing anyone would write, which is what made it worth fixing properly rather than rewording.
+- **DuckDB returns `as_of` tagged `America/Santo_Domingo`**, not UTC — the pytz artifact the
+  brief predicted, and the reason the migration compares instants rather than wall-clock. A
+  naive comparison would have reported thousands of false differences.
+- **`pytz` confirmed droppable**: zero uses across the ported module. `duckdb` is now a declared
+  **dev-only** dependency — the runtime image builds `--no-dev` and nothing the application
+  serves has any business opening a DuckDB file, but the one-shot migration stays reproducible.
+
+### Not done here
+
+The ported xactx tests (`test_board.py`, `test_brief.py`, `test_point_in_time.py` and the rest)
+have **not** been brought over wholesale. They are built on a `Store(tmp_path/"test.duckdb")`
+fixture, so porting them means giving each a throwaway Postgres schema — worth doing, and it is
+the honest gap in this task. What exists instead is `tests/test_terminal_store.py`: full offline
+coverage of `translate_sql` (the genuinely new and riskiest code in the port) plus
+Postgres-gated tests of the point-in-time invariant, the payrolls revision, the naive-`as_of`
+refusal and the lookahead guard. Logged as **T84**.

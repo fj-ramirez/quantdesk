@@ -17,6 +17,7 @@ from app.core.config import settings
 from app.core.schemas import SCHEMAS
 from app.modules.gex.models.db import Base
 from app.modules.research.models.db import Base as ResearchBase
+from app.modules.terminal.tables import Base as TerminalBase
 
 # --- T75: keep the frozen revision scripts importable -------------------------------------
 #
@@ -96,7 +97,7 @@ if config.config_file_name is not None and config.attributes.get("configure_logg
 # Separate bases rather than one shared base, because the modules must stay independent:
 # nothing in `research` imports `gex`, and a test calling `create_all` for one must not create
 # the other's tables.
-target_metadata = [Base.metadata, ResearchBase.metadata]
+target_metadata = [Base.metadata, ResearchBase.metadata, TerminalBase.metadata]
 
 
 # --- T76: one chain, three schemas ---------------------------------------------------------

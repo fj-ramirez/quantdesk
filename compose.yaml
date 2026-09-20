@@ -96,6 +96,12 @@ services:
       RESEARCH_SCHEDULE: ${RESEARCH_SCHEDULE:-cron}
       RESEARCH_CRON: ${RESEARCH_CRON:-0 2 * * *}
       RESEARCH_INTERVAL_MINUTES: ${RESEARCH_INTERVAL_MINUTES:-60}
+      # T79. The terminal module (xactx). FRED is the only source needing a credential --
+      # Treasury, Cboe, CFTC and CME are keyless -- and it is empty by default so a dev stack is
+      # never blocked by a missing key. The nightly sequence runs at 03:00, an hour clear of the
+      # research search at 02:00 so two heavy jobs do not contend on one box.
+      XA_FRED_API_KEY: ${XA_FRED_API_KEY:-}
+      XA_INGEST_CRON: ${XA_INGEST_CRON:-0 3 * * *}
       # T76. The read-only role the T82 MCP connector authenticates as. `alembic upgrade head`
       # creates the role and its grants; `app.core.ro_role` (the boot step after it, see
       # backend/Dockerfile) gives it LOGIN with this password. Defaulted in dev and required in
@@ -169,6 +175,29 @@ services:
       # 33 MB OHLCV parquet cache and the static HTML reports live. Deliberately still parquet
       # and not Postgres -- invariant 5 -- because the backtester reads whole series into
       # pandas and never queries a single bar.
+      - ./data:/data
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  # T79. xactx's nightly cross-asset ingest. The third worker, and the last piece of evidence
+  # that the T75 split was the right shape: adding it changed nothing about the API process.
+  #
+  # The sequence is ordered -- ingest, derive, fomc, policy, edges -- because each step consumes
+  # what the previous one stored. `board`, `regime`, `factors` and `brief` are deliberately NOT
+  # precomputed here: they compute on read, so the API can serve them at whatever `as_of` the
+  # screen asks for. Precomputing them would mean the board could only be viewed at the moments
+  # a cron job happened to run, which is the opposite of what a point-in-time terminal is for.
+  terminal-ingest:
+    build:
+      context: ./backend
+      target: runtime
+    command: ["python", "-m", "app.workers.terminal_ingest"]
+    environment: *backend_environment
+    volumes:
+      # This module stores everything in Postgres -- there is no parquet tree and no DuckDB file
+      # any more. The mount is here only so a hand-run CLI session can write a log or an export
+      # alongside the other modules' data rather than into the container's filesystem.
       - ./data:/data
     depends_on:
       postgres:

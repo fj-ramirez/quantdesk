@@ -1196,7 +1196,7 @@ buckets at read time and typed so it cannot pass as a settled one.
 
 **Next:** the frontend still reads the settled daily series. Wiring `session_bar` into the
 symbol views and charting the 5-minute series is UI work, not data work, and is the obvious
-follow-on. Next free ID is **T84** (T83 is logged under the quantdesk initiative below).
+follow-on. Next free ID is **T85** (T83 and T84 are logged under the quantdesk initiative below).
 
 ---
 
@@ -1287,6 +1287,30 @@ T81's module switcher. Full account under the plan file's *Result -- T78* headin
 Terminal module: port xactx, DuckDB (28 MB, six tables) to the `terminal` schema, preserving
 point-in-time semantics exactly. Ingestion becomes a worker; the CLI stays. Spec:
 [plans/quantdesk/03-terminal-module.md](plans/quantdesk/03-terminal-module.md).
+
+**Done 2026-09-19.** 1,068 tests green offline (6 Postgres-gated skips), 1,074 with a database,
+linter clean. 218,915 observations migrated: 209,328 (series, date) pairs, 3,268 of them revised,
+every vintage preserved and every value bit-identical. The payrolls worked example reproduces
+exactly -- latest-known 157032, `as_of=2024-02-15` 157700, and a pre-publication `as_of` returns
+zero rows rather than approximating. The schema's portability claim held: `DOUBLE` ->
+`DOUBLE PRECISION` was the only DDL edit. The engine swap is a facade in `store/db.py`, so 25
+SQL call sites kept their strings character for character. `pytz` dropped (zero uses); `duckdb`
+is now a dev-only dependency for the one-shot migration. Full account under the plan file's
+*Result -- T79* heading.
+
+## T84 · Sonnet · T79
+
+Port the xactx test suite. `test_board.py`, `test_brief.py`, `test_point_in_time.py`,
+`test_loader.py`, `test_graph.py`, `test_derive.py`, `test_policy.py` and the rest are built on a
+`Store(tmp_path / "test.duckdb")` fixture and did not come across in T79. They need a fixture
+that gives each test a throwaway Postgres schema (create, `alembic`-less `create_all` from
+`tables.py`, drop), plus the `_needs_pg` skip guard `tests/test_terminal_store.py` already uses
+so the offline suite stays offline.
+
+This is the honest gap in T79 and should not sit for long: those tests encode the loader's
+same-vintage-two-values refusal, the derive unit checks and the graph's sign-conflict logic, and
+none of that is currently covered in this repo. What T79 does cover is `translate_sql` (the new
+code) and the point-in-time invariant against the real migrated data.
 
 ## T80 · Sonnet · T79
 
