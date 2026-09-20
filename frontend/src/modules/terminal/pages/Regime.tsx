@@ -9,6 +9,7 @@
  * `quiet` is a **real answer**, not a failure to classify: it means no leg moved enough to call a
  * regime, and saying "quiet" is more honest than putting a confident label on noise.
  */
+import { InfoTip } from '../../../components/ui/InfoTip';
 import { MetricStrip } from '../../../components/ui/MetricCard';
 import { PageHeader } from '../../../components/ui/PageHeader';
 import { Surface } from '../../../components/ui/Surface';
@@ -87,11 +88,13 @@ export function Regime() {
           />
 
           <Surface className="regime-rules" level="app" bordered>
-            <h2>How this is decided</h2>
-            <p>
-              The rules are applied in order, and the first that matches wins. They are here so
-              the label can be audited rather than believed.
-            </p>
+            <h2>
+              How this is decided
+              <InfoTip label="how the regime label is decided">
+                The rules are applied in order, and the first that matches wins. They are here
+                so the label can be audited rather than believed.
+              </InfoTip>
+            </h2>
             <dl>
               {RULES.map(([name, rule]) => (
                 <div key={name}>

@@ -8,6 +8,7 @@
  * a story about overfitting, and you can only see it when both are on screen.
  */
 import { DetailDrawer } from '../../../components/ui/DetailDrawer';
+import { InfoTip } from '../../../components/ui/InfoTip';
 import { formatPct } from '../../../lib/format';
 import { useTrial } from '../api/queries';
 
@@ -39,11 +40,13 @@ export function TrialDrawer({ hash, onClose }: { hash: string | null; onClose: (
             ))}
           </dl>
 
-          <h3>In-sample vs out-of-sample</h3>
-          <p className="trial-detail__cue">
-            The in-sample figures are what the search fitted. A large gap between the two columns
-            is the signature of a parameter set that was tuned to its own history.
-          </p>
+          <h3>
+            In-sample vs out-of-sample
+            <InfoTip label="the in-sample and out-of-sample split">
+              The in-sample figures are what the search fitted. A large gap between the two
+              columns is the signature of a parameter set that was tuned to its own history.
+            </InfoTip>
+          </h3>
           <table className="trial-detail__split">
             <thead>
               <tr>

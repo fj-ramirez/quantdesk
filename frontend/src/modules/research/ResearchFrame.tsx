@@ -12,7 +12,8 @@
  * real module shell, this file should disappear into it and the two links below become part of
  * the shared nav.
  */
-import { NavLink, Outlet, Link } from 'react-router-dom';
+import { NavLink, Outlet } from 'react-router-dom';
+import { ModuleHeader, RailBrand } from '../../shell/ModuleIdentity';
 
 const LINKS = [
   { to: '/research', label: 'Leaderboard', end: true },
@@ -21,16 +22,9 @@ const LINKS = [
 
 export function ResearchFrame() {
   return (
-    <div className="app-frame">
+    <div className="app-frame app-frame--research">
       <aside className="side-rail">
-        <div className="side-rail__brand">
-          {/* Back to the launcher. Until T81's switcher exists, this is the only way between
-              modules that does not involve editing the URL. */}
-          <Link to="/" className="side-rail__home">
-            quantdesk
-          </Link>
-          <span className="side-rail__module">EdgeLab</span>
-        </div>
+        <RailBrand moduleKey="research" />
         <nav className="side-rail__nav" aria-label="Primary">
           <div className="side-rail__group">
             <div className="side-rail__group-title">Research</div>
@@ -51,6 +45,7 @@ export function ResearchFrame() {
       </aside>
       <div className="app-frame__main">
         <main className="app-frame__content">
+          <ModuleHeader moduleKey="research" />
           <Outlet />
         </main>
       </div>

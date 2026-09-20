@@ -17,6 +17,7 @@
  */
 import { useDecisionsHistory, useRecordDecisions } from '../../api/queries';
 import type { DecisionGroupStats, DecisionRecord } from '../../api/types';
+import { InfoTip } from '../../../../components/ui/InfoTip';
 import { formatPrice } from '../../../../lib/format';
 import { EmptyState } from '../EmptyState';
 import { ErrorState } from '../ErrorState';
@@ -129,16 +130,38 @@ export function TrackRecord({ filterSearch }: TrackRecordProps) {
                   <thead>
                     <tr>
                       <th>Bucket</th>
-                      <th title="Recorded opportunities">n</th>
+                      <th>
+                        n<InfoTip label="the n column">Recorded opportunities.</InfoTip>
+                      </th>
                       <th>pending</th>
-                      <th title="Fades whose wall was never touched">untrig.</th>
+                      <th>
+                        untrig.
+                        <InfoTip label="the untriggered column">
+                          Fades whose wall was never touched.
+                        </InfoTip>
+                      </th>
                       <th>resolved</th>
                       <th>target</th>
                       <th>stop</th>
                       <th>expired</th>
-                      <th title="Targets over resolved trades">hit</th>
-                      <th title="Trades closed above 0R over resolved trades">win</th>
-                      <th title="Mean result of resolved trades, in R">avg R</th>
+                      <th>
+                        hit
+                        <InfoTip label="the hit column" align="end">
+                          Targets over resolved trades.
+                        </InfoTip>
+                      </th>
+                      <th>
+                        win
+                        <InfoTip label="the win column" align="end">
+                          Trades closed above 0R over resolved trades.
+                        </InfoTip>
+                      </th>
+                      <th>
+                        avg R
+                        <InfoTip label="the average R column" align="end">
+                          Mean result of resolved trades, in R.
+                        </InfoTip>
+                      </th>
                       <th>total R</th>
                     </tr>
                   </thead>

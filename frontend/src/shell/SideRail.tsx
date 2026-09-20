@@ -25,6 +25,7 @@ import { useCallback, useRef, useState } from 'react';
 import { NavLink, useLocation } from 'react-router-dom';
 import { NAV_GROUPS, SETTINGS_NAV_ITEM, isNavPair, type NavGroup, type NavItem } from './navConfig';
 import { NAV_ICONS, IconChevron, IconClose, IconMenu } from './icons';
+import { RailBrand } from './ModuleIdentity';
 import { useOverlayDismiss } from './useOverlayDismiss';
 
 function RailLink({ item }: { item: NavItem }) {
@@ -99,6 +100,7 @@ export function SideRail() {
       </button>
 
       <aside className={`side-rail${collapsed ? ' side-rail--collapsed' : ''}`} aria-hidden={drawerOpen}>
+        <RailBrand moduleKey="gex" />
         <button
           type="button"
           className="side-rail__collapse-toggle"

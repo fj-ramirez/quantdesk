@@ -12,10 +12,13 @@
  *
  * Selecting a route navigates there, carrying the current search string forward (same
  * "don't drop query params" rule every nav link already follows). Selecting a symbol either
- * updates the `symbol` param in place (if the current route already reads one — `/dashboard`,
- * `/report`, `/history`) or, from a universe page with no symbol slot of its own, jumps to
- * `/dashboard?symbol=<X>` — the one page a bare symbol switch unambiguously means "show me
- * this".
+ * updates the `symbol` param in place (if the current route already reads one —
+ * `/gex/dashboard`, `/gex/report`, `/gex/history`) or, from a universe page with no symbol
+ * slot of its own, jumps to `/gex/dashboard?symbol=<X>` — the one page a bare symbol switch
+ * unambiguously means "show me this".
+ *
+ * The palette is mounted by `AppFrame` (every GEX route) and by `Launcher` (`/`), so Ctrl/
+ * Cmd+K works on both; the launcher's search pill opens it through `commandPaletteBus`.
  *
  * Escape/backdrop-click/focus-trap/focus-return is `useOverlayDismiss`, the same hook
  * `SideRail`'s narrow drawer uses.
@@ -25,13 +28,23 @@ import { useLocation, useNavigate } from 'react-router-dom';
 import { CORE_UNDERLYINGS, EXTENDED_UNDERLYINGS, type Underlying } from '../modules/gex/api/types';
 import { useDashboardParams } from '../modules/gex/state/urlState';
 import { flattenNavItems } from './navConfig';
+import { COMMAND_PALETTE_OPEN_EVENT } from './commandPaletteBus';
 import { IconSearch } from './icons';
 import { useOverlayDismiss } from './useOverlayDismiss';
 
 /** The three routes that read a `symbol` search param today (T62's baseline). Selecting a
  * symbol while on one of these keeps the current page and only swaps the symbol; from any
  * other route it navigates to `/dashboard` instead. */
-const SYMBOL_AWARE_PATHS: ReadonlySet<string> = new Set(['/dashboard', '/report', '/history']);
+const SYMBOL_AWARE_PATHS: ReadonlySet<string> = new Set([
+  '/gex/dashboard',
+  '/gex/report',
+  '/gex/history',
+]);
+
+/** Where a bare symbol goes from a page with no symbol slot of its own. T75 moved the whole
+ * module one segment deeper; both this and `SYMBOL_AWARE_PATHS` above still named the
+ * pre-T75 paths, so every symbol pick navigated to a route that no longer exists. */
+const SYMBOL_FALLBACK_PATH = '/gex/dashboard';
 
 interface RouteEntry {
   kind: 'route';
@@ -98,8 +111,15 @@ export function CommandPalette() {
         setOpen((v) => !v);
       }
     }
+    function onOpenRequest() {
+      setOpen(true);
+    }
     window.addEventListener('keydown', onKeyDown);
-    return () => window.removeEventListener('keydown', onKeyDown);
+    window.addEventListener(COMMAND_PALETTE_OPEN_EVENT, onOpenRequest);
+    return () => {
+      window.removeEventListener('keydown', onKeyDown);
+      window.removeEventListener(COMMAND_PALETTE_OPEN_EVENT, onOpenRequest);
+    };
   }, []);
 
   const filtered = useMemo(() => {
@@ -123,7 +143,7 @@ export function CommandPalette() {
       } else if (SYMBOL_AWARE_PATHS.has(location.pathname)) {
         setSymbol(entry.symbol);
       } else {
-        navigate({ pathname: '/dashboard', search: `?symbol=${entry.symbol}` });
+        navigate({ pathname: SYMBOL_FALLBACK_PATH, search: `?symbol=${entry.symbol}` });
       }
       close();
     },

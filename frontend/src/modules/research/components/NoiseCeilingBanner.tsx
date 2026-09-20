@@ -16,6 +16,7 @@
  * "returned alongside the rows, never as a client-side guess"), so the page and the static HTML
  * report cannot disagree.
  */
+import { InfoTip } from '../../../components/ui/InfoTip';
 import { Surface } from '../../../components/ui/Surface';
 
 export interface NoiseCeilingBannerProps {
@@ -60,22 +61,34 @@ export function NoiseCeilingBanner({
  * The brief is explicit that both must reach the UI. They are not footnotes: each one changes
  * how a specific row should be read, and a reader who never opens the repo would otherwise
  * never learn either.
+ *
+ * So the **claim** of each one is still a sentence on the page, unconditionally — "the
+ * out-of-sample split has been reused", "futures rows carry roll gaps". What moved into an
+ * `InfoTip` is only the *why*: the mechanism behind the claim, which is worth reading once and
+ * not on every visit. A reader who never opens either tip still cannot misread a row, which is
+ * the line this module draws (see `InfoTip`'s own docstring). Both texts remain verbatim, in
+ * the DOM and in the accessibility tree.
  */
 export function ResearchCaveats({ hasFutures }: { hasFutures: boolean }) {
   return (
     <ul className="research-caveats">
       <li>
-        <strong>The out-of-sample split has been reused.</strong> Every cycle scores its
-        candidates on the same held-out segment, so that segment has been looked at thousands of
-        times and is no longer truly unseen. The noise ceiling is what accounts for this; the
-        paper watchlist, where performance is measured only <em>after</em> promotion, is the only
-        genuinely out-of-sample evidence here.
+        <strong>The out-of-sample split has been reused.</strong>
+        <InfoTip label="the reused out-of-sample split">
+          Every cycle scores its candidates on the same held-out segment, so that segment has
+          been looked at thousands of times and is no longer truly unseen. The noise ceiling is
+          what accounts for this; the paper watchlist, where performance is measured only after
+          promotion, is the only genuinely out-of-sample evidence here.
+        </InfoTip>
       </li>
       {hasFutures && (
         <li>
-          <strong>Futures rows carry roll gaps.</strong> The <code>=F</code> tickers are
-          front-month continuous contracts, so each roll injects a price jump that is not a
-          tradeable return. Treat futures Sharpes as noisier than they look.
+          <strong>Futures rows carry roll gaps — treat futures Sharpes as noisier than they
+          look.</strong>
+          <InfoTip label="futures roll gaps">
+            The <code>=F</code> tickers are front-month continuous contracts, so each roll
+            injects a price jump that is not a tradeable return.
+          </InfoTip>
         </li>
       )}
     </ul>

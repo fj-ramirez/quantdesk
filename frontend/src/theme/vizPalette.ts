@@ -70,12 +70,18 @@ export const VIZ_PALETTE_LIGHT: VizPalette = {
 };
 
 export const VIZ_PALETTE_DARK: VizPalette = {
-  surface: '#1a1a19',
-  textPrimary: '#ffffff',
-  textSecondary: '#c3c2b7',
-  textMuted: '#898781',
-  gridline: '#2c2c2a',
-  baseline: '#383835',
+  // Chart *chrome* follows the shell: these five track index.css's dark `--code-bg`,
+  // `--text-h`, `--text`, `--text-muted` and `--border` so a chart reads as part of the panel
+  // it sits in rather than as a grey rectangle pasted onto a navy one. The data colours below
+  // them are deliberately NOT re-tinted -- the categorical pair, the diverging pair and the
+  // support/resistance pair each carry a documented meaning and a measured contrast figure
+  // (see this file's header), and none of that is a theme decision.
+  surface: '#0d1728',
+  textPrimary: '#f4f7fb',
+  textSecondary: '#9aaac2',
+  textMuted: '#7c8ba3',
+  gridline: '#1c2b45',
+  baseline: '#28395c',
   seriesAll: '#3987e5',
   seriesExZeroDte: '#d95926',
   divergingPositive: '#3987e5',

@@ -11,6 +11,7 @@
  * the page shows it.
  */
 import { DataTableFrame } from '../../../components/ui/DataTableFrame';
+import { InfoTip } from '../../../components/ui/InfoTip';
 import { PageHeader } from '../../../components/ui/PageHeader';
 import { EmptyState } from '../../gex/components/EmptyState';
 import { ErrorState } from '../../gex/components/ErrorState';
@@ -31,9 +32,15 @@ export function Policy() {
         description="What the fed funds futures curve implies for each upcoming FOMC meeting."
         caveat={
           <p>
-            Implied rates are derived from settlement prices, which are themselves point-in-time
-            observations — this path is what was implied at the selected as-of, not what was
-            later shown to have been right.
+            This path is what was implied at the selected as-of, not what was later shown to
+            have been{' '}
+            <span className="no-break">
+              right.
+              <InfoTip label="how the implied path is derived">
+                Implied rates are derived from settlement prices, which are themselves
+                point-in-time observations.
+              </InfoTip>
+            </span>
           </p>
         }
       />

@@ -12,6 +12,7 @@
  * asserting one would mislead precisely when it matters.
  */
 import { DataTableFrame } from '../../../components/ui/DataTableFrame';
+import { InfoTip } from '../../../components/ui/InfoTip';
 import { PageHeader } from '../../../components/ui/PageHeader';
 import { EmptyState } from '../../gex/components/EmptyState';
 import { ErrorState } from '../../gex/components/ErrorState';
@@ -42,10 +43,15 @@ export function Graph() {
         description="Which series move which, what theory expects, and what the data currently says."
         caveat={
           <p>
-            Every beta and correlation is a trailing-window estimate and the window is shown
-            beside it — a fixed-window correlation is an average over regimes, not a fact about
-            today. The percentile says where the current correlation sits in its own history,
-            which is the only way to know whether 0.4 is high or low for this pair.
+            Every beta and correlation is a trailing-window estimate, and the window is shown{' '}
+            <span className="no-break">
+              beside it.
+              <InfoTip label="trailing-window estimates">
+                A fixed-window correlation is an average over regimes, not a fact about today.
+                The percentile says where the current correlation sits in its own history, which
+                is the only way to know whether 0.4 is high or low for this pair.
+              </InfoTip>
+            </span>
           </p>
         }
       />

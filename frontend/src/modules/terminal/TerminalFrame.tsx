@@ -10,7 +10,8 @@
  * subtle input state. The failure this prevents is the expensive one: reading a historical board
  * as if it were live, which looks exactly like reading a live board.
  */
-import { Link, NavLink, Outlet } from 'react-router-dom';
+import { NavLink, Outlet } from 'react-router-dom';
+import { ModuleHeader, RailBrand } from '../../shell/ModuleIdentity';
 import { useRegime } from './api/queries';
 import { toIsoInstant, toLocalInput, useAsOf } from './state/asOf';
 
@@ -87,14 +88,9 @@ function RegimeStrip() {
 
 export function TerminalFrame() {
   return (
-    <div className="app-frame terminal">
+    <div className="app-frame app-frame--terminal terminal">
       <aside className="side-rail">
-        <div className="side-rail__brand">
-          <Link to="/" className="side-rail__home">
-            quantdesk
-          </Link>
-          <span className="side-rail__module">xactx</span>
-        </div>
+        <RailBrand moduleKey="terminal" />
         <nav className="side-rail__nav" aria-label="Primary">
           <div className="side-rail__group">
             <div className="side-rail__group-title">Cross-asset</div>
@@ -119,6 +115,7 @@ export function TerminalFrame() {
           <RegimeStrip />
         </div>
         <main className="app-frame__content">
+          <ModuleHeader moduleKey="terminal" />
           <Outlet />
         </main>
       </div>

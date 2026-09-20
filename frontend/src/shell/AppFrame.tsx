@@ -15,14 +15,18 @@ import { Outlet } from 'react-router-dom';
 import { SideRail } from './SideRail';
 import { ContextBar } from '../modules/gex/components/layout/ContextBar';
 import { CommandPalette } from './CommandPalette';
+import { ModuleHeader } from './ModuleIdentity';
 
 export function AppFrame() {
   return (
-    <div className="app-frame">
+    // `app-frame--gex` is what sets `--module-accent` (shell/modules.ts) for everything
+    // below it — the active nav pill, a metric card's edge, the identity mark.
+    <div className="app-frame app-frame--gex">
       <SideRail />
       <div className="app-frame__main">
         <ContextBar />
         <main className="app-frame__content">
+          <ModuleHeader moduleKey="gex" />
           <Outlet />
         </main>
       </div>

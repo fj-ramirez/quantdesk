@@ -99,20 +99,34 @@
  * (`[data-theme="dark"]`), regardless of OS preference. `ThemeContext` sets `data-theme` on
  * `<html>`; without the explicit `[data-theme="dark"]` block below, the toggle would do
  * nothing on a light-OS browser.
+ *
+ * The values are **navy, and the accent is blue**, which is how the launcher's language
+ * reaches all three modules without rewriting a single page: every page in this app reads
+ * `--bg`/`--code-bg`/`--border`/`--text`/`--text-h`/`--accent` (or a T63 semantic alias of
+ * one), so re-pointing eleven values here re-skins the workbench. The greys these replaced
+ * (`#16171d`/`#1f2028`/`#2e303a`, purple accent) are the only thing that changed; every
+ * contrast rule the T68 audit established still holds -- `--text` on `--code-bg` is 7.1:1
+ * (was 5.9), `--text-muted` 5.0:1 (floor is 4.5), `--accent` as link text 7.9:1.
+ *
+ * Two files mirror these by hand and must move with them, each for a documented reason:
+ * `theme/vizPalette.ts`'s `VIZ_PALETTE_DARK` chrome (ECharts takes JS strings, it cannot read
+ * a custom property) and `modules/gex/components/charts/GexByStrike.tsx`'s `THEME_COLORS.dark`
+ * (same reason). The `--status-*` quartet below is unchanged, so the third mirror this file's
+ * header comment describes still agrees.
  */
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme='light']) {
-    --text: #9ca3af;
-    --text-h: #f3f4f6;
-    --bg: #16171d;
-    --border: #2e303a;
-    --code-bg: #1f2028;
-    --accent: #c084fc;
-    --accent-bg: rgba(192, 132, 252, 0.15);
-    --accent-border: rgba(192, 132, 252, 0.5);
-    --social-bg: rgba(47, 48, 58, 0.5);
+    --text: #9aaac2;
+    --text-h: #f4f7fb;
+    --bg: #070d1a;
+    --border: #1c2b45;
+    --code-bg: #0d1728;
+    --accent: #6ea8ff;
+    --accent-bg: rgba(110, 168, 255, 0.14);
+    --accent-border: rgba(110, 168, 255, 0.45);
+    --social-bg: rgba(16, 28, 48, 0.55);
     --shadow:
-      rgba(0, 0, 0, 0.4) 0 10px 15px -3px, rgba(0, 0, 0, 0.25) 0 4px 6px -2px;
+      rgba(2, 6, 16, 0.55) 0 10px 15px -3px, rgba(2, 6, 16, 0.35) 0 4px 6px -2px;
     --status-positive: #4aad68;
     --status-negative: #e66767;
     --status-caution: #d95926;
@@ -129,17 +143,17 @@
 }
 
 :root[data-theme='dark'] {
-  --text: #9ca3af;
-  --text-h: #f3f4f6;
-  --bg: #16171d;
-  --border: #2e303a;
-  --code-bg: #1f2028;
-  --accent: #c084fc;
-  --accent-bg: rgba(192, 132, 252, 0.15);
-  --accent-border: rgba(192, 132, 252, 0.5);
-  --social-bg: rgba(47, 48, 58, 0.5);
+  --text: #9aaac2;
+  --text-h: #f4f7fb;
+  --bg: #070d1a;
+  --border: #1c2b45;
+  --code-bg: #0d1728;
+  --accent: #6ea8ff;
+  --accent-bg: rgba(110, 168, 255, 0.14);
+  --accent-border: rgba(110, 168, 255, 0.45);
+  --social-bg: rgba(16, 28, 48, 0.55);
   --shadow:
-    rgba(0, 0, 0, 0.4) 0 10px 15px -3px, rgba(0, 0, 0, 0.25) 0 4px 6px -2px;
+    rgba(2, 6, 16, 0.55) 0 10px 15px -3px, rgba(2, 6, 16, 0.35) 0 4px 6px -2px;
   --status-positive: #4aad68;
   --status-negative: #e66767;
   --status-caution: #d95926;
@@ -1296,7 +1310,10 @@ code {
 .track-record__stats { border-collapse: collapse; font-size: 12px; }
 .track-record__stats th, .track-record__stats td { padding: 3px 10px 3px 0; text-align: right; font-family: var(--mono); white-space: nowrap; }
 .track-record__stats th[scope="row"], .track-record__stats thead th:first-child { text-align: left; font-family: inherit; font-weight: 500; }
-.track-record__stats thead th { color: var(--text); opacity: 0.6; font-weight: 500; }
+/* `--text-muted` rather than `opacity: 0.6`: an opacity below 1 makes the cell a stacking
+   context and fades everything inside it, which put the header InfoTips' panels at 60% alpha
+   and behind the rows below them. */
+.track-record__stats thead th { color: var(--text-muted); font-weight: 500; }
 .track-record__group { color: var(--text); opacity: 0.6; font-size: 11px; text-transform: uppercase; letter-spacing: 0.06em; }
 .track-record__r--pos { color: var(--accent); }
 .track-record__r--neg { opacity: 0.85; }
@@ -1492,6 +1509,87 @@ code {
 }
 .data-table-frame__cue { margin: 2px 0 0; font-size: 12px; color: var(--text-muted); max-width: 70ch; }
 .data-table-frame__timing { margin: 0; font-size: 12px; color: var(--text-muted); max-width: 80ch; }
+
+/* --- InfoTip (components/ui/InfoTip.tsx) -----------------------------------------------
+   The panel is hidden with `opacity`, never `display: none` or `visibility: hidden`: the
+   explanation stays in the accessibility tree and in Ctrl+F at all times, and only its
+   visibility is deferred. Hover and keyboard/touch focus are both pure CSS (`:hover`,
+   `:focus-within`); the component's only JS state is the Escape dismissal, which arrives here
+   as `data-dismissed`. */
+
+.info-tip {
+  position: relative;
+  display: inline-flex;
+  margin-inline-start: var(--space-1);
+  vertical-align: middle;
+}
+
+.info-tip__button {
+  display: inline-grid;
+  place-items: center;
+  width: 16px;
+  height: 16px;
+  padding: 0;
+  border: 1px solid var(--border-default);
+  border-radius: 50%;
+  background: transparent;
+  color: var(--text-muted);
+  font: 600 10px/1 var(--sans);
+  cursor: help;
+}
+
+.info-tip__button:hover {
+  color: var(--text-strong);
+  border-color: var(--text-muted);
+}
+
+.info-tip__panel {
+  position: absolute;
+  top: calc(100% + 8px);
+  left: -8px;
+  z-index: 40;
+  width: max-content;
+  max-width: min(340px, 70vw);
+  padding: var(--space-3) var(--space-4);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-md);
+  background: var(--surface-raised);
+  box-shadow: var(--elevation-2);
+  color: var(--text-default);
+  font-family: var(--sans);
+  font-size: 13px;
+  font-style: normal;
+  font-weight: 400;
+  line-height: 1.55;
+  letter-spacing: normal;
+  text-align: left;
+  text-transform: none;
+  white-space: normal;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.12s ease;
+}
+
+/* For a tip near the right edge of a table or the viewport, so the panel opens leftward. */
+.info-tip--end .info-tip__panel {
+  left: auto;
+  right: -8px;
+}
+
+.info-tip:hover > .info-tip__panel,
+.info-tip:focus-within > .info-tip__panel {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.info-tip[data-dismissed='true'] > .info-tip__panel {
+  opacity: 0;
+  pointer-events: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .info-tip__panel { transition: none; }
+}
 .data-table-frame__actions { display: flex; align-items: center; gap: var(--space-2); }
 
 /* DetailDrawer: docked in normal page flow at desktop (no scrim -- `.detail-drawer-scrim` is
@@ -1549,6 +1647,15 @@ code {
   height: 1px;
   overflow: hidden;
   clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
+
+/* Keeps an InfoTip on the same line as the word it explains. A line-break opportunity exists
+   before any atomic inline box — which the tip's button is — and a non-breaking space cannot
+   suppress it; only `white-space: nowrap` on their common parent can. Wrap the last word or
+   two plus the tip in this. (`.info-tip__panel` sets `white-space: normal` for itself, so the
+   panel's own text still wraps.) */
+.no-break {
   white-space: nowrap;
 }
 
@@ -1715,62 +1822,1047 @@ code {
   color: var(--text-muted);
 }
 
-/* ---------------------------------------------------------------------------------------
-   T75 launcher (`shell/Launcher.tsx`). Deliberately minimal -- the plan file reserves the
-   launcher's design for T81 ("T75 ships a plain list; T81 makes it a page worth looking
-   at"), so this is only enough for the page to be legible in both themes rather than an
-   unstyled stack of links. Every value is an existing token; nothing new is introduced for
-   T81 to have to undo.
-   --------------------------------------------------------------------------------------- */
-.launcher {
-  max-width: 640px;
-  margin: 0 auto;
-  padding: 64px 16px;
+
+/* =========================================================================================
+   Module chrome — the launcher's visual language, applied to the three module shells.
+
+   The launcher fenced its palette behind `.lx` so that redesigning `/` could not disturb a
+   single workbench page. This section is the deliberate second step: the same language, but
+   expressed through the tokens the modules already read, so it reaches every page without any
+   page being rewritten. Two mechanisms do almost all of the work:
+
+     1. The dark palette itself is navy now (see the `--bg`/`--code-bg`/`--border`/`--accent`
+        block near the top of this file). Every surface, border and link in all three modules
+        followed automatically — that change is why this section is chrome and not a rewrite.
+     2. `--module-accent`, set once per frame from `shell/modules.ts`. A module has one
+        identity colour, and the rail pill, the identity mark and a metric card's edge all
+        read it rather than each choosing a hue. GEX is blue, EdgeLab teal, xactx purple —
+        the same three the launcher's cards carry, so a module looks like the card you came in
+        through.
+
+   Everything below is layout and weight. No rule here introduces a colour that is not either
+   a token or `--module-accent`.
+   ========================================================================================= */
+
+.app-frame {
+  --module-accent: var(--accent);
 }
 
-.launcher__title {
-  margin: 0 0 24px;
-  font-size: 24px;
-  letter-spacing: -0.01em;
+.app-frame--gex { --module-accent: #6ea8ff; }
+.app-frame--research { --module-accent: #16c7b7; }
+.app-frame--terminal { --module-accent: #8b6cff; }
+
+/* The same three hues, deepened for a light surface — the dark values are 2.4:1 and 2.6:1 on
+   white, which is under the 3:1 a non-text UI colour needs, let alone text. */
+:root[data-theme='light'] .app-frame--gex { --module-accent: #2f6fe0; }
+:root[data-theme='light'] .app-frame--research { --module-accent: #0d9488; }
+:root[data-theme='light'] .app-frame--terminal { --module-accent: #6341e8; }
+
+/* --- rail ------------------------------------------------------------------------------ */
+
+:root {
+  --rail-width: 248px;
 }
 
-.launcher__list {
-  list-style: none;
-  margin: 0;
-  padding: 0;
+.side-rail {
+  background: var(--surface-raised);
+  padding: 0 0 var(--space-3);
+  gap: var(--space-2);
+}
+
+.side-rail__brand {
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 2px;
+  padding: var(--space-4) var(--space-4) var(--space-2);
 }
 
-.launcher__link {
-  display: block;
-  padding: 16px;
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  background: var(--surface);
-  color: inherit;
+.side-rail__home {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-size: 18px;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  color: var(--text-strong);
   text-decoration: none;
 }
 
-.launcher__link:hover:not(.launcher__link--disabled) {
-  border-color: var(--text-muted);
+.side-rail__home-mark {
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  border: 1px solid var(--accent-border);
+  border-radius: 8px;
+  background: var(--accent-bg);
+  color: var(--accent);
 }
 
-.launcher__link--disabled {
-  opacity: 0.5;
+.side-rail__home-desk { color: var(--accent); }
+
+.side-rail__home:hover .side-rail__home-desk { color: var(--text-strong); }
+
+/* The module's own name, in the module's own colour — the one place the rail says which of the
+   three you are in. */
+.side-rail__module {
+  padding-left: 38px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--module-accent);
 }
 
-.launcher__name {
-  display: block;
+.side-rail__nav {
+  gap: var(--space-5);
+  padding: var(--space-2) var(--space-3);
+}
+
+.side-rail__group-title {
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0.14em;
+  padding: 0 var(--space-2) var(--space-2);
+}
+
+.side-rail__link {
+  min-height: 42px;
+  padding: 0 var(--space-3);
+  border: 1px solid transparent;
+  border-radius: 10px;
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--text-default);
+}
+
+.side-rail__link:hover {
+  background: color-mix(in srgb, var(--module-accent) 8%, transparent);
+  color: var(--text-strong);
+}
+
+.side-rail__link--active,
+.side-rail__link--active:hover {
+  background: linear-gradient(
+    90deg,
+    color-mix(in srgb, var(--module-accent) 22%, transparent),
+    color-mix(in srgb, var(--module-accent) 7%, transparent)
+  );
+  border-color: color-mix(in srgb, var(--module-accent) 30%, transparent);
+  color: var(--text-strong);
   font-weight: 600;
 }
 
-.launcher__blurb {
-  display: block;
-  margin-top: 4px;
-  font-size: 13px;
+.side-rail__link--active .side-rail__icon { color: var(--module-accent); }
+
+.side-rail__pair { gap: 2px; }
+
+.side-rail__collapse-toggle {
+  margin: 0 var(--space-3) 0 auto;
+  border-color: transparent;
+}
+
+.side-rail__group--bottom {
+  padding: var(--space-4) var(--space-3) 0;
+  margin-left: calc(var(--space-3) * -1);
+  margin-right: calc(var(--space-3) * -1);
+}
+
+/* --- the bar above the content --------------------------------------------------------- */
+
+.context-bar,
+.terminal__topbar {
+  min-height: 56px;
+  padding: var(--space-2) var(--space-5);
+  background: var(--surface-app);
+  border-bottom: 1px solid var(--border-default);
+}
+
+/* --- module identity strip -------------------------------------------------------------- */
+
+/* `shell/ModuleIdentity.tsx`. Mark, name and the module's one-line blurb, on one row: the
+   reference composition puts module identity at the top left of the content, and at 56px it
+   costs a page one row rather than a header block. */
+.module-header {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-3) var(--space-5);
+  border-bottom: 1px solid var(--border-default);
+  background: linear-gradient(
+    90deg,
+    color-mix(in srgb, var(--module-accent) 7%, transparent),
+    transparent 46%
+  );
+}
+
+.module-header__mark {
+  display: grid;
+  place-items: center;
+  flex: 0 0 auto;
+  width: 38px;
+  height: 38px;
+  border: 1px solid color-mix(in srgb, var(--module-accent) 32%, transparent);
+  border-radius: 11px;
+  background: color-mix(in srgb, var(--module-accent) 14%, transparent);
+  color: var(--module-accent);
+}
+
+.module-header__name {
+  margin: 0;
+  font-size: 20px;
+  font-weight: 700;
+  letter-spacing: -0.015em;
+  color: var(--text-strong);
+}
+
+.module-header__blurb {
+  margin: 0;
+  min-width: 0;
+  font-size: 12.5px;
   color: var(--text-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+@media (max-width: 900px) {
+  .module-header__blurb { display: none; }
+}
+
+/* These two modules' page wrappers carry no padding of their own (every GEX page wrapper does,
+   at 16px), so their content sat flush against the rail's border. */
+.app-frame--research .research-page,
+.app-frame--terminal .terminal-page,
+.app-frame--terminal .brief-doc {
+  padding: var(--space-5);
+}
+
+/* --- panels ----------------------------------------------------------------------------- */
+
+/* A bordered surface is the app's card, and the reference's cards are softer-cornered and sit
+   on the page rather than in it. One radius change reaches every `Surface` in three modules. */
+.ui-surface--bordered {
+  border-radius: 14px;
+}
+
+/* `DataTableFrame` renders unbordered and unpadded, so a table used to sit directly on the page
+   background. In the reference every table is inside a panel like every other block. */
+.data-table-frame {
+  padding: var(--space-4);
+  border: 1px solid var(--border-default);
+  border-radius: 14px;
+  background: var(--surface-raised);
+}
+
+.data-table-frame__title {
+  font-size: 15px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  color: var(--text-strong);
+  text-transform: none;
+}
+
+/* The module's colour as a 3px edge — the reference's stat cards. It is `inset` rather than a
+   border so the card's size and radius are untouched. */
+.metric-card {
+  box-shadow: var(--elevation-1), inset 3px 0 0 var(--module-accent);
+}
+
+/* --- tables ----------------------------------------------------------------------------- */
+
+/* All three modules' tables, not just GEX's: `.scan-table`, EdgeLab's `.leaderboard-table` and
+   xactx's `.terminal-table` are three separate classes for what a reader sees as one table, so
+   a rule that reached only one of them would make the modules look like three products. */
+.scan-table thead th,
+.leaderboard-table thead th,
+.terminal-table thead th {
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  border-bottom: 1px solid var(--border-default);
+}
+
+/* The sticky header sits inside a `.data-table-frame` panel now, so it has to match the panel
+   it is pinned to rather than the page behind it. */
+.scan-table thead th {
+  background: var(--surface-raised);
+}
+
+.scan-table th,
+.scan-table td,
+.leaderboard-table th,
+.leaderboard-table td,
+.terminal-table th,
+.terminal-table td {
+  padding: 8px 12px;
+}
+
+.scan-table tbody tr:hover,
+.leaderboard-table tbody tr:hover,
+.terminal-table tbody tr:hover {
+  background: color-mix(in srgb, var(--module-accent) 7%, transparent);
+}
+
+/* --- chrome labels ---------------------------------------------------------------------- */
+
+/* Every control label in a module's chrome. These inherited the 18px root size, so "Symbol"
+   above a dropdown was set larger than the page's own body copy — the reference's controls read
+   as chrome, which means small, muted and above the control. */
+.topbar-field__label,
+.research-filters__field,
+.asof__label {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+.research-filters__field select,
+.research-filters__field input {
+  font-size: 13px;
+  letter-spacing: normal;
+  text-transform: none;
+}
+
+/* --- charts ----------------------------------------------------------------------------- */
+
+/* The dashboard's two charts are a bare `<div>` (`GexByStrike`) and a `<section>` that paints
+   its own background inline from `vizPalette` (`GammaProfile`) — so one sat in a panel and the
+   other on the page. Neither component is touched; the panel is the grid's job. */
+.dashboard-charts > :is(div, section) {
+  border: 1px solid var(--border-default);
+  border-radius: 14px;
+  background: var(--surface-raised);
+  padding: var(--space-4);
+  overflow: hidden;
+}
+
+/* ---------------------------------------------------------------------------------------
+   The launcher (`shell/Launcher.tsx`) — the page T75 deferred ("T75 ships a plain list; T81
+   makes it a page worth looking at"). The design half of T81 only; see that file's docstring
+   for what is still missing before T81 can be called done.
+
+   This is the one screen in the app with its own palette, and the `--lx-*` prefix is the
+   fence around it: every rule below reads only `--lx-*` tokens, declared once on `.lx`, and
+   nothing outside `.lx` reads them. The reason is that the launcher is not a workbench
+   surface — it has no tables, no charts and no data density to serve — so T63's semantic
+   tokens (`--surface-*`, `--text-*`), which are tuned for exactly that, would have made it
+   look like a page of the GEX module rather than the door to three of them.
+
+   The theme toggle still works here: `.lx` carries the dark-navy set by default and
+   `[data-theme='light'] .lx` re-points every token at a light one. Nothing else changes —
+   the whole light/dark difference on this page is that one block, because no rule below
+   hardcodes a colour.
+   --------------------------------------------------------------------------------------- */
+
+.lx {
+  /* Surfaces. Navy rather than black: three steps, and the deepest one is the page. */
+  --lx-bg-0: #070d1a;
+  --lx-bg-1: #0a1222;
+  --lx-surface: rgba(13, 23, 40, 0.72);
+
+  --lx-text-1: #f4f7fb;
+  --lx-text-2: #9aaac2;
+  --lx-text-3: #65758f;
+
+  /* One accent per module, and a blue that also carries the shell itself. */
+  --lx-blue: #4d8dff;
+  --lx-blue-hi: #6ea8ff;
+  --lx-teal: #16c7b7;
+  --lx-purple: #8b6cff;
+  --lx-green: #2fd48f;
+
+  /* Every border on this page is 1px and one of these two. */
+  --lx-hair: rgba(122, 162, 228, 0.13);
+  --lx-hair-2: rgba(122, 162, 228, 0.26);
+
+  --lx-rail-w: 272px;
+  --lx-gutter: 40px;
+  --lx-font: 'Inter', system-ui, 'Segoe UI', Roboto, sans-serif;
+
+  display: grid;
+  grid-template-columns: var(--lx-rail-w) minmax(0, 1fr);
+  min-height: 100svh;
+  background: var(--lx-bg-0);
+  color: var(--lx-text-1);
+  /* `:root` sets 18px/145% with a letter-spacing nudge for the workbench pages; this page
+     sets its own scale rather than inheriting one tuned for dense tables. */
+  font: 400 16px/1.5 var(--lx-font);
+  letter-spacing: 0;
+}
+
+:root[data-theme='light'] .lx {
+  --lx-bg-0: #eef2f8;
+  --lx-bg-1: #f7f9fc;
+  --lx-surface: rgba(255, 255, 255, 0.78);
+  --lx-text-1: #0b1526;
+  --lx-text-2: #4a5c76;
+  --lx-text-3: #6a7b93;
+  --lx-blue: #2f6fe0;
+  --lx-blue-hi: #2563eb;
+  --lx-teal: #0d9488;
+  --lx-purple: #6341e8;
+  --lx-green: #0f7a4d;
+  --lx-hair: rgba(15, 35, 75, 0.11);
+  --lx-hair-2: rgba(15, 35, 75, 0.22);
+}
+
+/* The app sets `box-sizing` on `#root` only, not globally, so this page has to say it for
+   itself — without it `.lx__rail`'s `height: 100svh` is 100svh *plus* its padding, and the
+   marketing line at the bottom of the rail falls off the screen. */
+.lx,
+.lx *,
+.lx *::before,
+.lx *::after {
+  box-sizing: border-box;
+}
+
+.lx :is(a, button):focus-visible {
+  outline: 2px solid var(--lx-blue-hi);
+  outline-offset: 3px;
+}
+
+/* --- rail ---------------------------------------------------------------------------- */
+
+.lx__rail {
+  position: sticky;
+  top: 0;
+  align-self: start;
+  height: 100svh;
+  display: flex;
+  flex-direction: column;
+  gap: 30px;
+  padding: 26px 18px 24px;
+  background: var(--lx-bg-1);
+  border-right: 1px solid var(--lx-hair);
+}
+
+.lx-brand {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  margin: 0;
+  padding: 2px 8px;
+  font-family: var(--lx-font);
+  font-size: 26px;
+  font-weight: 700;
+  letter-spacing: -0.025em;
+  color: var(--lx-text-1);
+}
+
+.lx-brand__mark {
+  display: grid;
+  place-items: center;
+  flex: 0 0 auto;
+  width: 34px;
+  height: 34px;
+  border-radius: 9px;
+  color: var(--lx-blue-hi);
+  background: color-mix(in srgb, var(--lx-blue) 16%, transparent);
+  border: 1px solid color-mix(in srgb, var(--lx-blue) 34%, transparent);
+}
+
+.lx-brand__desk {
+  color: var(--lx-blue-hi);
+}
+
+.lx-rail-nav {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.lx-rail-nav__link {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  height: 46px;
+  padding: 0 14px;
+  border: 1px solid transparent;
+  border-radius: 10px;
+  color: var(--lx-text-2);
+  font-size: 15px;
+  font-weight: 500;
+  text-decoration: none;
+}
+
+.lx-rail-nav__icon {
+  flex: 0 0 auto;
+  width: 19px;
+  height: 19px;
+}
+
+.lx-rail-nav__link:hover {
+  color: var(--lx-text-1);
+  background: color-mix(in srgb, var(--lx-blue) 7%, transparent);
+}
+
+.lx-rail-nav__link--active,
+.lx-rail-nav__link--active:hover {
+  color: var(--lx-text-1);
+  background: linear-gradient(
+    90deg,
+    color-mix(in srgb, var(--lx-blue) 22%, transparent),
+    color-mix(in srgb, var(--lx-blue) 7%, transparent)
+  );
+  border-color: color-mix(in srgb, var(--lx-blue) 30%, transparent);
+}
+
+.lx-rail-nav__link--active .lx-rail-nav__icon {
+  color: var(--lx-blue-hi);
+}
+
+.lx-rail-note {
+  margin: auto 0 0;
+  padding: 20px 14px 2px;
+  border-top: 1px solid var(--lx-hair);
+  color: var(--lx-text-3);
+  font-size: 13.5px;
+  line-height: 1.6;
+}
+
+/* --- top bar ------------------------------------------------------------------------- */
+
+.lx__main {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  /* The page's only "glow": two very wide radial washes, one blue at the top right (behind
+     the tape) and one purple at the bottom left. Both sit under everything. */
+  background:
+    radial-gradient(900px 440px at 76% -10%, color-mix(in srgb, var(--lx-blue) 12%, transparent), transparent 70%),
+    radial-gradient(760px 420px at 8% 112%, color-mix(in srgb, var(--lx-purple) 11%, transparent), transparent 70%),
+    var(--lx-bg-0);
+}
+
+.lx__topbar {
+  position: relative;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 24px;
+  height: 64px;
+  padding: 0 var(--lx-gutter);
+  border-bottom: 1px solid var(--lx-hair);
+}
+
+.lx__topbar-right {
+  display: flex;
+  align-items: center;
+  gap: 18px;
+}
+
+.lx-search {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: min(420px, 100%);
+  height: 38px;
+  padding: 0 10px 0 12px;
+  border: 1px solid var(--lx-hair);
+  border-radius: 9px;
+  background: var(--lx-surface);
+  color: var(--lx-text-3);
+  font: 400 14px/1 var(--lx-font);
+  cursor: pointer;
+}
+
+.lx-search:hover {
+  border-color: var(--lx-hair-2);
+  color: var(--lx-text-2);
+}
+
+.lx-search__icon {
+  flex: 0 0 auto;
+  width: 16px;
+  height: 16px;
+}
+
+.lx-search__text {
+  flex: 1 1 auto;
+  text-align: left;
+}
+
+.lx-search__kbd {
+  flex: 0 0 auto;
+  padding: 3px 7px;
+  border: 1px solid var(--lx-hair);
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--lx-blue) 7%, transparent);
+  font-family: var(--mono);
+  font-size: 11.5px;
+  color: var(--lx-text-3);
+}
+
+.lx-status {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13.5px;
+  color: var(--lx-green);
+}
+
+.lx-status__dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--lx-green);
+  box-shadow: 0 0 9px color-mix(in srgb, var(--lx-green) 70%, transparent);
+}
+
+.lx-iconbutton {
+  display: grid;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  padding: 0;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  background: none;
+  color: var(--lx-text-2);
+  cursor: pointer;
+}
+
+.lx-iconbutton:hover {
+  color: var(--lx-text-1);
+  border-color: var(--lx-hair-2);
+  background: var(--lx-surface);
+}
+
+/* --- background texture -------------------------------------------------------------- */
+
+/* `LauncherBackdrop`. Texture, not data — see that file's docstring. Both layers are
+   `pointer-events: none` and sit at z-index 0, under the hero and the cards. */
+.lx-backdrop {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+/* Stops short of the right gutter on purpose: the quote strip lives there, and real numbers
+   must never be read against a drawn candle. The mask fades both ends so the field has no
+   visible edge — it ends where the hero copy begins and again before the quote strip. */
+.lx-backdrop__tape {
+  position: absolute;
+  top: 30px;
+  /* Pinned on both edges rather than sized as a percentage: the left edge has to clear the
+     headline's measure (`.lx-hero__title`'s 12em) at *every* width, which a percentage width
+     stops doing as soon as the viewport narrows. */
+  right: 200px;
+  /* An `<svg>` is a replaced element: given `left` and `right` with `width: auto` it takes its
+     intrinsic (viewBox) width and overflows instead of stretching between them, which is how
+     the field ended up back under the quote strip. Stated as a width, the left edge lands at
+     `100% - 200px - width` = 700px from the content edge, which is what the comment above
+     is about. */
+  width: calc(100% - 900px);
+  height: 320px;
+  mask-image: linear-gradient(90deg, transparent, #000 22%, #000 76%, transparent);
+}
+
+.lx-candle--up {
+  fill: color-mix(in srgb, var(--lx-blue) 16%, transparent);
+  stroke: color-mix(in srgb, var(--lx-blue-hi) 30%, transparent);
+}
+
+.lx-candle--down {
+  fill: color-mix(in srgb, var(--lx-purple) 13%, transparent);
+  stroke: color-mix(in srgb, var(--lx-purple) 26%, transparent);
+}
+
+.lx-backdrop__flow {
+  position: absolute;
+  right: 0;
+  bottom: -40px;
+  width: 100%;
+  height: 280px;
+  fill: none;
+  stroke-width: 1.25;
+}
+
+.lx-backdrop__flow path:nth-child(1) { stroke: color-mix(in srgb, var(--lx-blue) 20%, transparent); }
+.lx-backdrop__flow path:nth-child(2) { stroke: color-mix(in srgb, var(--lx-purple) 17%, transparent); }
+.lx-backdrop__flow path:nth-child(3) { stroke: color-mix(in srgb, var(--lx-teal) 13%, transparent); }
+
+/* --- hero ---------------------------------------------------------------------------- */
+
+.lx__body {
+  position: relative;
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 48px;
+  padding: 56px var(--lx-gutter) 48px;
+  overflow: hidden;
+}
+
+.lx-hero {
+  position: relative;
+  z-index: 1;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 40px;
+  align-items: start;
+}
+
+.lx-hero__eyebrow {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  margin: 0 0 18px;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+  color: var(--lx-text-3);
+}
+
+.lx-hero__rule {
+  width: 34px;
+  height: 2px;
+  border-radius: 1px;
+  background: linear-gradient(90deg, var(--lx-blue), var(--lx-purple) 55%, var(--lx-teal));
+}
+
+.lx-hero__title {
+  /* In `em`, so the measure tracks the clamped font size: wide enough for "quantitative
+     trading." on one line, too narrow for "Smarter tools for quantitative" — which is the
+     two-line break this hero is composed around. */
+  max-width: 12em;
+  margin: 0;
+  font-family: var(--lx-font);
+  font-size: clamp(38px, 4.6vw, 60px);
+  font-weight: 700;
+  line-height: 1.05;
+  letter-spacing: -0.028em;
+  color: var(--lx-text-1);
+}
+
+.lx-hero__title-accent {
+  color: var(--lx-blue-hi);
+}
+
+.lx-hero__lede {
+  max-width: 44ch;
+  margin: 20px 0 0;
+  font-size: 16.5px;
+  line-height: 1.6;
+  color: var(--lx-text-2);
+}
+
+/* --- quote strip --------------------------------------------------------------------- */
+
+.lx-tape {
+  justify-self: end;
+  padding-top: 4px;
+}
+
+.lx-tape__table {
+  border-collapse: collapse;
+  font-family: var(--mono);
+  font-size: 12.5px;
+  font-variant-numeric: tabular-nums;
+}
+
+.lx-tape__caption {
+  margin-bottom: 8px;
+  white-space: nowrap;
+  font-family: var(--lx-font);
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--lx-text-3);
+  text-align: right;
+}
+
+/* The column headers exist for a screen reader; the strip reads as a tape without them. */
+.lx-tape thead th {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+.lx-tape__table td,
+.lx-tape__table tbody th {
+  padding: 3px 0 3px 16px;
+  text-align: right;
+  font-weight: 400;
+}
+
+.lx-tape__table tbody th {
+  padding-left: 0;
+  text-align: left;
+  color: var(--lx-text-2);
+}
+
+.lx-tape__table td:first-of-type {
+  color: var(--lx-text-1);
+}
+
+.lx-tape__change--up { color: var(--lx-green); }
+.lx-tape__change--down { color: #e06a7a; }
+.lx-tape__change--flat { color: var(--lx-text-3); }
+
+:root[data-theme='light'] .lx-tape__change--down { color: #c02c46; }
+
+/* --- module cards -------------------------------------------------------------------- */
+
+.lx-cards {
+  position: relative;
+  z-index: 1;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 24px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.lx-card {
+  display: flex;
+}
+
+/* One accent per module, set here and read by every rule below through `--lx-accent` — the
+   three cards are one rule set, not three. */
+.lx-card--gex { --lx-accent: var(--lx-blue); }
+.lx-card--research { --lx-accent: var(--lx-teal); }
+.lx-card--terminal { --lx-accent: var(--lx-purple); }
+
+.lx-card__face {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  min-height: 330px;
+  padding: 30px 28px 26px;
+  border: 1px solid color-mix(in srgb, var(--lx-accent) 34%, transparent);
+  border-radius: 18px;
+  background:
+    linear-gradient(162deg, color-mix(in srgb, var(--lx-accent) 11%, transparent), transparent 58%),
+    var(--lx-surface);
+  box-shadow: 0 18px 44px -30px color-mix(in srgb, var(--lx-accent) 70%, transparent);
+  color: inherit;
+  text-decoration: none;
+  transition:
+    transform 0.18s ease,
+    border-color 0.18s ease,
+    box-shadow 0.18s ease;
+}
+
+.lx-card__face--disabled {
+  opacity: 0.5;
+}
+
+.lx-card__face:not(.lx-card__face--disabled):hover {
+  transform: translateY(-2px);
+  border-color: color-mix(in srgb, var(--lx-accent) 62%, transparent);
+  box-shadow: 0 24px 54px -28px color-mix(in srgb, var(--lx-accent) 85%, transparent);
+}
+
+.lx-card__face:not(.lx-card__face--disabled):hover .lx-card__go {
+  transform: translateX(3px);
+  border-color: color-mix(in srgb, var(--lx-accent) 55%, transparent);
+}
+
+.lx-card__mark {
+  display: grid;
+  place-items: center;
+  width: 54px;
+  height: 54px;
+  border: 1px solid color-mix(in srgb, var(--lx-accent) 32%, transparent);
+  border-radius: 14px;
+  background: color-mix(in srgb, var(--lx-accent) 14%, transparent);
+  color: var(--lx-accent);
+}
+
+.lx-card__name {
+  margin-top: 22px;
+  font-size: 27px;
+  font-weight: 600;
+  letter-spacing: -0.015em;
+  color: var(--lx-text-1);
+}
+
+.lx-card__blurb {
+  margin-top: 12px;
+  font-size: 14.5px;
+  line-height: 1.6;
+  color: var(--lx-text-2);
+}
+
+.lx-card__foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin-top: auto;
+  padding-top: 26px;
+}
+
+.lx-card__tag {
+  padding: 7px 14px;
+  border: 1px solid color-mix(in srgb, var(--lx-accent) 30%, transparent);
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--lx-accent) 9%, transparent);
+  color: var(--lx-accent);
+  font-size: 12.5px;
+  font-weight: 500;
+}
+
+.lx-card__go {
+  display: grid;
+  place-items: center;
+  flex: 0 0 auto;
+  width: 44px;
+  height: 44px;
+  border: 1px solid color-mix(in srgb, var(--lx-accent) 28%, transparent);
+  border-radius: 50%;
+  background: color-mix(in srgb, var(--lx-accent) 9%, transparent);
+  color: var(--lx-accent);
+  transition: transform 0.18s ease, border-color 0.18s ease;
+}
+
+/* --- responsive ---------------------------------------------------------------------- */
+
+/* Narrower than this, the gap between the headline's measure and the quote strip is too thin
+   to draw a field in — it would read as a smudge behind the type rather than as texture beside
+   it. The flow curves stay at every width: they live along the bottom edge. */
+@media (max-width: 1440px) {
+  .lx-backdrop__tape {
+    display: none;
+  }
+}
+
+@media (max-width: 1320px) {
+  .lx {
+    --lx-rail-w: 240px;
+    --lx-gutter: 28px;
+  }
+
+  .lx-cards {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 1100px) {
+  .lx-hero {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 28px;
+  }
+
+  .lx-tape {
+    justify-self: start;
+  }
+
+  .lx-tape__caption {
+    text-align: left;
+  }
+}
+
+/* The same breakpoint the rest of the app uses to fold its rail away (`.side-rail`): the
+   persistent column becomes a compact, horizontally scrollable bar above the content. No JS
+   and no second nav definition — the rail's markup is unchanged. */
+@media (max-width: 900px) {
+  .lx {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .lx__rail {
+    position: static;
+    height: auto;
+    flex-direction: row;
+    align-items: center;
+    gap: 16px;
+    padding: 10px 16px;
+    border-right: none;
+    border-bottom: 1px solid var(--lx-hair);
+    overflow-x: auto;
+  }
+
+  .lx-brand {
+    flex: 0 0 auto;
+    padding: 0;
+    font-size: 21px;
+  }
+
+  .lx-brand__mark {
+    width: 30px;
+    height: 30px;
+  }
+
+  .lx-rail-nav {
+    flex-direction: row;
+    gap: 4px;
+  }
+
+  .lx-rail-nav__link {
+    height: 38px;
+    padding: 0 12px;
+    font-size: 14px;
+    white-space: nowrap;
+  }
+
+  .lx-rail-note {
+    display: none;
+  }
+
+  .lx__body {
+    gap: 36px;
+    padding: 36px 16px 40px;
+  }
+
+  .lx__topbar {
+    padding: 0 16px;
+    gap: 12px;
+  }
+
+  .lx-cards {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .lx-card__face {
+    min-height: 0;
+  }
+}
+
+@media (max-width: 620px) {
+  .lx-search__kbd {
+    display: none;
+  }
+
+  .lx-status {
+    font-size: 0;
+    gap: 0;
+  }
+
+  .lx-hero__title {
+    max-width: none;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .lx-card__face,
+  .lx-card__go {
+    transition: none;
+  }
+
+  .lx-card__face:not(.lx-card__face--disabled):hover {
+    transform: none;
+  }
+
+  .lx-card__face:not(.lx-card__face--disabled):hover .lx-card__go {
+    transform: none;
+  }
 }
 
 /* ---------------------------------------------------------------------------------------
