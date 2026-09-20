@@ -16,7 +16,7 @@ interface ModuleEntry {
   key: string;
   name: string;
   blurb: string;
-  /** `null` until the module exists. T77 (research) and T79 (terminal) fill these in. */
+  /** `null` until the module exists. Research filled this in at T78; terminal is T80. */
   to: string | null;
 }
 
@@ -30,8 +30,8 @@ const MODULES: readonly ModuleEntry[] = [
   {
     key: 'research',
     name: 'EdgeLab',
-    blurb: 'Systematic edge search and a paper-traded leaderboard. Arrives in T77.',
-    to: null,
+    blurb: 'Systematic edge search and a paper-traded leaderboard, with the noise ceiling that says which rows mean anything.',
+    to: '/research',
   },
   {
     key: 'terminal',

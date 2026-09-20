@@ -317,3 +317,94 @@ the only UI -- which is exactly the fallback the brief kept it for.
 The 33 MB OHLCV tree was **copied**, not moved: `projects/research/data/` is untouched, so the
 standalone repo still runs. It should be deleted once T78 has been used in anger for a while and
 nobody has needed to fall back.
+
+## Result — T78
+
+**Done 2026-09-19.** 1,060 backend tests (20 added) and 377 frontend tests (20 added) green,
+both linters clean (frontend 0 errors), `npm run build` clean, and every endpoint exercised
+against the real 134,507-trial registry.
+
+### What shipped
+
+Four endpoints under `/api/research`: `leaderboard` (ranked, filtered, paginated, **with the
+ceiling in the same payload**), `trials/{hash}`, `paper`, `status`. Two pages: the leaderboard
+with per-row verdicts, a filter bar whose options come from the data, a pager reporting the true
+match count, and a trial drawer carrying the IS/OOS split; and the paper watchlist with every
+promotion gate as a column.
+
+### The honesty rules, and how they are enforced rather than intended
+
+The brief's central claim is that "a leaderboard that drops the noise ceiling is worse than no
+leaderboard". Each of these is a test, not a convention:
+
+- **The ceiling cannot be separated from the rows.** It is a required field of the same
+  response, and the TypeScript types make it and `above_ceiling` non-nullable, so a component
+  cannot render rows while forgetting the ceiling.
+- **Filtering never lowers it.** The denominator is the whole registry. Tested both server-side
+  and on the page: narrowing to one market leaves `total_trials` and the ceiling untouched. A
+  ceiling that moved with a filter would let anyone filter their way to a green row.
+- **Losing trials stay in the denominator** even though they are filtered out of the rows —
+  which is *why* they are never deleted.
+- **Each row is judged against its own OOS span.** A test asserts a one-year row gets a higher
+  ceiling than a sixteen-year row at the same Sharpe.
+- **Below-ceiling rows are dimmed and labelled in words**, not hidden and not colour-only.
+- **The paper list is ordered by promotion date.** The test's fixture is built so a
+  performance sort would reorder it and fail.
+- **Both caveats render on the page**, asserted by test.
+
+The real data makes the point better than any fixture could: the top of the leaderboard is
+`oos_sharpe 4.98` against its own ceiling of `5.52` — `above_ceiling: false`. 22,237 rows pass
+the filters and **none of the top ones clears its ceiling**, which matches the static report's
+`candidates_above_ceiling: 0` exactly.
+
+### Judgment calls
+
+**Two things were hoisted out of `modules/gex` rather than duplicated.** `lib/http.ts` now holds
+the base-URL resolution, `ApiError` and `apiFetch`; `src/mocks/` composes both modules' MSW
+handlers into the one server and worker. Neither was scope creep: `resolveBaseUrl`'s correctness
+rests on a chain of reasoning about same-origin deployment that a second copy would silently
+fork, and the Vitest server runs with `onUnhandledRequest: 'error'`, so research requests had to
+be registered or every research test would fail on a confusing network error. Nine gex test
+files had their `mocks/server` import repointed; `modules/gex/api/client.ts` re-exports
+`ApiError` and `API_BASE_URL` so its own callers were untouched.
+
+**Research got its own `ResearchFrame` instead of reusing `shell/AppFrame`.** `AppFrame` is not
+the generic shell its name suggests: it hard-mounts GEX's `ContextBar` (symbol/filter/snapshot
+controls meaningless here) and a `SideRail` bound to GEX's `NAV_GROUPS`. Making it generic is
+**T81**'s explicit scope — "launcher and module shell, plus the module switcher" — and
+half-building that here would leave T81 undoing work rather than doing it. `ResearchFrame` uses
+the same shared primitives and is documented as something T81 should absorb.
+
+**The API returns numbers and flags; the page owns the prose.** The caveats are frontend content
+with tests asserting they render, rather than strings in the JSON. Putting presentation text in
+an API response would have guaranteed they appear at the cost of making the endpoint a view.
+
+**Mock fixtures mirror the pessimistic reality.** The MSW leaderboard's best row is below its
+ceiling, because that is what the registry actually looks like; building against optimistic mock
+data would have tuned the UI for a state that has never occurred. One long-span row exists so
+the `above_ceiling` branch stays reachable in development.
+
+### Caught by doing
+
+- **`npm run build` catches what `tsc --noEmit` does not.** The build runs `tsc -b`, which found
+  four missing `metricKey` props in `StatusStrip` that a plain `--noEmit` pass had reported
+  clean. Worth knowing: the typecheck alone is not the gate CI applies.
+- **The repo has no `@testing-library/user-event`.** Tests were first written against it; the
+  house idiom is `fireEvent`, and matching it was better than adding a dependency for four
+  interactions.
+- **`App.test.tsx` encoded T75's state** — it asserted EdgeLab was *not* a navigable link. T78
+  makes it one, so the assertion was inverted rather than deleted, and now pins that `xactx`
+  stays non-navigable until T80.
+- One new frontend lint **warning** (0 errors): `FilterBar.tsx` exports `DEFAULT_FILTERS`
+  alongside a component, which trips `react-refresh/only-export-components`. Four existing
+  components in the repo do the same; left consistent rather than adding a file for one
+  constant.
+
+### Not done here
+
+The brief's "a row expands to its parameters, its IS/OOS split and its regime condition" —
+the regime condition is in `params.regime` and is shown as a parameter rather than being given
+its own treatment. Worth revisiting once the page has been used.
+
+The static `leaderboard.html` still exists and is still written by `--report-only`. The brief
+says to drop it "in a later pass once the page is trusted"; it has not earned that yet.

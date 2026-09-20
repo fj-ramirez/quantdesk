@@ -9,7 +9,7 @@ import { fireEvent, render, screen, waitFor, within } from '@testing-library/rea
 import { HttpResponse, http } from 'msw';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { describe, expect, it } from 'vitest';
-import { server } from '../mocks/server';
+import { server } from '../../../mocks/server';
 import { ThemeProvider } from '../../../theme/ThemeContext';
 import { Decisions } from './Decisions';
 import decisionsFixture from '../mocks/fixtures/scan/decisions.json';

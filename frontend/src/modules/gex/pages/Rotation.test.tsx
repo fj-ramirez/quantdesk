@@ -10,7 +10,7 @@ import { act, render, screen, waitFor, within } from '@testing-library/react';
 import { HttpResponse, http } from 'msw';
 import { MemoryRouter, Route, Routes, createMemoryRouter, RouterProvider } from 'react-router-dom';
 import { describe, expect, it, vi } from 'vitest';
-import { server } from '../mocks/server';
+import { server } from '../../../mocks/server';
 import { ThemeProvider } from '../../../theme/ThemeContext';
 import { Rotation } from './Rotation';
 import rotationSectorsFixture from '../mocks/fixtures/scan/rotation_sectors.json';

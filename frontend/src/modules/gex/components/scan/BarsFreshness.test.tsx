@@ -2,7 +2,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { render, screen, waitFor } from '@testing-library/react';
 import { HttpResponse, http } from 'msw';
 import { describe, expect, it } from 'vitest';
-import { server } from '../../mocks/server';
+import { server } from '../../../../mocks/server';
 import { BarsFreshness } from './BarsFreshness';
 import healthCaptureFixture from '../../mocks/fixtures/scan/health_capture.json';
 import healthCaptureStaleFixture from '../../mocks/fixtures/scan/health_capture_stale.json';

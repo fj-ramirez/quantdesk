@@ -10,7 +10,7 @@ import { render, screen, waitFor, within } from '@testing-library/react';
 import { HttpResponse, http } from 'msw';
 import { MemoryRouter, Route, Routes, useSearchParams } from 'react-router-dom';
 import { describe, expect, it } from 'vitest';
-import { server } from '../mocks/server';
+import { server } from '../../../mocks/server';
 import { ThemeProvider } from '../../../theme/ThemeContext';
 import { Regime } from './Regime';
 import regimeFixture from '../mocks/fixtures/scan/regime.json';

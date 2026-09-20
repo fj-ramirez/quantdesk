@@ -1273,6 +1273,15 @@ Alembic taking a list of metadatas) are argued under the plan file's *Result* he
 `/api/research/*` and the leaderboard page, noise ceiling included in the payload. Spec: same
 file as T77.
 
+**Done 2026-09-19.** 1,060 backend tests (20 added) and 377 frontend tests (20 added) green,
+both linters clean, production build clean. Four endpoints under `/api/research`, a leaderboard
+page with per-row ceiling verdicts, filters sourced from the data, a trial drawer carrying the
+IS/OOS split, and the paper watchlist ordered by promotion date. The ceiling ships in the same
+payload as the rows and the denominator is the whole registry, so filtering cannot lower it --
+both enforced by tests. Two shared things were hoisted out of `modules/gex` on the way
+(`lib/http.ts`, `src/mocks/`); research got its own `ResearchFrame` rather than half-building
+T81's module switcher. Full account under the plan file's *Result -- T78* heading.
+
 ## T79 · Opus · T76
 
 Terminal module: port xactx, DuckDB (28 MB, six tables) to the `terminal` schema, preserving

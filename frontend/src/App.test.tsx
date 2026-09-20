@@ -166,8 +166,9 @@ describe('T55 scan-family nav and stub routes', () => {
     expect(screen.getByRole('heading', { name: 'quantdesk' })).toBeInTheDocument();
     expect(screen.getByRole('link', { name: /GEX/ })).toHaveAttribute('href', '/gex');
     expect(screen.queryByRole('region', { name: 'Tape' })).not.toBeInTheDocument();
-    // The two modules that do not exist yet are listed but not navigable (T77/T79).
-    expect(screen.queryByRole('link', { name: /EdgeLab/ })).not.toBeInTheDocument();
+    // T78 made the research module real, so EdgeLab is now a link like GEX. `xactx` is still
+    // listed-but-not-navigable until T80.
+    expect(screen.getByRole('link', { name: /EdgeLab/ })).toHaveAttribute('href', '/research');
     expect(screen.queryByRole('link', { name: /xactx/ })).not.toBeInTheDocument();
   });
 

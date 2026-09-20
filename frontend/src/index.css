@@ -1772,3 +1772,212 @@ code {
   font-size: 13px;
   color: var(--text-muted);
 }
+
+/* ---------------------------------------------------------------------------------------
+   Research module (T78)
+
+   Uses the same tokens as every other module -- no new colours, no second visual language.
+   The one place this module needs its own rule is the leaderboard's below-ceiling treatment,
+   and even there the colour is only reinforcement: the row also carries the words "below
+   noise ceiling", because the verdict has to survive a screen reader and a greyscale
+   screenshot.
+   --------------------------------------------------------------------------------------- */
+
+.research-page {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-5, 20px);
+}
+
+.research-loading {
+  color: var(--text-muted);
+}
+
+/* The ceiling banner. Prose, not a stat tile -- see NoiseCeilingBanner.tsx for why. */
+.noise-ceiling {
+  padding: var(--space-4);
+  border-left: 3px solid var(--status-caution);
+}
+
+.noise-ceiling__headline {
+  margin: 0;
+  color: var(--text-default);
+}
+
+.noise-ceiling__verdict {
+  margin: var(--space-2) 0 0;
+  color: var(--text-muted);
+}
+
+.research-caveats {
+  margin: 0;
+  padding-left: var(--space-4);
+  color: var(--text-muted);
+  font-size: 0.9em;
+}
+
+.research-caveats li + li {
+  margin-top: var(--space-2);
+}
+
+.research-filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+  align-items: flex-end;
+}
+
+.research-filters__field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  font-size: 0.85em;
+  color: var(--text-muted);
+}
+
+.research-filters__field select,
+.research-filters__field input {
+  padding: var(--space-1) var(--space-2);
+  border: 1px solid var(--border-default);
+  border-radius: 4px;
+  background: var(--surface-app);
+  color: var(--text-default);
+  font: inherit;
+}
+
+.research-filters__reset {
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--border-default);
+  border-radius: 4px;
+  background: var(--surface-raised);
+  color: var(--text-default);
+  cursor: pointer;
+}
+
+.leaderboard-table__scroll {
+  overflow-x: auto;
+}
+
+.leaderboard-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-variant-numeric: tabular-nums;
+}
+
+.leaderboard-table th,
+.leaderboard-table td {
+  padding: var(--space-2) var(--space-3);
+  text-align: left;
+  border-bottom: 1px solid var(--border-default);
+  white-space: nowrap;
+}
+
+.leaderboard-table .is-numeric {
+  text-align: right;
+}
+
+.leaderboard-table__row {
+  cursor: pointer;
+}
+
+.leaderboard-table__row:hover,
+.leaderboard-table__row:focus-visible {
+  background: var(--surface-raised);
+}
+
+/* A row that cleared its own ceiling: the only rows worth a second look. */
+.leaderboard-table__row--above td {
+  color: var(--text-strong);
+  font-weight: 600;
+}
+
+/* Visibly discounted, not hidden. The fact that almost nothing clears the ceiling is the
+   finding -- hiding these rows would be dishonest in the other direction. */
+.leaderboard-table__row--below td {
+  color: var(--text-muted);
+  opacity: 0.72;
+}
+
+.leaderboard-table__flag {
+  font-size: 0.78em;
+  color: var(--status-caution);
+  white-space: nowrap;
+}
+
+.research-pager {
+  display: flex;
+  gap: var(--space-3);
+  align-items: center;
+  justify-content: flex-end;
+  color: var(--text-muted);
+}
+
+.research-pager button {
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--border-default);
+  border-radius: 4px;
+  background: var(--surface-app);
+  color: var(--text-default);
+  cursor: pointer;
+}
+
+.research-pager button:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+.trial-detail__params {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+  gap: var(--space-2);
+}
+
+.trial-detail__params dt {
+  color: var(--text-muted);
+  font-size: 0.8em;
+}
+
+.trial-detail__params dd {
+  margin: 0;
+  font-variant-numeric: tabular-nums;
+}
+
+.trial-detail__cue {
+  color: var(--text-muted);
+  font-size: 0.9em;
+}
+
+.trial-detail__split {
+  width: 100%;
+  border-collapse: collapse;
+  font-variant-numeric: tabular-nums;
+}
+
+.trial-detail__split th,
+.trial-detail__split td {
+  padding: var(--space-2);
+  border-bottom: 1px solid var(--border-default);
+  text-align: left;
+}
+
+.trial-detail__split .is-numeric {
+  text-align: right;
+}
+
+.side-rail__brand {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  padding: var(--space-3);
+}
+
+.side-rail__home {
+  color: var(--text-muted);
+  font-size: 0.8em;
+  text-decoration: none;
+}
+
+.side-rail__module {
+  color: var(--text-strong);
+  font-weight: 600;
+}

@@ -43,6 +43,9 @@ backend/app/
   workers/     gex_capture.py, research_search.py — one container each, APScheduler
   config/      research.yaml — EdgeLab's search budget and cost model (T77)
   scripts/     migrate_registry.py — one-shot SQLite→Postgres registry import (T77)
+  modules/research/
+    router.py    APIRouter(prefix="/research") — leaderboard, trials, paper, status
+    storage/repository.py  read queries + the noise ceiling (never computed client-side)
   modules/gex/
     router.py    APIRouter(prefix="/gex") composing the ten routers below
     api/         routers: snapshots, health, gex, chains, report, bars, scan, symbols,
@@ -62,8 +65,11 @@ backend/app/
                  — the science, carried over essentially unchanged
 frontend/src/
   shell/         AppFrame, SideRail, CommandPalette, navConfig, Launcher
-  modules/gex/   routes.tsx + api/ components/ pages/ state/ mocks/
-  lib/ theme/ components/ui/   shared by every module — formatting, time, theming, primitives
+  modules/gex/       routes.tsx + api/ components/ pages/ state/ mocks/
+  modules/research/  leaderboard + paper watchlist, same shape (T78)
+  mocks/         composes every module's MSW handlers into one server/worker
+  lib/ theme/ components/ui/   shared by every module — formatting, time, theming, primitives,
+                 and lib/http.ts (base URL, ApiError, apiFetch)
 context/       detailed docs — see the index below
 docs/          one-off reports (schema, validation, reviews)
 plans/quantdesk/  the module-host initiative (T75–T82)

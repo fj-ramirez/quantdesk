@@ -10,7 +10,7 @@ import { render, screen, waitFor, within } from '@testing-library/react';
 import { HttpResponse, http } from 'msw';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { describe, expect, it, vi } from 'vitest';
-import { server } from '../mocks/server';
+import { server } from '../../../mocks/server';
 import { ThemeProvider } from '../../../theme/ThemeContext';
 import { Flows } from './Flows';
 import { formatBarsThrough } from '../../../lib/time';

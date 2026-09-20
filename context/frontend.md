@@ -16,13 +16,22 @@ The app is a **module host**. `src/App.tsx` is two lines of routing: `/` renders
   `icons`, `Launcher`. The chrome around whichever module is mounted.
 - `src/modules/gex/` — `routes.tsx`, `api/`, `pages/`, `components/`, `state/`, `mocks/`.
   Everything that knows what a gamma wall is.
+- `src/modules/research/` — same shape (T78). EdgeLab's leaderboard and paper watchlist.
 - `src/lib/`, `src/theme/`, `src/components/ui/` — **shared, and must stay that way.** A
   percentage, a strike, a New York timestamp and a Surface must render identically in every
-  future module, so they cannot belong to one.
+  future module, so they cannot belong to one. T78 moved two more things here for that
+  reason: `lib/http.ts` (base-URL resolution, `ApiError`, `apiFetch` — `resolveBaseUrl` in
+  particular must never be copy-pasted, since its correctness rests on a chain of reasoning
+  about same-origin deployment that a drifting second copy would break), and `src/mocks/`,
+  which composes every module's MSW handlers into the one server and worker.
 
 One edge deliberately crosses: `shell/AppFrame` renders `modules/gex/components/layout/
 ContextBar`, which is GEX-specific. T81 owns making the frame module-agnostic; until then the
-import is commented in place rather than papered over.
+import is commented in place rather than papered over. **This is why research has its own
+`ResearchFrame`** rather than reusing `AppFrame`: `AppFrame` hard-mounts that ContextBar and a
+`SideRail` bound to GEX's `NAV_GROUPS`, and half-building T81's module switcher here would
+leave T81 undoing it rather than doing it. `ResearchFrame` is a placeholder that uses the same
+shared primitives and should disappear into T81's shell.
 
 ## Routes
 
@@ -39,6 +48,8 @@ Every GEX route is one segment deeper since T75. `modules/gex/routes.tsx` nests 
 | `/gex/decisions` | `Decisions` (T60: ranked opportunities with a detail panel; `min_score` in the URL) |
 | `/gex/report`, `/gex/scan`, `/gex/regime`, `/gex/rotation`, `/gex/flows` | the scan family |
 | `/gex/demo/gamma-profile`, `/gex/demo/gex-by-strike` | component sandboxes (`pages/demo/`) |
+| `/research` | `Leaderboard` — ranked trials with the noise ceiling (T78) |
+| `/research/paper` | `Paper` — the forward-tracking watchlist |
 
 ## Data layer — three files, three jobs
 
@@ -52,6 +63,36 @@ Every GEX route is one segment deeper since T75. `modules/gex/routes.tsx` nests 
 - **`api/queries.ts`** — TanStack Query owns caching/retry. `queryKeys` is the single source of
   cache keys; the hooks are `useGexResult`, `useLevelsHistory`, `useChainLatest`,
   `useSnapshots`. Components call hooks, never `apiClient` directly.
+
+## The research module (T78) — the noise ceiling is not optional
+
+`/research` renders the output of a search over 134,377 combinations, and a search that hard
+produces an impressive-looking best row whether or not any edge exists. So:
+
+- **The ceiling ships in the same response as the rows.** `GET /api/research/leaderboard`
+  returns `noise_ceiling`, `total_trials` and a per-row `above_ceiling`; there is no separate
+  endpoint and nothing is computed in the browser. A component cannot render rows while
+  forgetting the ceiling, because it cannot get the first without the second — and the types
+  make both non-nullable.
+- **Every row is judged against its own OOS span**, not the headline figure. The ceiling scales
+  as 1/sqrt(years), so a one-year row and a sixteen-year row at the same Sharpe are very
+  different claims. Using one ceiling for all rows would flatter short histories, which is
+  exactly where overfitting hides.
+- **Rows below their ceiling are dimmed, not hidden**, and carry the words "below noise
+  ceiling" — text, because the verdict has to survive a screen reader and a greyscale
+  screenshot. Hiding them would be dishonest in the other direction: that the best of 134,377
+  attempts is *still* under the floor is the most useful thing the page says.
+- **Filtering never lowers the ceiling.** The denominator is the whole registry; narrowing to
+  one market does not mean fewer experiments were run. A ceiling that moved with a filter would
+  let anyone filter their way to a green row.
+- **The OOS-reuse and futures roll-gap caveats render on the page**, not only in a README.
+- **The paper watchlist is ordered by promotion date, never by performance.** It is the only
+  un-fitted evidence in the module; sorting it by outcome would quietly make it a second
+  leaderboard. Neither the API nor the page offers that ordering.
+
+In-sample figures appear only in the trial drawer, never on the leaderboard: IS is what the
+search fitted, so beside a ranking it reads as corroboration, while beside OOS the *gap* is the
+informative part.
 
 ## Error and empty states (T37 — do not regress)
 
@@ -95,12 +136,22 @@ wall clock.
 Colocated `*.test.tsx` next to the component. `vitest.config.ts` merges the Vite config and
 adds jsdom, globals and `src/test/setup.ts`.
 
+`src/mocks/` composes every module's handlers into the one `server` (Vitest) and `worker`
+(dev) — T78 moved them up out of `modules/gex/mocks/` because the Vitest server runs with
+`onUnhandledRequest: 'error'`, so an unregistered module's request fails a test with a
+confusing network error rather than a useful assertion. A module's own handlers stay in its
+`mocks/`; only the composition is shared.
+
+The research fixtures deliberately mirror the real registry's current state — the top row is
+*below* its ceiling — because building the page against optimistic mock data would have tuned
+the UI for a state that has never occurred. One long-span row exists so the `above_ceiling`
+branch is still reachable in development.
+
 MSW handlers in `modules/gex/mocks/handlers.ts` serve the fixtures in `mocks/fixtures/`,
 matched with an origin wildcard so they work whatever `VITE_API_BASE_URL` resolves to. **They
 must be reprefixed in lockstep with the client**: a handler still matching `*/api/...` after
 the client moved to `*/api/gex/...` matches nothing, and the symptom is an empty dashboard
-rather than an error. `mocks/browser.ts` is
-the dev-time worker, `mocks/server.ts` the test-time server.
+rather than an error. 
 
 Caveat carried in the handlers' own docstring: they do **not** reimplement the GEX engine.
 Filter-dependent numbers there are a crude scale factor and are illustrative only — never

@@ -3,7 +3,7 @@
 // calls through TanStack Query rather than mocking `fetch` per test.
 import '@testing-library/jest-dom/vitest';
 import { afterAll, afterEach, beforeAll } from 'vitest';
-import { server } from '../modules/gex/mocks/server';
+import { server } from '../mocks/server';
 
 beforeAll(() => server.listen({ onUnhandledRequest: 'error' }));
 afterEach(() => server.resetHandlers());
