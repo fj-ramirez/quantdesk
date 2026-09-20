@@ -28,6 +28,14 @@ plans/
     02-intraday-polling.md          T18, T19, T20  the free 15-minute tier
     03-live-spot-overlay.md         T72  free live spot against a frozen surface
     04-realtime-paid.md             T21-T23 status and the 2026-09-11 vendor re-survey
+  quantdesk/                        three apps, one desk (2026-09-19)
+    README.md                       module model, schema decision, dependency graph, dispatch order
+    00-monorepo-skeleton.md         T75  GEX becomes a module; core/ and workers/ appear
+    01-postgres-schemas.md          T76  gex / research / terminal schemas + the read-only role
+    02-research-module.md           T77, T78  EdgeLab ports in; leaderboard becomes a page
+    03-terminal-module.md           T79, T80  xactx ports in; the board finally gets built
+    04-launcher-shell.md            T81  the page you land on, and the module switcher
+    05-mcp-connector.md             T82  read-only MCP over all three schemas
 ```
 
 ## Conventions
@@ -37,8 +45,9 @@ plans/
   block shape used by `TASKS.md`), *Verified facts* (measured by the supervisor, not assumed),
   *Acceptance*, *Likely first-contact failures*, *Out of scope*.
 - Task IDs are allocated here and reserved in `TASKS.md` before dispatch. Next free ID as of
-  2026-09-11: **T73**. (The continuation initiative ended at T56; T57-T61 were filed directly
-  in `TASKS.md`; T62-T69 went to `ui-ux-refresh/`; T70-T72 to `continuous-feed/`.)
+  2026-09-19: **T83**. (The continuation initiative ended at T56; T57-T61 were filed directly
+  in `TASKS.md`; T62-T69 went to `ui-ux-refresh/`; T70-T72 to `continuous-feed/`; T73-T74 directly in
+  `TASKS.md`; T75-T82 to `quantdesk/`.)
 - An initiative may adopt an **existing** ID rather than allocate a new one. `continuous-feed/`
   does this for `T18`-`T20`, `T21`-`T23` and `T32`: those were specified in `TASKS.md` in 2026-09-04
   and never built, so the plan file carries the full spec and the `TASKS.md` block stays as the

@@ -1196,4 +1196,62 @@ buckets at read time and typed so it cannot pass as a settled one.
 
 **Next:** the frontend still reads the settled daily series. Wiring `session_bar` into the
 symbol views and charting the 5-minute series is UI work, not data work, and is the obvious
-follow-on. Next free ID is **T75**.
+follow-on. Next free ID is **T83**.
+
+---
+
+# quantdesk — three apps, one desk (T75–T82)
+
+Full specs in [plans/quantdesk/](plans/quantdesk/). This repo is a clone of `gex-trading`
+(history preserved, origin detached); the original stays frozen on disk as the reference copy.
+GEX becomes one module of three, sharing one FastAPI process, one React app and one Postgres
+database with a schema per module. Opened 2026-09-19.
+
+Read [plans/quantdesk/README.md](plans/quantdesk/README.md) first -- it carries the module
+model, the schema decision, the dependency graph and the dispatch order.
+
+## T75 · Opus · —
+
+Monorepo skeleton. Move GEX into `app/modules/gex` and `frontend/src/modules/gex`, extract
+`app/core/` and `app/workers/`, reprefix the API to `/api/gex`, add the launcher route.
+Changes no behaviour. Spec: [plans/quantdesk/00-monorepo-skeleton.md](plans/quantdesk/00-monorepo-skeleton.md).
+
+## T76 · Opus · T75
+
+Postgres schemas `gex` / `research` / `terminal`, GEX's tables moved out of `public`, and the
+`quantdesk_ro` read-only role the MCP connector will use. Spec:
+[plans/quantdesk/01-postgres-schemas.md](plans/quantdesk/01-postgres-schemas.md).
+
+## T77 · Opus · T76
+
+Research module: port EdgeLab, SQLite registry (134,377 trials) to the `research` schema,
+search becomes a scheduled worker container (APScheduler, cron or interval). The Windows
+scheduled task stays, repointed at Postgres. Spec:
+[plans/quantdesk/02-research-module.md](plans/quantdesk/02-research-module.md).
+
+## T78 · Sonnet · T77
+
+`/api/research/*` and the leaderboard page, noise ceiling included in the payload. Spec: same
+file as T77.
+
+## T79 · Opus · T76
+
+Terminal module: port xactx, DuckDB (28 MB, six tables) to the `terminal` schema, preserving
+point-in-time semantics exactly. Ingestion becomes a worker; the CLI stays. Spec:
+[plans/quantdesk/03-terminal-module.md](plans/quantdesk/03-terminal-module.md).
+
+## T80 · Sonnet · T79
+
+`/api/terminal/*` and the board -- change board, regime, transmission graph, policy path,
+brief -- with a global as-of control. Spec: same file as T79.
+
+## T81 · Sonnet · T78, T80
+
+Launcher and module shell: a card per module showing its current state and health, plus the
+module switcher. Spec: [plans/quantdesk/04-launcher-shell.md](plans/quantdesk/04-launcher-shell.md).
+
+## T82 · Opus · T76
+
+MCP connector: a read-only stdio server over the three schemas, driven from the Claude CLI on
+the subscription rather than API credits. Spec:
+[plans/quantdesk/05-mcp-connector.md](plans/quantdesk/05-mcp-connector.md).
