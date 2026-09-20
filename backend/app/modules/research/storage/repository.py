@@ -24,11 +24,11 @@ from dataclasses import dataclass
 from typing import Any
 
 from sqlalchemy import func, select
-from sqlalchemy.orm import Session, sessionmaker
+from sqlalchemy.orm import Session, aliased, sessionmaker
 
 from app.core.db import get_session_factory
 from app.modules.research.backtest import noise_ceiling
-from app.modules.research.models.db import PaperCandidate, Trial
+from app.modules.research.models.db import PaperCandidate, PaperScore, Trial
 
 __all__ = [
     "LeaderboardFilters",
@@ -36,6 +36,7 @@ __all__ = [
     "RegistryStatus",
     "leaderboard_page",
     "paper_candidates",
+    "paper_forward_scores",
     "registry_status",
     "trial_by_hash",
 ]
@@ -226,6 +227,40 @@ def paper_candidates(
         for r in rows:
             session.expunge(r)
         return rows
+
+
+def paper_forward_scores(
+    *, session_factory: sessionmaker[Session] | None = None
+) -> dict[str, PaperScore]:
+    """The latest forward score per candidate, keyed by hash (T83).
+
+    A separate query rather than a join onto `paper_candidates`, so that a watchlist with no
+    scores yet -- every deployment, until the next cycle runs -- still renders. A candidate
+    missing from this mapping has not been measured, which the API reports as `null` rather
+    than as a zero.
+
+    `DISTINCT ON` on Postgres; the SQLite path the offline tests take has no such clause, so it
+    correlates a `max(scored_at)` subquery instead. Both use `ix_paper_scores_hash_scored_at`.
+    """
+    with _factory(session_factory)() as session:
+        if session.bind is not None and session.bind.dialect.name == "postgresql":
+            stmt = (
+                select(PaperScore)
+                .distinct(PaperScore.hash)
+                .order_by(PaperScore.hash, PaperScore.scored_at.desc())
+            )
+        else:
+            inner = aliased(PaperScore)
+            newest = (
+                select(func.max(inner.scored_at))
+                .where(inner.hash == PaperScore.hash)
+                .scalar_subquery()
+            )
+            stmt = select(PaperScore).where(PaperScore.scored_at == newest)
+        rows = list(session.execute(stmt).scalars().all())
+        for r in rows:
+            session.expunge(r)
+        return {r.hash: r for r in rows}
 
 
 def registry_status(*, session_factory: sessionmaker[Session] | None = None) -> RegistryStatus:

@@ -195,8 +195,22 @@ def promote(cfg: dict, registry: Registry) -> int:
     return added
 
 
-def forward_stats(cfg: dict, registry: Registry) -> list[dict]:
-    """Compute forward performance for every paper candidate."""
+def forward_stats(cfg: dict, registry: Registry, persist: bool = True) -> list[dict]:
+    """Compute forward performance for every paper candidate, and record it (T83).
+
+    The computation is unchanged and was always right: signals are generated over the full
+    history so indicators are warm, then performance is sliced to bars strictly *after*
+    `promoted_at`, starting flat. That slice is the only evidence in EdgeLab no selection step
+    has ever touched.
+
+    What changed is that the answer is now stored. It used to go into `report.html` and
+    nowhere else, so the database -- and therefore the API and the MCP connector -- held
+    promotion-time gates and no forward record at all. `persist` writes one `paper_scores` row
+    per candidate per run, append-only, which turns a single number into a trajectory.
+
+    Pass `persist=False` for a read-only view; `nightly.run_cycle` uses the default. The
+    caller commits, as everywhere else in this module.
+    """
     from .strategies import FAMILIES
 
     out = []
@@ -205,6 +219,7 @@ def forward_stats(cfg: dict, registry: Registry) -> list[dict]:
     for c in registry.paper_all():
         mcfg = cfg["markets"].get(c["market"])
         row = {
+            "hash": c["hash"],
             "market": c["market"], "strategy": c["strategy"], "symbol": c["symbol"],
             "timeframe": c["timeframe"], "params": c["params"],
             "promoted": c["promoted_at"][:10],
@@ -213,7 +228,12 @@ def forward_stats(cfg: dict, registry: Registry) -> list[dict]:
             "sharpe_2x": c["sharpe_2x"], "neighbor_med": c["neighbor_med"],
             "wf": f"{c['wf_pos']}/{c['wf_active']}",
             "wf_med": c["wf_med"], "corr_max": c["corr_max"],
-            "fwd_bars": 0, "fwd_sharpe": 0.0, "fwd_return": 0.0, "fwd_max_dd": 0.0,
+            # `fwd_bars` is a real count, so 0 is honest: zero bars have been traded. The three
+            # floats are `None` -- *unknown* -- until there are at least two forward bars to
+            # compute them from. They were 0.0 here, which rendered as a flat forward record
+            # and read as evidence of nothing happening rather than of nothing measured yet.
+            # Same rule invariant 3 states for open interest.
+            "fwd_bars": 0, "fwd_sharpe": None, "fwd_return": None, "fwd_max_dd": None,
             "spark": None,
         }
         oos_ret = _oos_daily(cfg, c, cache)
@@ -264,7 +284,20 @@ def forward_stats(cfg: dict, registry: Registry) -> list[dict]:
                        fwd_return=float((1 + net).prod() - 1), fwd_max_dd=m.max_drawdown)
         out.append(row)
 
-    out.sort(key=lambda r: r["fwd_sharpe"], reverse=True)
+    if persist:
+        # One `scored_at` for the whole run, not one per candidate: these measurements share a
+        # cycle, and a common timestamp is what lets "the watchlist as of this run" be a single
+        # query instead of a window over near-identical instants.
+        scored_at = pd.Timestamp.now(tz="UTC")
+        for row in out:
+            registry.paper_score_add(
+                row["hash"], scored_at, row["days"], row["fwd_bars"],
+                row["fwd_sharpe"], row["fwd_return"], row["fwd_max_dd"],
+            )
+
+    # Unscored candidates sort last rather than mixing in among the negatives: a candidate with
+    # no forward Sharpe yet has not underperformed, it has not been measured.
+    out.sort(key=lambda r: (r["fwd_sharpe"] is not None, r["fwd_sharpe"] or 0.0), reverse=True)
     return out
 
 

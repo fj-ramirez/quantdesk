@@ -16,7 +16,7 @@ from fastapi.testclient import TestClient
 
 from app.core.db import get_engine, get_sessionmaker
 from app.main import app
-from app.modules.research.models.db import Base, PaperCandidate, Trial
+from app.modules.research.models.db import Base, PaperCandidate, PaperScore, Trial
 from app.modules.research.storage import repository
 
 
@@ -394,3 +394,94 @@ def test_every_research_route_lives_under_api_research(client):
         "/api/research/status",
         "/api/research/trials/{trial_hash}",
     ]
+
+
+# --- the forward record (T83) ---------------------------------------------------------------
+
+
+def _scored(s, h, promoted_at, **score):
+    """A promoted candidate, optionally with one forward measurement."""
+    s.add(
+        PaperCandidate(
+            hash=h,
+            promoted_at=promoted_at,
+            market="futures",
+            strategy="rsi_meanrev",
+            symbol="NQ=F",
+            timeframe="1h",
+            params={"n": 4},
+            promoted_oos_sharpe=2.8,
+            sharpe_2x=2.2,
+            neighbor_med=1.8,
+            wf_pos=5,
+            wf_active=6,
+            wf_med=1.1,
+            corr_max=0.16,
+        )
+    )
+    if score:
+        s.add(PaperScore(hash=h, **score))
+
+
+def test_paper_payload_carries_the_forward_record(client, session_factory):
+    """Promotion-time gates describe a commitment; the `fwd_*` columns are its outcome.
+
+    Before T83 the outcome was computed nightly and written only into a generated report, so
+    this endpoint could say why a candidate was promoted and nothing about what happened next.
+    """
+    with session_factory() as s:
+        _scored(
+            s, "c", dt.datetime(2026, 7, 3, tzinfo=dt.UTC),
+            scored_at=dt.datetime(2026, 9, 20, tzinfo=dt.UTC),
+            fwd_days=79, fwd_bars=430, fwd_sharpe=1.1, fwd_return=0.06, fwd_max_dd=-0.04,
+        )
+        s.commit()
+
+    row = client.get("/api/research/paper").json()[0]
+    assert row["fwd_bars"] == 430
+    assert row["fwd_sharpe"] == 1.1
+    assert row["fwd_return"] == 0.06
+    assert row["fwd_max_dd"] == -0.04
+    assert row["fwd_days"] == 79
+    assert row["scored_at"] is not None
+
+
+def test_paper_serves_the_newest_measurement_of_a_candidate(client, session_factory):
+    """`paper_scores` is append-only, so the read path has to pick the latest row itself."""
+    with session_factory() as s:
+        _scored(
+            s, "c", dt.datetime(2026, 7, 3, tzinfo=dt.UTC),
+            scored_at=dt.datetime(2026, 8, 1, tzinfo=dt.UTC),
+            fwd_days=29, fwd_bars=120, fwd_sharpe=2.6, fwd_return=0.03, fwd_max_dd=-0.01,
+        )
+        s.add(
+            PaperScore(
+                hash="c", scored_at=dt.datetime(2026, 9, 20, tzinfo=dt.UTC),
+                fwd_days=79, fwd_bars=430, fwd_sharpe=1.1,
+                fwd_return=0.06, fwd_max_dd=-0.04,
+            )
+        )
+        s.commit()
+
+    row = client.get("/api/research/paper").json()[0]
+    assert row["fwd_sharpe"] == 1.1, "the newest score, not the first and not the flattering one"
+
+
+def test_an_unscored_candidate_reports_nulls_not_zeros(client, session_factory):
+    """The distinction the whole module rests on: unmeasured is not the same as flat.
+
+    A candidate promoted since the last cycle has no score row. Every forward field must come
+    back null -- a `0.0` here would put it on the same footing as one measured at zero, which
+    is exactly the kind of authoritative-looking number invariant 9 exists to prevent.
+    """
+    with session_factory() as s:
+        _scored(s, "c", dt.datetime(2026, 9, 19, tzinfo=dt.UTC))
+        s.commit()
+
+    row = client.get("/api/research/paper").json()[0]
+    assert row["scored_at"] is None
+    assert row["fwd_sharpe"] is None
+    assert row["fwd_bars"] is None
+    assert row["fwd_return"] is None
+    # The promotion-time half is unaffected -- the candidate is still fully described.
+    assert row["promoted_oos_sharpe"] == 2.8

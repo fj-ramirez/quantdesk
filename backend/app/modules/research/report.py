@@ -253,9 +253,12 @@ def write_candidates(cfg: dict, paper_rows: list[dict]) -> str:
             f"{_fmt('x', r['neighbor_med'])} &middot; walk-forward {r['wf']} windows "
             f"positive &middot; watchlist correlation at promotion "
             f"{_fmt('x', r['corr_max'])}</p>"
+            # Through `_fmt`, which renders an unmeasured value as a dash. These are None
+            # until a candidate has two forward bars, and a raw `:.2f` would raise on it.
             f"<p><b>Forward so far:</b> {r['days']} days, {r['fwd_bars']} bars, "
-            f"Sharpe {r['fwd_sharpe']:.2f}, return {r['fwd_return']:.2%}, "
-            f"max drawdown {r['fwd_max_dd']:.2%}</p>"
+            f"Sharpe {_fmt('x', r['fwd_sharpe'])}, return "
+            f"{_fmt('fwd_return', r['fwd_return'])}, "
+            f"max drawdown {_fmt('fwd_max_dd', r['fwd_max_dd'])}</p>"
             f"<p>{_sparkline(r.get('spark'))}</p>"
             "<p><b>Caveats:</b> " + " ".join(html.escape(c) for c in caveats) + "</p><hr>"
         )

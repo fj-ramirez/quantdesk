@@ -44,11 +44,11 @@ from typing import Any
 from sqlalchemy import func, select
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.engine import Engine
-from sqlalchemy.orm import Session, sessionmaker
+from sqlalchemy.orm import Session, aliased, sessionmaker
 from sqlalchemy.sql import Insert
 
 from app.core.db import get_engine, get_sessionmaker
-from app.modules.research.models.db import PaperCandidate, Trial
+from app.modules.research.models.db import PaperCandidate, PaperScore, Trial
 
 log = logging.getLogger(__name__)
 
@@ -68,18 +68,27 @@ def trial_hash(market: str, strategy: str, symbol: str, timeframe: str, params: 
     return hashlib.sha256(key.encode()).hexdigest()[:24]
 
 
-def _insert_ignore(table, dialect_name: str) -> Insert:
-    """`ON CONFLICT (hash) DO NOTHING`, spelled for whichever backend is in front of us.
+def _insert_ignore(
+    table, dialect_name: str, index_elements: list[str] | None = None
+) -> Insert:
+    """`ON CONFLICT (...) DO NOTHING`, spelled for whichever backend is in front of us.
 
     The original's `INSERT OR IGNORE` is SQLite-only syntax. Postgres and SQLite both support
     the `ON CONFLICT` form through SQLAlchemy, but from different dialect modules, so the choice
     has to be made per engine rather than once at import.
+
+    `index_elements` defaults to `["hash"]`, which is the key of both original tables. T83's
+    `paper_scores` is keyed on `(hash, scored_at)` -- it stores a history, so hash alone is
+    deliberately not unique there -- and passes its own. Naming the conflict target rather than
+    assuming it is what keeps a second measurement of the same candidate from being silently
+    swallowed as a duplicate.
     """
+    targets = index_elements or ["hash"]
     if dialect_name == "sqlite":
         from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 
-        return sqlite_insert(table).on_conflict_do_nothing(index_elements=["hash"])
-    return pg_insert(table).on_conflict_do_nothing(index_elements=["hash"])
+        return sqlite_insert(table).on_conflict_do_nothing(index_elements=targets)
+    return pg_insert(table).on_conflict_do_nothing(index_elements=targets)
 
 
 class Registry:
@@ -302,6 +311,87 @@ class Registry:
             ).order_by(PaperCandidate.promoted_at)
         ).all()
         return [_as_legacy_dict(row._mapping) for row in rows]
+
+    def paper_score_add(
+        self,
+        h: str,
+        scored_at: str | dt.datetime,
+        fwd_days: int | None,
+        fwd_bars: int | None,
+        fwd_sharpe: float | None,
+        fwd_return: float | None,
+        fwd_max_dd: float | None,
+    ) -> None:
+        """Record one forward measurement. Append-only; a re-score is a new row (T83).
+
+        `ON CONFLICT DO NOTHING` on `(hash, scored_at)` for the same reason `record` has it:
+        the worker and the Windows scheduled task may both run a cycle, and two scores computed
+        at the same instant are the same measurement, not an integrity error. The row that
+        already landed wins, which keeps the history immutable rather than last-writer-wins.
+
+        Every float is passed through as-is, `None` included. A candidate too young to have a
+        Sharpe stores `NULL`, never `0.0` -- see the model docstring.
+        """
+        self._session.execute(
+            _insert_ignore(PaperScore, self._dialect, ["hash", "scored_at"]).values(
+                hash=h,
+                scored_at=_as_utc(scored_at),
+                fwd_days=fwd_days,
+                fwd_bars=fwd_bars,
+                fwd_sharpe=fwd_sharpe,
+                fwd_return=fwd_return,
+                fwd_max_dd=fwd_max_dd,
+            )
+        )
+
+    def paper_scores_latest(self) -> dict[str, dict]:
+        """The most recent score per candidate, keyed by hash.
+
+        `DISTINCT ON` on Postgres; the SQLite tests take the correlated-subquery path because
+        SQLite has no `DISTINCT ON`. Both are served by `ix_paper_scores_hash_scored_at`.
+        """
+        if self._dialect == "postgresql":
+            stmt = (
+                select(PaperScore)
+                .distinct(PaperScore.hash)
+                .order_by(PaperScore.hash, PaperScore.scored_at.desc())
+            )
+        else:
+            inner = aliased(PaperScore)
+            newest = (
+                select(func.max(inner.scored_at))
+                .where(inner.hash == PaperScore.hash)
+                .scalar_subquery()
+            )
+            stmt = select(PaperScore).where(PaperScore.scored_at == newest)
+        out: dict[str, dict] = {}
+        for row in self._session.execute(stmt).scalars():
+            out[row.hash] = {
+                "scored_at": row.scored_at,
+                "fwd_days": row.fwd_days,
+                "fwd_bars": row.fwd_bars,
+                "fwd_sharpe": row.fwd_sharpe,
+                "fwd_return": row.fwd_return,
+                "fwd_max_dd": row.fwd_max_dd,
+            }
+        return out
+
+    def paper_score_history(self, h: str) -> list[dict]:
+        """One candidate's full trajectory, oldest first -- the point of storing history."""
+        rows = self._session.execute(
+            select(PaperScore).where(PaperScore.hash == h).order_by(PaperScore.scored_at)
+        ).scalars()
+        return [
+            {
+                "scored_at": r.scored_at,
+                "fwd_days": r.fwd_days,
+                "fwd_bars": r.fwd_bars,
+                "fwd_sharpe": r.fwd_sharpe,
+                "fwd_return": r.fwd_return,
+                "fwd_max_dd": r.fwd_max_dd,
+            }
+            for r in rows
+        ]
 
     def close(self) -> None:
         self._session.close()

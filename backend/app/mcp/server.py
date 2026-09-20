@@ -247,23 +247,44 @@ def research_trial(hash: str) -> str:
 
 @server.tool(
     description=(
-        "The paper watchlist: trials promoted to forward tracking. Performance after "
-        "`promoted_at` is the only evidence in EdgeLab that was never fitted."
+        "The paper watchlist: trials promoted to forward tracking, each with its latest "
+        "forward score (`fwd_sharpe`, `fwd_return`, `fwd_max_dd` on bars after `promoted_at`). "
+        "That forward record is the only evidence in EdgeLab that was never fitted -- and "
+        "`fwd_bars` says how much of it there is, which decides whether it means anything yet."
     )
 )
 def research_paper(limit: int = DEFAULT_ROW_LIMIT) -> str:
-    """Promoted candidates, oldest first."""
+    """Promoted candidates, oldest first, each with its latest forward score."""
+    # LEFT JOIN, not an inner one: a candidate promoted since the last cycle has no score row
+    # yet and must still appear. `DISTINCT ON` takes the newest measurement of each.
     sql = f"""
-        SELECT hash, promoted_at, market, strategy, symbol, timeframe, params,
-               promoted_oos_sharpe, sharpe_2x, neighbor_med, wf_pos, wf_active, wf_med, corr_max
-        FROM {SCHEMA_RESEARCH}.paper_candidates
-        ORDER BY promoted_at
+        SELECT c.hash, c.promoted_at, c.market, c.strategy, c.symbol, c.timeframe, c.params,
+               c.promoted_oos_sharpe, c.sharpe_2x, c.neighbor_med,
+               c.wf_pos, c.wf_active, c.wf_med, c.corr_max,
+               s.scored_at, s.fwd_days, s.fwd_bars, s.fwd_sharpe, s.fwd_return, s.fwd_max_dd
+        FROM {SCHEMA_RESEARCH}.paper_candidates c
+        LEFT JOIN (
+            SELECT DISTINCT ON (hash) hash, scored_at, fwd_days, fwd_bars,
+                   fwd_sharpe, fwd_return, fwd_max_dd
+            FROM {SCHEMA_RESEARCH}.paper_scores
+            ORDER BY hash, scored_at DESC
+        ) s ON s.hash = c.hash
+        ORDER BY c.promoted_at
     """
     note = (
         "Ordered by promotion date, deliberately not by performance. Each row cleared a share of "
         "its noise ceiling, stayed profitable at **doubled** costs (`sharpe_2x`), survived a "
         "parameter-neighbourhood check (`neighbor_med`), passed a walk-forward gate "
         "(`wf_pos`/`wf_active`) and was not too correlated with the existing list (`corr_max`)."
+        "\n\nEverything named `promoted_*` or gate-shaped describes the candidate **on the day "
+        "it was promoted**. The `fwd_*` columns are what has happened since, measured on bars no "
+        "selection step has touched — the only evidence here that cannot have been mined. "
+        "`scored_at` is when that measurement was taken; a null means this candidate has never "
+        "been scored, not that it went nowhere."
+        "\n\n**Read `fwd_bars` before `fwd_sharpe`.** A "
+        "forward Sharpe over a few dozen bars is noise with a decimal point, and quoting it as a "
+        "result is the same error the noise ceiling exists to prevent on the leaderboard. Only "
+        "`research_trial` history shows whether a number is trending."
     )
     return render_result(run_query(sql, limit=limit), note=note)
 

@@ -73,6 +73,9 @@ def run_cycle(
             if n:
                 log.info("promoted %d new paper candidates", n)
         paper_rows = forward_stats(cfg, registry)
+        # `forward_stats` now appends a `paper_scores` row per candidate (T83). It does not
+        # commit, for the same reason `promote` does not: the cycle owns the transaction.
+        registry.commit()
         summary = write_report(cfg, registry, paper_rows, portfolio_stats(cfg, registry))
         write_candidates(cfg, paper_rows)
         log.info("report written: %s", summary)

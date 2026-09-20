@@ -1,4 +1,4 @@
-"""The research module's two tables, in the `research` schema (T77).
+"""The research module's tables, in the `research` schema (T77, extended T83).
 
 The SQLite registry these replace had two flat tables, no foreign keys and no views, which is
 why the port is a type change rather than a redesign. Three things did change, each because
@@ -38,7 +38,7 @@ from sqlalchemy.types import JSON
 from app.core.schemas import SCHEMA_RESEARCH
 from app.modules.gex.models.db import UTCDateTime
 
-__all__ = ["Base", "PaperCandidate", "Trial"]
+__all__ = ["Base", "PaperCandidate", "PaperScore", "Trial"]
 
 #: `JSONB` on Postgres, plain `JSON` on SQLite. The tests run offline against SQLite (same
 #: arrangement as gex -- see `app.core.db.get_engine`), and `JSONB` is a Postgres-only type that
@@ -144,3 +144,63 @@ class PaperCandidate(Base):
     corr_max: Mapped[float | None] = mapped_column(Float)
 
     __table_args__ = (Index("ix_paper_candidates_promoted_at", "promoted_at"),)
+
+
+class PaperScore(Base):
+    """One forward-performance measurement of one paper candidate, at one moment.
+
+    **The gap this closes.** Invariant 9 calls the paper watchlist the only genuinely
+    out-of-sample evidence EdgeLab has, and `paper.forward_stats` has always computed it
+    correctly -- signals warmed up on full history, performance sliced to bars strictly after
+    `promoted_at`. But the result went into a generated HTML report and nowhere else. The
+    database held promotion-time gates only, so the API and the MCP connector could describe
+    what a candidate looked like on the day it was promoted and nothing about what happened
+    next. A watchlist that is promoted and then never scored is exactly the authoritative-
+    looking artifact the module's own honesty rules exist to prevent.
+
+    **Append-only, one row per scoring run.** `(hash, scored_at)` is the primary key and a row
+    is never rewritten -- the same rule as `terminal.observations` (invariant 10) and the GEX
+    decision log, for the same reason. The single fact worth knowing about a forward record is
+    its *trajectory*: a candidate promoted at OOS Sharpe 2.8 that reads 1.1 after two months is
+    telling you the edge is decaying, and an UPDATE that kept only the latest number would
+    erase precisely that. Storing the history also means a score can never be quietly restated
+    after the fact.
+
+    **Nulls are not zeros.** A candidate whose promotion is a week old has too few bars to have
+    a Sharpe at all, and that is `None` -- unknown -- not `0.0`, which would read as "flat" and
+    drag an honest table toward a conclusion the data does not support. Same rule invariant 3
+    states for open interest, and what the MCP connector promises its callers.
+    """
+
+    __tablename__ = "paper_scores"
+
+    #: The candidate scored. Not a ForeignKey: `paper_candidates` is written by a separate
+    #: process under `ON CONFLICT DO NOTHING`, and a constraint here would make a scoring run
+    #: fail on a candidate row that is merely not committed yet. The join is by hash either way.
+    hash: Mapped[str] = mapped_column(String(24), primary_key=True)
+
+    #: When this measurement was taken -- *not* the last bar it covers. Two scores of the same
+    #: candidate differ by the bars that arrived between them, so this is the axis the
+    #: trajectory is read along.
+    scored_at: Mapped[dt.datetime] = mapped_column(
+        UTCDateTime(timezone=True), primary_key=True
+    )
+
+    #: Calendar days since `promoted_at`, and bars actually traded since. Both are real counts,
+    #: so `0` here means zero and is honest. They are the first thing to read: every float
+    #: below is noise until these are large enough to mean something.
+    fwd_days: Mapped[int | None] = mapped_column(Integer)
+    fwd_bars: Mapped[int | None] = mapped_column(Integer)
+
+    #: Forward performance on bars strictly after promotion. Nullable, and null whenever there
+    #: were fewer than two forward bars to compute from.
+    fwd_sharpe: Mapped[float | None] = mapped_column(Float)
+    fwd_return: Mapped[float | None] = mapped_column(Float)
+    fwd_max_dd: Mapped[float | None] = mapped_column(Float)
+
+    __table_args__ = (
+        # The two queries that exist: "latest score per candidate" (DISTINCT ON (hash) ORDER BY
+        # hash, scored_at DESC) and "this candidate's trajectory". Both are served by the hash
+        # prefix; the descending `scored_at` matches the order both read in.
+        Index("ix_paper_scores_hash_scored_at", "hash", scored_at.desc()),
+    )

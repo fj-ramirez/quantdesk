@@ -150,6 +150,29 @@ def test_an_empty_result_says_so_rather_than_rendering_an_empty_table():
     assert render_rows(["a"], []) == "(no rows)"
 
 
+# --- the module itself: no database required ---------------------------------------------------
+
+
+def test_the_server_module_imports():
+    """A smoke test, and it earns its place.
+
+    Every other test that touches `app.mcp.server` imports it *inside* the test body and is
+    marked `_needs_pg`, so on a host without `DATABASE_URL_RO` -- which is the normal one, and
+    CI -- the module is never imported by the suite at all. A syntax error or a bad import in
+    the connector therefore ships green: it was introduced, the full suite passed, and only
+    `ruff` noticed. Importing costs nothing and needs no database, so nothing is bought by
+    leaving that hole open.
+
+    It also asserts the tools are actually registered, because a decorator that silently stops
+    matching is the other way this module breaks without failing.
+    """
+    from app.mcp import server
+
+    for tool in ("query_sql", "research_paper", "research_leaderboard", "gex_levels",
+                 "terminal_board", "terminal_series"):
+        assert callable(getattr(server, tool, None)), f"{tool} is missing from the connector"
+
+
 # --- the read-only boundary: needs Postgres ----------------------------------------------------
 
 _needs_pg = pytest.mark.skipif(
