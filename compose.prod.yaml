@@ -127,6 +127,37 @@ services:
         max-size: 10m
         max-file: "3"
 
+  # T77. Same image discipline as `gex-capture` above, plus the one thing this worker needs
+  # that the others do not: a CPU ceiling.
+  #
+  # The systemd unit it replaces ran with `Nice=10` so a saturating search could not starve
+  # anything else on the VPS. A search cycle is thousands of backtests and will happily consume
+  # every core it is given; on the same host as the API that means request latency collapsing
+  # every night at 02:00. `cpus` is the compose-native equivalent -- a hard ceiling rather than
+  # a scheduling hint, which is the stronger guarantee and the one worth having when the thing
+  # being protected is the only interactive service on the box.
+  #
+  # Only in prod. In dev the laptop's scheduler and the user's patience are the limit, and a
+  # ceiling would only make a hand-run cycle slower for no benefit.
+  research-search:
+    image: research-search:prod
+    environment: *prod_backend_environment
+    networks:
+      internal: {}
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          # Two cores. Leaves headroom on any realistic VPS for the API, Postgres and Caddy,
+          # and a cycle that takes twice as long costs nothing -- it is scheduled nightly with
+          # an hour of misfire grace and nothing waits on its result.
+          cpus: "2.0"
+    logging:
+      driver: json-file
+      options:
+        max-size: 10m
+        max-file: "3"
+
   frontend:
     image: gex-frontend:prod
     build:

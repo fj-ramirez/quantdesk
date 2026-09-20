@@ -1,0 +1,77 @@
+# EdgeLab research configuration
+# The research loop reads this file; change it here rather than in code.
+#
+# Each market defines its own data source, symbols, timeframes, and costs.
+# Costs are per side. Set them pessimistically: an edge that dies when you
+# double the costs was never an edge.
+
+markets:
+  crypto:
+    source: ccxt
+    exchange: binance
+    history_start: "2020-01-01"
+    timeframes: [1h, 4h, 1d]
+    costs: { fee_bps: 10, slippage_bps: 5 }
+    symbols:
+      [BTC/USDT, ETH/USDT, SOL/USDT, BNB/USDT, XRP/USDT, DOGE/USDT, ADA/USDT, LINK/USDT]
+
+  stocks:
+    source: yahoo
+    history_start: "2005-01-01"      # daily; Yahoo caps 1h history at 730 days
+    timeframes: [1h, 1d]
+    costs: { fee_bps: 1, slippage_bps: 3 }
+    symbols:
+      [SPY, QQQ, IWM, DIA, XLE, XLF, XLK, AAPL, MSFT, NVDA, AMZN, GOOGL, META, TSLA]
+
+  forex:
+    source: yahoo
+    history_start: "2005-01-01"
+    timeframes: [1h, 1d]
+    costs: { fee_bps: 0, slippage_bps: 2 }   # spread modeled as slippage
+    symbols:
+      [EURUSD=X, GBPUSD=X, USDJPY=X, AUDUSD=X, USDCAD=X, NZDUSD=X, USDCHF=X]
+
+  futures:
+    source: yahoo                     # =F tickers are front-month continuous;
+    history_start: "2005-01-01"       # roll gaps add noise — see README caveat
+    timeframes: [1h, 1d]
+    costs: { fee_bps: 1, slippage_bps: 2 }
+    symbols:
+      [ES=F, NQ=F, YM=F, RTY=F, GC=F, SI=F, CL=F, NG=F, ZN=F, ZC=F]
+
+split:
+  is_fraction: 0.7   # first 70% of history = in-sample, last 30% = out-of-sample
+
+search:
+  trials_per_cycle: 2000
+  max_minutes: 60    # hard wall-clock stop per cycle even if trials remain
+  seed: null         # null = different random params every cycle
+
+filters:            # a trial must pass these to appear on the leaderboard
+  min_trades_oos: 20
+  min_exposure: 0.02
+
+report:
+  top_n: 40
+
+paper:                        # forward-tracking watchlist (the real gatekeeper)
+  promote_per_cycle: 5
+  max_candidates: 25
+  min_fraction_of_ceiling: 0.5  # promote rows clearing this share of their noise ceiling
+  max_corr: 0.6                 # reject candidates this correlated with the watchlist
+
+sizing:                       # applied to paper tracking + portfolio (not the search:
+  enabled: true               # the search tests raw +-1 hypotheses; sizing is how
+  vol_target_annual: 0.15     # deployable money would actually trade them)
+  vol_lookback: 30
+  max_leverage: 1.0
+
+robustness:                   # gates a row must also pass to be promoted
+  cost_multiplier: 2.0
+  min_sharpe_2x: 0.0          # OOS Sharpe must stay positive at doubled costs
+  min_neighbor_median: 0.0    # adjacent parameter values must not lose money on median
+
+walkforward:                  # consistency gate at promotion
+  n_windows: 6                # disjoint chronological slices of full history
+  min_active_windows: 3       # regime-gated strategies may sit out windows,
+  min_positive_frac: 0.7      # but must trade in >=3 and profit in >=70% of those

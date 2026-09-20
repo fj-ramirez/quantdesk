@@ -240,3 +240,80 @@ Measured 2026-09-19.
   the science does not move.
 - Execution or paper-trading automation. `paper.py` moves as-is.
 - Migrating OHLCV parquet into Postgres.
+
+## Result — T77
+
+**Done 2026-09-19.** 1,040 backend tests green (1,003 before, 37 added), both linters clean, and
+the registry migrated for real against the lab Postgres.
+
+Verified, not assumed:
+
+- **134,377 trials and 23 paper candidates migrated**, counts exact in both directions, and 100
+  randomly sampled *migrated* rows re-hashed to their stored hash with zero mismatches. Sharpes
+  compared with exact equality, not tolerance. Re-running the import added nothing.
+- **The ported report is byte-identical to the original's.** Both were run over the same data --
+  the new one on Postgres, the original on `registry.db` -- and both reported `total_trials:
+  134377, noise_ceiling: 5.6, candidates_above_ceiling: 0`. A diff of the two HTML files differs
+  on exactly two lines: the generation timestamp, and the data-cache age (the copied parquet
+  files have fresh mtimes). Same ranking, same rows, same family tables. That is the strongest
+  single piece of evidence that the science did not move.
+- **The dedupe guarantee holds against the migrated hashes.** A 50-trial cycle logged `loaded
+  134377 known trial hashes` and `duplicates: 65` -- it consulted the migrated registry and
+  skipped combinations already tried. Running the same *seeded* search twice raised the
+  duplicate count from 63 to 130, i.e. the second run recognised the first run's new trials and
+  searched past them rather than redoing them.
+- **A full cycle runs inside the container**: `docker compose exec research-search` completed a
+  20-trial cycle, ran the promotion gates (several walk-forward rejections logged), and wrote
+  `/data/research/reports/leaderboard.html`. The worker boots, finds `research.trials`
+  immediately and schedules `cron[hour='2', minute='0']`.
+- `--report-only` still produces the static HTML.
+- `docker compose config` valid for dev and prod; the prod overlay gives `research-search` a
+  2-core ceiling.
+
+### Judgment calls
+
+**The lint config, not the ported code, absorbed the style mismatch.** The eight science modules
+raise 16 ruff findings under this repo's config -- `date.today()`, `param_space` class
+attributes, `zip` instead of `pairwise`, the `datetime.UTC` alias. None is a defect and one
+(`DTZ011`) would change which day a trial is filed under, which is research-visible. They are
+covered by a scoped `per-file-ignores` block naming each rule and its reason, so the port stays
+diffable against `bcd727d` and "did the backtester change?" is answerable by `diff`. New code in
+the module -- `registry.py`, `config.py`, `nightly.py`, `jobs/` -- is linted normally, and
+`nightly.py`'s own `date.today()` was fixed properly rather than ignored.
+
+**`RESULTS_DIR` was deleted rather than repointed.** It existed to hold `registry.db`. Keeping a
+name that resolves to a plausible place to put a SQLite file would be an open invitation to the
+exact fork the no-fallback rule exists to prevent. For the same reason `Registry.__init__` has
+no `path=` argument, and a test asserts its signature.
+
+**`alembic/env.py` takes a list of metadatas.** Each module owns its own `Base` -- nothing in
+`research` imports `gex`, and a test calling `create_all` for one must not create the other's
+tables -- so Alembic gets `[Base.metadata, ResearchBase.metadata]`. Combining them into one
+throwaway `MetaData` via `to_metadata` was tried first and is wrong: it preserves each table's
+schema but re-resolves string foreign keys against the *new* metadata's default schema, so gex's
+`ForeignKey("snapshots.id")` went looking for `public.snapshots` and autogenerate died with
+`NoReferencedTableError`.
+
+### Gotchas worth recording
+
+- **Autogenerate emits a fully-qualified type name without importing it.** The generated
+  revision referenced `app.modules.gex.models.db.UTCDateTime` on `promoted_at` with no
+  corresponding import, so the file raised `NameError` the moment it ran. Caught by reading the
+  generated migration line by line, which the brief demanded for a different reason.
+- **The frozen hash test caught its own placeholder.** The expected `trial_hash` value was first
+  written from memory and was wrong; running the original implementation in the standalone
+  repo's virtualenv produced `4974b321697a13288a21fc65`. A test that recomputed the expectation
+  from the code under test would have passed either way and proved nothing.
+- **`seen()` needed the in-memory set to be more than an optimisation.** The brief flagged the
+  round-trip cost; what makes it structural is that `record` has to keep the set current, or a
+  trial recorded earlier in the same cycle would not be seen later in it.
+
+### Not done here
+
+T78 (the `/api/research/*` endpoints and the leaderboard page) is the next task in this file and
+is unstarted. Until it lands, the static `leaderboard.html` under `DATA_DIR/research/reports/` is
+the only UI -- which is exactly the fallback the brief kept it for.
+
+The 33 MB OHLCV tree was **copied**, not moved: `projects/research/data/` is untouched, so the
+standalone repo still runs. It should be deleted once T78 has been used in anger for a while and
+nobody has needed to fall back.

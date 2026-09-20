@@ -89,6 +89,13 @@ services:
       INTRADAY_ENABLED: ${INTRADAY_ENABLED:-false}
       INTRADAY_STRIKE_RETENTION_DAYS: ${INTRADAY_STRIKE_RETENTION_DAYS:-30}
       INTRADAY_BARS_ENABLED: ${INTRADAY_BARS_ENABLED:-false}
+      # T77. The research search worker's trigger shape. `cron` reproduces EdgeLab's 02:00
+      # nightly habit, `interval` its VPS `--loop 60`, `off` registers nothing. Declared on the
+      # shared anchor rather than only on `research-search` so a hand-run cycle inside any
+      # container reads the same values the scheduler does.
+      RESEARCH_SCHEDULE: ${RESEARCH_SCHEDULE:-cron}
+      RESEARCH_CRON: ${RESEARCH_CRON:-0 2 * * *}
+      RESEARCH_INTERVAL_MINUTES: ${RESEARCH_INTERVAL_MINUTES:-60}
       # T76. The read-only role the T82 MCP connector authenticates as. `alembic upgrade head`
       # creates the role and its grants; `app.core.ro_role` (the boot step after it, see
       # backend/Dockerfile) gives it LOGIN with this password. Defaulted in dev and required in
@@ -133,6 +140,35 @@ services:
     volumes:
       # The same DATA_DIR bind mount as `backend`. This container is the one that actually
       # *writes* the Parquet tree -- the API only reads it, plus the manual capture route.
+      - ./data:/data
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  # T77. EdgeLab's search cycle. The second worker, and the one that proves the T75 split was
+  # the right shape: it needed no change to the API process at all.
+  #
+  # It replaces two schedules the standalone repo had -- a Windows Task Scheduler entry at
+  # 02:00 and a systemd unit running `nightly.py --loop 60`. Neither exists inside Docker, and
+  # `--loop` is a `while True` with a sleep in it: no misfire policy, no overrun protection,
+  # no way to ask what it is about to do. See `app/modules/research/jobs/scheduler.py`.
+  #
+  # **It is on `internal` only and publishes nothing.** It never serves a request; it reads
+  # OHLCV parquet, burns CPU on backtests, and writes trials to Postgres.
+  research-search:
+    build:
+      context: ./backend
+      target: runtime
+    # Registers a scheduled job and nothing else. Never `nightly.py --loop` -- that mode still
+    # exists for hand use on a machine without Docker, and running both would give this
+    # container two independent cycle clocks and double every night's work.
+    command: ["python", "-m", "app.workers.research_search"]
+    environment: *backend_environment
+    volumes:
+      # Same bind mount, different subtree: this container owns `DATA_DIR/research/`, where the
+      # 33 MB OHLCV parquet cache and the static HTML reports live. Deliberately still parquet
+      # and not Postgres -- invariant 5 -- because the backtester reads whole series into
+      # pandas and never queries a single bar.
       - ./data:/data
     depends_on:
       postgres:

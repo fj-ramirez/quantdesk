@@ -1,9 +1,10 @@
 # CLAUDE.md
 
-Personal, single-user **gamma exposure (GEX)** analysis app for SPX, SPY, QQQ, GLD and DIA
-options.
+Personal, single-user market-analysis desk. Two modules so far: **gex** (gamma exposure for
+SPX, SPY, QQQ, GLD and DIA options) and **research** (EdgeLab — automated trading-edge search);
+**terminal** (xactx) is T79.
 Analysis and charts only — **no order routing, ever**. Python/FastAPI backend, React/Vite
-frontend, Postgres for computed results, Parquet on disk for raw chains.
+frontend, Postgres for computed results, Parquet on disk for raw chains and OHLCV.
 
 ## Commands
 
@@ -14,7 +15,10 @@ frontend, Postgres for computed results, Parquet on disk for raw chains.
 | Test | `uv run pytest` | `npm test` |
 | Lint | `uv run ruff check .` | `npm run lint` |
 
-Everything at once: `docker compose up` (postgres + backend + frontend) -- this reads
+Run one research cycle by hand (needs a reachable Postgres — there is no SQLite fallback):
+`uv run python -m app.modules.research.nightly --trials 50 --no-update`.
+
+Everything at once: `docker compose up` (postgres + backend + frontend + two workers) -- this reads
 `compose.yaml` **plus** `compose.override.yaml`, which is what supplies the dev bind mounts,
 hot reload and published ports. Production is the explicit opt-in and never loads the
 override: `docker compose -f compose.yaml -f compose.prod.yaml up -d`. See the README's
@@ -27,8 +31,8 @@ it is the container healthcheck's contract); capture freshness: `GET /api/gex/he
 Since T75 this repo is a **module host**: one API process, one React app, one compose stack,
 with GEX as `modules/gex` on both sides and every GEX URL carrying a `/gex` segment
 (`/dashboard` -> `/gex/dashboard`, `/api/snapshots` -> `/api/gex/snapshots`). `/` is the module
-launcher. The scheduled capture work runs in its own container (`gex-capture`); **the API
-process starts no background work at all.** See `plans/quantdesk/README.md`.
+launcher. Scheduled work runs in its own container per module (`gex-capture`, `research-search`); **the
+API process starts no background work at all.** See `plans/quantdesk/README.md`.
 
 ## Layout
 
@@ -36,7 +40,9 @@ process starts no background work at all.** See `plans/quantdesk/README.md`.
 backend/app/
   core/        config.py (settings), db.py (engine + session factory), schemas.py (schema names)
   main.py      mounts each module's router under /api; no lifespan, starts nothing
-  workers/     gex_capture.py — APScheduler + startup catch-up, its own container
+  workers/     gex_capture.py, research_search.py — one container each, APScheduler
+  config/      research.yaml — EdgeLab's search budget and cost model (T77)
+  scripts/     migrate_registry.py — one-shot SQLite→Postgres registry import (T77)
   modules/gex/
     router.py    APIRouter(prefix="/gex") composing the ten routers below
     api/         routers: snapshots, health, gex, chains, report, bars, scan, symbols,
@@ -47,6 +53,13 @@ backend/app/
     scan/        pure scan modules: indicators, breakouts, trend, regime, rotation, decisions (T60)
     jobs/        capture, scheduler (APScheduler), calendar, catchup
     storage/     parquet.py (raw chains), repository.py (snapshot index)
+  modules/research/   EdgeLab, ported in T77 from projects/research
+    registry.py  the trial registry, now Postgres — same interface, no SQLite fallback
+    nightly.py   run_cycle() + the CLI; the worker calls the same function
+    jobs/        scheduler (cron | interval | off, no catch-up)
+    models/db.py trials, paper_candidates
+    backtest.py strategies.py validation.py robustness.py xs.py paper.py report.py data.py
+                 — the science, carried over essentially unchanged
 frontend/src/
   shell/         AppFrame, SideRail, CommandPalette, navConfig, Launcher
   modules/gex/   routes.tsx + api/ components/ pages/ state/ mocks/
@@ -75,6 +88,11 @@ plans/quantdesk/  the module-host initiative (T75–T82)
    declared once on the module's `Base` via `MetaData(schema=...)` — never per model. `public`
    holds nothing but `alembic_version`. Postgres connections pin `search_path` to `public`, so
    a table is found because it was named, not because `$user` happened to match a schema.
+9. (T77) EdgeLab's honesty rules are the product and travel with it: the noise ceiling, the
+   doubled-cost gate, the walk-forward gate and the futures roll-gap caveat. A leaderboard that
+   drops the noise ceiling is worse than none, because it looks authoritative. And there is
+   **one** trial registry — `Registry` raises rather than falling back to a local SQLite file,
+   because two writers against two stores fork the history with nothing going red.
 
 ## Context index
 

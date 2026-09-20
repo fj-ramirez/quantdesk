@@ -66,6 +66,21 @@ class Settings(BaseSettings):
     # Rotating this is an edit here plus a restart -- the migration owns the role's privileges,
     # never its secret.
     QUANTDESK_RO_PASSWORD: str = ""
+
+    # --- T77: the research (EdgeLab) search worker ---------------------------------------------
+    # The trigger shape for `research-search`, which replaces two schedules the standalone repo
+    # had: a Windows Task Scheduler entry at 02:00 and a systemd unit running `--loop 60`.
+    #
+    # `cron` (the default) reproduces the 02:00 nightly habit; `interval` reproduces the VPS
+    # loop; `off` is for a host that only ever runs cycles by hand. See
+    # `app/modules/research/jobs/scheduler.py` for the job policies, and note there is
+    # deliberately no catch-up: a missed research cycle costs nothing, because the registry
+    # already remembers every combination tried.
+    RESEARCH_SCHEDULE: str = "cron"
+    # A crontab line, read in `settings.TZ`. Written in this form rather than as five separate
+    # settings so it round-trips through `.env` as one value and reads the way a crontab does.
+    RESEARCH_CRON: str = "0 2 * * *"
+    RESEARCH_INTERVAL_MINUTES: int = 60
     # Continuously compounded annualized risk-free rate for Greeks. A parameter, never
     # fetched from a rates feed (PLAN.md / TASKS.md T07).
     RISK_FREE_RATE: float = 0.04

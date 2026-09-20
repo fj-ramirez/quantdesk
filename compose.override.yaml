@@ -65,6 +65,22 @@ services:
       - ./backend:/app
       - /app/.venv
 
+  # T77. Same arrangement as `gex-capture` above: its own tag (two building services cannot
+  # share one without racing the export), the `dev` target, and the source bind-mounted so an
+  # edit to a strategy or to the search is one `docker compose restart research-search` away.
+  #
+  # Note that a dev cycle here writes to the *same* `research.trials` as any hand run and as
+  # production would -- there is one registry by design, and `Registry` refuses to fall back to
+  # a local file precisely so that can never quietly stop being true.
+  research-search:
+    image: research-search:dev
+    build:
+      target: dev
+    command: ["uv", "run", "python", "-m", "app.workers.research_search"]
+    volumes:
+      - ./backend:/app
+      - /app/.venv
+
   frontend:
     image: gex-frontend:dev
     build:

@@ -16,6 +16,16 @@ dependencies = [
     "pandas",
     "pyarrow",
     "scipy",
+    # T77 (research / EdgeLab). Worker-only: `ccxt` fetches crypto OHLCV and `yfinance` the
+    # stock/forex/futures side, both exclusively from `research-search`, and `PyYAML` reads
+    # `config/research.yaml`. They are in the single shared dependency set rather than behind a
+    # Dockerfile stage of their own, deliberately -- one image for the API and every worker is
+    # what makes `docker compose up` one build, and splitting it buys a smaller runtime layer
+    # at the cost of a second stage to keep in step. Revisit if the image becomes a problem;
+    # `plans/quantdesk/02-research-module.md` names it as an accepted trade.
+    "ccxt",
+    "yfinance",
+    "PyYAML",
 ]
 
 [dependency-groups]
@@ -31,6 +41,34 @@ package = false
 [tool.ruff]
 line-length = 100
 target-version = "py312"
+
+[tool.ruff.lint.per-file-ignores]
+# T77. The EdgeLab science modules came over from `projects/research` essentially unchanged --
+# that repo is git-initialised at `bcd727d` and the port is meant to stay diffable against it,
+# so that "did the backtester change?" is answerable by `diff` rather than by reading. These
+# four rules all fire on the original's idiom, and none of them is a defect:
+#
+#   DTZ011  `date.today()`. `run_date` is a local calendar-day stamp and `trials_on(day)`
+#           compares against it; making it tz-aware would change which day a trial is filed
+#           under, which is a research-visible change, not a lint fix.
+#   RUF012  `param_space` dicts as class attributes on the strategy dataclasses. Correct as
+#           `ClassVar`, but that is nine edits to the file most central to the science.
+#   RUF007  `zip(edges[:-1], edges[1:])` in the walk-forward window split. `pairwise` is
+#           nicer and identical; not worth a diff in the validation path.
+#   UP017   `datetime.timezone.utc` rather than the `datetime.UTC` alias.
+#
+# Revisit when the module no longer needs to be diffed against the standalone repo -- at that
+# point these become ordinary cleanups. New code in this module is not exempt: the list is
+# scoped to the ported files, and `registry.py`, `config.py`, `nightly.py` and `jobs/` are
+# linted normally.
+"app/modules/research/backtest.py" = ["DTZ011", "RUF007", "RUF012", "UP017"]
+"app/modules/research/paper.py" = ["DTZ011", "RUF007", "RUF012", "UP017"]
+"app/modules/research/report.py" = ["DTZ011", "RUF007", "RUF012", "UP017"]
+"app/modules/research/robustness.py" = ["DTZ011", "RUF007", "RUF012", "UP017"]
+"app/modules/research/search.py" = ["DTZ011", "RUF007", "RUF012", "UP017"]
+"app/modules/research/strategies.py" = ["DTZ011", "RUF007", "RUF012", "UP017"]
+"app/modules/research/validation.py" = ["DTZ011", "RUF007", "RUF012", "UP017"]
+"app/modules/research/xs.py" = ["DTZ011", "RUF007", "RUF012", "UP017"]
 
 [tool.ruff.lint.isort]
 # T75. Ruff infers which packages are first-party by resolving the imported path on disk. Once

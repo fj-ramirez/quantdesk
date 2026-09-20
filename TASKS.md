@@ -1259,6 +1259,15 @@ search becomes a scheduled worker container (APScheduler, cron or interval). The
 scheduled task stays, repointed at Postgres. Spec:
 [plans/quantdesk/02-research-module.md](plans/quantdesk/02-research-module.md).
 
+**Done 2026-09-19.** 1,040 backend tests green (37 added), both linters clean. 134,377 trials
+and 23 paper candidates migrated with counts exact and 100 sampled hashes re-verified; the
+ported report is byte-identical to the original's on the same data (`noise_ceiling: 5.6` both
+sides, diff = timestamp + cache age only); a cycle against Postgres skips already-tried
+combinations; a full cycle runs inside the `research-search` container. `run_nightly.ps1` is
+repointed at the ported module and `deploy/edgelab.service` retired in place. Judgment calls
+(scoped lint ignores to keep the science diffable, `RESULTS_DIR` deleted rather than repointed,
+Alembic taking a list of metadatas) are argued under the plan file's *Result* heading.
+
 ## T78 · Sonnet · T77
 
 `/api/research/*` and the leaderboard page, noise ceiling included in the payload. Spec: same

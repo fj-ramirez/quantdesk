@@ -16,6 +16,7 @@ from alembic import context
 from app.core.config import settings
 from app.core.schemas import SCHEMAS
 from app.modules.gex.models.db import Base
+from app.modules.research.models.db import Base as ResearchBase
 
 # --- T75: keep the frozen revision scripts importable -------------------------------------
 #
@@ -78,7 +79,24 @@ if config.config_file_name is not None and config.attributes.get("configure_logg
 
 # add your model's MetaData object here
 # for 'autogenerate' support
-target_metadata = Base.metadata
+#
+# --- T77: one chain, one `alembic upgrade head`, several modules ---------------------------
+#
+# Each module owns a `Base` with its own `MetaData`, because each owns a schema (invariant 8).
+# Autogenerate diffs against a single `MetaData`, so they are combined here rather than in the
+# models -- which keeps the modules independent of each other (nothing in `research` imports
+# `gex`) while still giving Alembic one view of the whole database.
+#
+# A **list**, which is Alembic's supported form for exactly this. Copying the tables into one
+# throwaway `MetaData` was tried first and is wrong: `to_metadata` preserves each table's
+# schema but re-resolves its string foreign keys against the new metadata's default schema, so
+# gex's `ForeignKey("snapshots.id")` went looking for `public.snapshots` and autogenerate died
+# with `NoReferencedTableError`.
+#
+# Separate bases rather than one shared base, because the modules must stay independent:
+# nothing in `research` imports `gex`, and a test calling `create_all` for one must not create
+# the other's tables.
+target_metadata = [Base.metadata, ResearchBase.metadata]
 
 
 # --- T76: one chain, three schemas ---------------------------------------------------------

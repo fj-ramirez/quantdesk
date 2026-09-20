@@ -160,6 +160,67 @@ revisions use the dotted form `app.models.db.UTCDateTime(...)`, which walks attr
 it, which is why the first version of that alias passed 988 tests and still broke a container
 boot.
 
+## The research module (T77)
+
+EdgeLab, ported from the standalone `projects/research` repo. The science did not move:
+`backtest.py`, `strategies.py`, `validation.py`, `robustness.py`, `xs.py` and `paper.py` are the
+originals, and `pyproject.toml` carries a scoped `per-file-ignores` block so they stay diffable
+against that repo's `bcd727d` baseline rather than being reformatted. What moved is storage and
+scheduling.
+
+**`Registry` is the whole port.** `search.py`, `paper.py` and `report.py` call the same methods
+with the same signatures they used against SQLite; only the internals changed. Same rule as
+invariant 6 for providers -- a storage swap is not an edit to callers. Three things inside it
+are load-bearing:
+
+- **No SQLite fallback.** Unreachable database -> it raises. With a fallback, a laptop off the
+  network quietly starts a second trial history, the two diverge, and the never-repeat-work
+  guarantee dies with nothing going red. A loud failure is the correct trade; `run_nightly.ps1`
+  says so in its header.
+- **`seen()` is answered from memory.** `search.py` calls it before every trial. One query loads
+  the hash set per cycle and `record` keeps it current, turning O(trials) round trips into one.
+  Against Postgres over Tailscale the naive form would dominate a cycle that is otherwise pure
+  CPU.
+- **`ON CONFLICT (hash) DO NOTHING`**, replacing SQLite's `INSERT OR IGNORE`. This is what makes
+  two writers against *one* database harmless: the Windows scheduled task and the worker can
+  both run, and the worst case is duplicated CPU. Two writers against two *stores* is the thing
+  that must never happen.
+
+`params` is `JSONB` (was `TEXT`), `run_date` a `Date` and `promoted_at` a `UTCDateTime` (both
+were `TEXT`). The `trial_hash` is computed from `json.dumps(params, sort_keys=True)` *before*
+storage and never derived from what came back, which is why the column type could change at all
+-- all 134,377 migrated hashes still match what the running code computes, and
+`tests/test_research_registry.py` freezes one expected value taken from the original
+implementation rather than recomputing it.
+
+The registry's methods return the *shapes the callers expect*, not the shapes the ORM produces:
+`params` goes back out as a sorted-key JSON string and `run_date`/`promoted_at` as ISO strings,
+because `report.py` interpolates them into HTML and `paper.py` does `json.loads(...)` and
+`c["promoted_at"][:10]`. A `datetime` there would make the slice return garbage rather than
+raise.
+
+**Scheduling.** `RESEARCH_SCHEDULE` picks `cron` (default, `RESEARCH_CRON`, reproducing the
+02:00 habit), `interval` (reproducing the VPS `--loop 60`) or `off`. `max_instances=1` stops a
+cycle running alongside itself, `coalesce=True` makes four missed fires one run, and
+`misfire_grace_time` is set explicitly because APScheduler's one-second default silently skips a
+nightly job on a busy host. **No catch-up job** -- unlike GEX, a missed cycle costs nothing,
+because the registry already remembers everything tried.
+
+`nightly.py`'s `run_cycle` is the single definition of a cycle; the worker and the CLI both call
+it. `--loop` survives for hand use and must never run inside the worker container, which would
+give it two independent cycle clocks.
+
+**Data.** OHLCV parquet lives at `DATA_DIR/research/ohlcv/{market}/{symbol}_{timeframe}.parquet`,
+unchanged in layout so the 33 MB tree moved by copying. Still parquet and not Postgres --
+invariant 5 -- because the backtester reads whole series into pandas and never queries one bar.
+`config/research.yaml` stays YAML: it is a search budget and a cost model, not deployment
+config, and it wants to be reviewable as a diff.
+
+`scripts/migrate_registry.py` is the one-shot SQLite import, deliberately outside the Alembic
+chain (one-time, minutes long, must be independently re-runnable and verifiable). It verifies
+row counts, re-hashes a sample of *migrated* rows, and compares floats for exact equality;
+anything it cannot parse is a hard failure, never a `NULL`.
+
 ## Jobs
 
 - `jobs/capture.capture_snapshot(underlying, *, is_eod, provider=, session_factory=, data_dir=)`
