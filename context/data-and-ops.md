@@ -33,7 +33,7 @@ setting-named error if constructed without it.
 | Mon–Fri 18:30 | ETF shares-outstanding flows (T52) |
 | Daily 21:00 | retention prune of intraday `gex_by_strike` detail (T32) — an hour after the safety net, daily rather than Mon–Fri because retention is a function of row age |
 | every process start | `startup_catchup_job` — recovers a missed EOD without blocking boot |
-| on demand | `POST /api/snapshots/capture?underlying=SPX&eod=true` |
+| on demand | `POST /api/gex/snapshots/capture?underlying=SPX&eod=true` |
 
 The **capture** jobs use `misfire_grace_time=None` and `coalesce=True`: a laptop closed at
 16:20 is the normal case for this user, so a run that fires hours late must still fire, once.
@@ -41,7 +41,7 @@ The intraday and prune jobs deliberately do **not** — an intraday slot has not
 (the endpoint serves only "now", so a late run adds an off-grid reading rather than recovering
 the missed one), and a prune skipped tonight deletes the same rows plus a day's worth tomorrow.
 
-Freshness monitoring: `GET /api/health/capture`. "Stale" means **two or more** trading days
+Freshness monitoring: `GET /api/gex/health/capture`. "Stale" means **two or more** trading days
 behind the last completed trading day — being exactly one day behind is normal for most of
 any trading day, since today's EOD row does not exist until 16:20.
 
@@ -54,6 +54,16 @@ $DATA_DIR/chains/<UNDERLYING>/<YYYY>/<MM>/<YYYYMMDD>T<HHMMSS><µµµµµµ>Z.par
 UTC, chronologically sortable, filesystem-safe. `snapshots.parquet_path` stores this
 **relative to `DATA_DIR`** with posix separators. Always resolve through
 `storage.parquet.resolve_snapshot_path`; never join `settings.DATA_DIR` by hand.
+
+**`DATA_DIR` is anchored to the repo root, not to the current directory.** A relative value
+resolves against the repo root in `app/core/config.py`, so `./data` is the same tree whether a
+command runs from `backend/` (the documented host commands) or from `/app` (the containers).
+An absolute value is left untouched, which is how compose's `/data` bind mount keeps working.
+
+This is not decorative. Before it, a host-run research cycle wrote `backend/data/research`
+while the Docker worker wrote `./data/research` -- two parquet caches and two sets of reports,
+both live, diverging for a day, with nothing going red. Fixed 2026-09-20; the two trees were
+merged newest-wins and `backend/data/` is gone.
 
 **Run the backend from the repo root, or from Docker -- never `uv run uvicorn` from inside
 `backend/`.** `DATA_DIR=./data` resolves against the process's CWD, so a backend started from

@@ -172,11 +172,11 @@ Caddyfile. The short version:
 }
 ```
 
-**`handle`, not `handle_path` — the prefix must be preserved.** Every router in
-`backend/app/main.py` is mounted with `prefix="/api"`, so the backend's real paths are
-`/api/gex/SPX/latest`, `/api/health/capture`, `/api/stream/SPX`. `handle_path` strips the
-matched prefix before proxying, which would deliver `/gex/SPX/latest` to a backend that has
-no such route — every request would 404.
+**`handle`, not `handle_path` — the prefix must be preserved.** Every module router in
+`backend/app/main.py` is mounted with `prefix="/api"` and carries its own segment on top
+(T75), so the backend's real paths are `/api/gex/gex/SPX/latest`, `/api/gex/health/capture`,
+`/api/gex/stream/SPX`. `handle_path` strips the matched prefix before proxying, which would
+deliver `/gex/gex/SPX/latest` to a backend that has no such route — every request would 404.
 
 `GET /health` is the exception: it is mounted at the root, *outside* `/api`, so it needs its
 own matcher or it falls through to the SPA and returns HTML.

@@ -1,4 +1,25 @@
+from pathlib import Path
+
+from pydantic import field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+#: The repo root, located from this file rather than from the current directory. `DATA_DIR`
+#: below is anchored to it.
+#:
+#: The documented host commands run from `backend/` (CLAUDE.md's command table) while the
+#: containers run from `/app`, so a CWD-relative `DATA_DIR="./data"` means `backend/data` in
+#: one and `/data` in the other -- silently, with both working. That is not hypothetical: on
+#: 2026-09-20 the host-run research cycle was found writing `backend/data/research` while the
+#: Docker worker wrote `./data/research`, two diverging parquet caches and two sets of
+#: reports, neither of them wrong and nothing going red. Anchoring costs nothing, because
+#: compose passes an absolute `/data` and absolute values are returned untouched.
+#:
+#: `env_file` is deliberately **not** anchored here. Pointing it at the repo root makes a
+#: developer's `.env` -- `INTRADAY_ENABLED=true` and friends -- load during `pytest` run from
+#: `backend/`, and five scheduler tests assert on exactly those flags. Config that reaches the
+#: tests from outside the repo is a worse problem than the one it would solve; a host command
+#: that needs a non-default setting passes it on the command line, as the fixture recipes do.
+_REPO_ROOT = Path(__file__).resolve().parents[3]
 
 #: T42 default daily-bars universe (plans/continuation/00-foundation-daily-bars.md). The five
 #: option underlyings are represented by their ETF proxies (SPX -> SPY, etc. is not literal --
@@ -276,6 +297,17 @@ class Settings(BaseSettings):
     @property
     def scan_universe(self) -> list[str]:
         return [s.strip() for s in self.SCAN_UNIVERSE.split(",") if s.strip()]
+
+    @field_validator("DATA_DIR")
+    @classmethod
+    def _anchor_data_dir(cls, value: str) -> str:
+        """Resolve a relative `DATA_DIR` against the repo root, never the current directory.
+
+        An absolute value -- which is what compose passes (`DATA_DIR: /data`) -- is returned
+        untouched. See `_REPO_ROOT` for why a CWD-relative default was a trap.
+        """
+        path = Path(value)
+        return str(path if path.is_absolute() else (_REPO_ROOT / path).resolve())
 
 
 settings = Settings()

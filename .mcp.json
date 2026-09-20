@@ -11,8 +11,16 @@
     "DATABASE_URL: the server refuses to start rather than run with write access, because a",
     "connector that works perfectly and is not read-only is the worst possible outcome.",
     "",
-    "The ${VAR} form is expanded by the Claude CLI from the environment or the project .env.",
-    "Set QUANTDESK_RO_PASSWORD there, as .env.example describes."
+    "The ${VAR} form is expanded by the Claude CLI from the PROCESS ENVIRONMENT ONLY. It does",
+    "not read this repo's .env, and it does not read .claude/settings.local.json's env block --",
+    "both were tried on 2026-09-20 and the CLI still reported the variable missing. Set a real",
+    "environment variable before launching the client:",
+    "",
+    "    setx QUANTDESK_RO_PASSWORD \"<value>\"      # Windows, then open a NEW terminal",
+    "    export QUANTDESK_RO_PASSWORD=\"<value>\"    # POSIX",
+    "",
+    "It must match QUANTDESK_RO_PASSWORD in .env, which is what app/core/ro_role.py applies to",
+    "the role at backend boot. POSTGRES_DB needs nothing: the :-gex default covers it."
   ],
   "mcpServers": {
     "quantdesk": {

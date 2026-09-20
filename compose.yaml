@@ -18,14 +18,21 @@
 # `docker compose up` fail on any machine where Caddy's network does not exist -- i.e. every
 # developer machine.
 
-# No `name:` here, deliberately. The compose project name defaults to the directory name,
-# which is what keeps existing resources attached: this checkout lives in `gex-trading/`, so
-# the dev database stays in the `gex-trading_pgdata` volume it has always been in. Pinning a
-# name would silently repoint `docker compose up` at a *different*, empty volume and make a
-# populated database look like it had vanished.
+# No `name:` here, deliberately. The compose project name defaults to the directory name, so
+# each checkout gets its own volumes: this one lives in `quantdesk/`, and the dev database is
+# `quantdesk_pgdata`. Pinning a name would silently repoint `docker compose up` at a
+# *different* volume and make a populated database look like it had vanished.
+#
+# That is not hypothetical -- it is what the rename cost. This repo was `gex-trading/` until
+# 2026-09-19; renaming the directory changed the project name, so the stack came up against an
+# empty `quantdesk_pgdata` while the populated `gex-trading_pgdata` sat untouched beside it.
+# Research and terminal were carried across by their own scripts (T77, T79), so nobody noticed
+# that GEX -- 174 snapshots and 59M of chains -- had been left behind until 2026-09-20.
+# `gex-trading_pgdata` is kept as the pre-migration copy and is attached to nothing.
 #
 # On the homeserver the stack directory is `/srv/docker/gex/`, so the project is `gex` there
-# without anything having to say so -- matching the `compose@gex` systemd unit.
+# without anything having to say so -- matching the `compose@gex` systemd unit. Dev and prod
+# therefore run under different project names, which is fine: they share no resources.
 
 services:
   postgres:

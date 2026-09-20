@@ -1,16 +1,22 @@
 # Scan fixtures (T55)
 
+> **Paths below carry a `/gex` segment since T75**, when every GEX route moved under
+> `/api/gex`. The curl recipes have been updated and work as written. The *provenance* notes
+> further down quote module paths (`app.api.scan`, `app.api.decisions`) as they were at the
+> time of recording -- those are records of what was run, not instructions, and are left as
+> they were.
+
 Recorded 2026-09-09 against the live backend (`docker compose up`, `http://localhost:8001`)
 with the exact curl commands from `plans/continuation/07-ui.md`'s T55 task:
 
 ```
-curl -s http://localhost:8001/api/scan/breakouts            > breakouts.json
-curl -s http://localhost:8001/api/scan/breakouts/SPY        > breakouts_SPY.json
-curl -s http://localhost:8001/api/scan/trend                > trend.json
-curl -s http://localhost:8001/api/scan/trend/SPY            > trend_SPY.json
-curl -s "http://localhost:8001/api/bars/SPY?start=2026-03-01" > bars_SPY.json
-curl -s http://localhost:8001/api/universe                  > universe.json
-curl -s http://localhost:8001/api/health/capture            > health_capture.json
+curl -s http://localhost:8001/api/gex/scan/breakouts            > breakouts.json
+curl -s http://localhost:8001/api/gex/scan/breakouts/SPY        > breakouts_SPY.json
+curl -s http://localhost:8001/api/gex/scan/trend                > trend.json
+curl -s http://localhost:8001/api/gex/scan/trend/SPY            > trend_SPY.json
+curl -s "http://localhost:8001/api/gex/bars/SPY?start=2026-03-01" > bars_SPY.json
+curl -s http://localhost:8001/api/gex/universe                  > universe.json
+curl -s http://localhost:8001/api/gex/health/capture            > health_capture.json
 ```
 
 All seven are the live response, byte-for-byte (only re-indented — no field was added, removed
@@ -52,9 +58,9 @@ Recorded 2026-09-09 against the same live backend, one file per `(group, benchma
 combination the page and its tests exercise:
 
 ```
-curl -s "http://localhost:8001/api/scan/rotation?group=sectors&benchmark=SPY&weeks=6"      > rotation_sectors.json
-curl -s "http://localhost:8001/api/scan/rotation?group=industries&benchmark=RSP&weeks=6"   > rotation_industries_rsp.json
-curl -s "http://localhost:8001/api/scan/rotation?group=assets&benchmark=SPY&weeks=6"        > rotation_assets.json
+curl -s "http://localhost:8001/api/gex/scan/rotation?group=sectors&benchmark=SPY&weeks=6"      > rotation_sectors.json
+curl -s "http://localhost:8001/api/gex/scan/rotation?group=industries&benchmark=RSP&weeks=6"   > rotation_industries_rsp.json
+curl -s "http://localhost:8001/api/gex/scan/rotation?group=assets&benchmark=SPY&weeks=6"        > rotation_assets.json
 ```
 
 All three are the live response, byte-for-byte (only re-indented). `rotation_sectors.json` is
@@ -83,8 +89,8 @@ No other rotation fixture was edited.
 Recorded 2026-09-09 against the same live backend:
 
 ```
-curl -s "http://localhost:8001/api/scan/regime?filter=ALL"       > regime.json
-curl -s "http://localhost:8001/api/scan/regime?filter=ZERO_DTE"  > regime_zero_dte.json
+curl -s "http://localhost:8001/api/gex/scan/regime?filter=ALL"       > regime.json
+curl -s "http://localhost:8001/api/gex/scan/regime?filter=ZERO_DTE"  > regime_zero_dte.json
 ```
 
 Both are the live response, byte-for-byte (only re-indented) — neither was hand-edited.
@@ -139,10 +145,10 @@ its own hand-built unit tests.
 Recorded 2026-09-10 against the live backend:
 
 ```
-curl -s "http://localhost:8001/api/scan/flows?window=5"   > flows_5.json
-curl -s "http://localhost:8001/api/scan/flows?window=20"  > flows_20.json
-curl -s "http://localhost:8001/api/scan/flows?window=60"  > flows_60.json
-curl -s "http://localhost:8001/api/health/capture"         > health_capture.json
+curl -s "http://localhost:8001/api/gex/scan/flows?window=5"   > flows_5.json
+curl -s "http://localhost:8001/api/gex/scan/flows?window=20"  > flows_20.json
+curl -s "http://localhost:8001/api/gex/scan/flows?window=60"  > flows_60.json
+curl -s "http://localhost:8001/api/gex/health/capture"         > health_capture.json
 ```
 
 All four are the live response, byte-for-byte (only re-indented) — nothing hand-edited.
