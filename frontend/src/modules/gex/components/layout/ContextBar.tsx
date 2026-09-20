@@ -27,6 +27,9 @@ import { useLiveLevels } from '../../api/useLiveLevels';
 import { useDashboardParams } from '../../state/urlState';
 import { formatFreshness, formatNyDateTime } from '../../../../lib/time';
 import { ThemeToggle } from '../../../../shell/ThemeToggle';
+import { ModuleBadge } from '../../../../shell/ModuleIdentity';
+import { SegmentedControl } from '../../../../components/ui/Toolbar';
+import { CORE_UNDERLYINGS } from '../../api/types';
 import { AssetSelector } from './AssetSelector';
 import { BarsFreshness } from '../scan/BarsFreshness';
 
@@ -132,6 +135,29 @@ function LiveIndicator({ symbol }: { symbol: Underlying }) {
   );
 }
 
+/**
+ * One-click switching for the five core symbols, beside the full 28-symbol dropdown rather
+ * than instead of it. `AssetSelector` stays exactly as it was — it is the complete list, and
+ * the only way to reach an extended symbol — but reaching SPY from SPX no longer costs two
+ * clicks on the page where symbol is the primary axis. Built from `SegmentedControl`, the
+ * same primitive every scan-family filter row already uses, so this introduces no new
+ * interaction vocabulary; its "Symbol" caption is visually hidden here (kept for assistive
+ * tech) because the dropdown beside it already carries one.
+ */
+function SymbolTabs({ symbol, onChange }: { symbol: Underlying; onChange: (next: Underlying) => void }) {
+  return (
+    <div className="context-bar__symbols">
+      <SegmentedControl
+        label="Symbol"
+        values={CORE_UNDERLYINGS}
+        active={CORE_UNDERLYINGS.includes(symbol as (typeof CORE_UNDERLYINGS)[number]) ? symbol : CORE_UNDERLYINGS[0]}
+        render={(value) => value}
+        onChange={onChange}
+      />
+    </div>
+  );
+}
+
 export function ContextBar() {
   const location = useLocation();
   const { symbol, filter, snapshotId, setSymbol, setFilter, setSnapshotId } = useDashboardParams();
@@ -139,6 +165,7 @@ export function ContextBar() {
   if (SCAN_FAMILY_PATHS.has(location.pathname)) {
     return (
       <header className="context-bar context-bar--scan">
+        <ModuleBadge moduleKey="gex" />
         <BarsFreshness />
         <div className="topbar-meta">
           <ThemeToggle />
@@ -149,6 +176,8 @@ export function ContextBar() {
 
   return (
     <header className="context-bar">
+      <ModuleBadge moduleKey="gex" />
+      <SymbolTabs symbol={symbol} onChange={setSymbol} />
       <AssetSelector symbol={symbol} onChange={setSymbol} />
       <div className="topbar-fields">
         <ExpiryFilterSelect filter={filter} onChange={setFilter} />

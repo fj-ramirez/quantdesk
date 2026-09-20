@@ -15,7 +15,7 @@ import { Outlet } from 'react-router-dom';
 import { SideRail } from './SideRail';
 import { ContextBar } from '../modules/gex/components/layout/ContextBar';
 import { CommandPalette } from './CommandPalette';
-import { ModuleHeader } from './ModuleIdentity';
+
 
 export function AppFrame() {
   return (
@@ -25,8 +25,10 @@ export function AppFrame() {
       <SideRail />
       <div className="app-frame__main">
         <ContextBar />
+        {/* No `ModuleHeader` here, unlike the other two frames: `ContextBar` carries GEX's
+            identity inside the control bar instead, because this module's pages are dense and
+            a second full-width identity row is 56px of chrome for one word. */}
         <main className="app-frame__content">
-          <ModuleHeader moduleKey="gex" />
           <Outlet />
         </main>
       </div>

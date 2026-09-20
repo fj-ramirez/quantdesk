@@ -2141,6 +2141,417 @@ code {
   overflow: hidden;
 }
 
+
+/* =========================================================================================
+   GEX workspace — density.
+
+   This module's pages are a workstation, not a dashboard: the constraint is the viewport, and
+   the job is to get spot, net GEX, both walls, the flip point and the top of the strike ladder
+   into the first screen. The rules below are almost entirely about *removing* chrome and
+   tightening rhythm; they change no colour, and the module keeps the palette every other
+   module uses.
+
+   Where the space came from, measured at 1920x1080 before this pass: a 56px module header and
+   a 70px page header both naming things the rail and the control bar already said, ~120px of
+   four one-metric cards laid out horizontally across the full width, 16px page padding with
+   16px gaps between every block, and a second full-height chart sitting beside the primary one
+   at equal width. The chart is now ~62% of the width with the numbers stacked beside it, the
+   metrics are a two-column list in that rail, the gamma profile moved below the fold where a
+   secondary analytic belongs, and the per-strike ladder — data that has been in the payload
+   since T09 and never rendered as a table — took the width the second chart gave up.
+   ========================================================================================= */
+
+/* --- the control bar, at 46px ----------------------------------------------------------- */
+
+.context-bar {
+  min-height: 46px;
+  padding: 4px 12px;
+  gap: 4px 12px;
+}
+
+/* Everything in the bar is chrome-sized, including the controls that set its height. */
+.context-bar :is(select, button, input) {
+  font-size: 12.5px;
+  line-height: 1.4;
+}
+
+.context-bar .freshness-badge,
+.context-bar .live-indicator {
+  font-size: 11.5px;
+  white-space: nowrap;
+}
+
+.module-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  flex: 0 0 auto;
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  color: var(--text-strong);
+}
+
+.module-badge__mark {
+  display: grid;
+  place-items: center;
+  width: 26px;
+  height: 26px;
+  border: 1px solid color-mix(in srgb, var(--module-accent) 32%, transparent);
+  border-radius: 7px;
+  background: color-mix(in srgb, var(--module-accent) 14%, transparent);
+  color: var(--module-accent);
+}
+
+/* Both captions in the bar sit *beside* their control rather than above it — stacked labels
+   are what made a row of four controls 70px tall. Screen readers are unaffected: the label
+   element is still there and still referenced. */
+.context-bar .topbar-field,
+.context-bar .asset-selector {
+  flex-direction: row;
+  align-items: center;
+  gap: 6px;
+}
+
+.context-bar .topbar-field select,
+.context-bar .asset-selector__trigger {
+  padding: 3px 8px;
+  font-size: 12.5px;
+}
+
+/* The tabs carry the same caption the dropdown beside them does, so this one is visual noise —
+   hidden the same way every other redundant-but-needed label in this app is. */
+.context-bar__symbols .scan-toolbar__label,
+.context-bar .asset-selector > .topbar-field__label {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
+
+.context-bar__symbols .scan-toolbar,
+.context-bar__symbols .scan-toolbar__group {
+  gap: 2px;
+  margin: 0;
+  padding: 0;
+  border: none;
+}
+
+.context-bar__symbols .scan-toolbar__btn {
+  padding: 4px 9px;
+  font-size: 12.5px;
+  border-radius: 6px;
+}
+
+.context-bar__symbols .scan-toolbar__btn--active {
+  border-color: color-mix(in srgb, var(--module-accent) 45%, transparent);
+  background: color-mix(in srgb, var(--module-accent) 16%, transparent);
+  color: var(--text-strong);
+}
+
+.context-bar .topbar-meta {
+  margin-left: auto;
+  gap: 10px;
+  font-size: 12px;
+}
+
+/* --- the module's other pages ------------------------------------------------------------ */
+
+/* The workspace below is the page this pass was aimed at, but the same 16px page padding,
+   16px block gap and full-size page header were on all ten GEX pages, and every one of them is
+   a table or a board with more rows than fit. This is the same trim applied module-wide —
+   layout untouched, roughly one extra table row per screen. */
+.app-frame--gex :is(
+  .dashboard, .decisions-page, .flows-page, .history-page, .overview-page,
+  .regime-page, .report-page, .rotation-page, .scan-page, .settings-page
+) {
+  padding: 12px;
+  gap: 10px;
+}
+
+.app-frame--gex .page-header {
+  gap: var(--space-2);
+}
+
+.app-frame--gex .page-header__title {
+  font-size: 18px;
+}
+
+.app-frame--gex .page-header__description {
+  font-size: 12.5px;
+  max-width: 110ch;
+}
+
+/* --- the workspace grid ------------------------------------------------------------------ */
+
+.gex-workspace {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 320px;
+  grid-template-areas:
+    'chart rail'
+    'ladder ladder'
+    'analytics analytics';
+  gap: 10px;
+  align-items: start;
+}
+
+/* `min-width: 0` on both columns, or an ECharts canvas that reports its own intrinsic width
+   pushes the grid wider than the viewport instead of shrinking. */
+.gex-workspace__chart {
+  grid-area: chart;
+  display: block;
+  min-width: 0;
+}
+
+.gex-workspace__rail {
+  grid-area: rail;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-width: 0;
+}
+
+.gex-workspace__ladder {
+  grid-area: ladder;
+  min-width: 0;
+}
+
+.gex-workspace__analytics {
+  grid-area: analytics;
+  display: block;
+  min-width: 0;
+}
+
+/* Panels in the workspace are tighter than the app's default 16px card. */
+.gex-workspace .ui-surface--padded,
+.gex-workspace .data-table-frame,
+.gex-workspace .dashboard-charts > :is(div, section) {
+  padding: 10px;
+}
+
+.gex-workspace .data-table-frame {
+  gap: 6px;
+}
+
+.gex-workspace .data-table-frame__cue {
+  max-width: none;
+}
+
+/* --- the metric rail --------------------------------------------------------------------- */
+
+/* Four cards across the full width become one panel of four label/value rows. Same four
+   metrics, same strip, same accessible group — `Dashboard.test.tsx` asserts all four are still
+   there, and they are, in about a third of the pixels. */
+.gex-rail-metrics {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  border: 1px solid var(--border-default);
+  border-left: 3px solid var(--module-accent);
+  border-radius: 12px;
+  background: var(--surface-raised);
+  overflow: hidden;
+}
+
+.gex-rail-metrics .metric-card {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: baseline;
+  column-gap: 10px;
+  /* `.metric-card`'s own `flex: 1 1 140px` is a *width* basis in the horizontal strip it was
+     written for; in this column it becomes a 140px-tall row, which is how four metrics came to
+     be 613px. */
+  flex: 0 0 auto;
+  min-width: 0;
+  padding: 6px 10px;
+  border: none;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
+.gex-rail-metrics .metric-card + .metric-card {
+  border-top: 1px solid var(--border-default);
+}
+
+.gex-rail-metrics .metric-card__label {
+  grid-column: 1;
+  font-size: 10px;
+}
+
+.gex-rail-metrics .metric-card__value {
+  grid-column: 2;
+  font-size: 15px;
+  text-align: right;
+}
+
+.gex-rail-metrics .metric-card__hint {
+  grid-column: 1 / -1;
+  font-size: 10.5px;
+  line-height: 1.35;
+  text-align: right;
+}
+
+/* --- key levels, in a 320px rail ---------------------------------------------------------- */
+
+.gex-workspace__rail .key-levels {
+  padding: 10px;
+}
+
+.gex-workspace__rail .key-levels__title {
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+.gex-workspace__rail .key-levels__net {
+  margin: 6px 0 2px;
+}
+
+.gex-workspace__rail .key-levels__net-value {
+  font-size: 18px;
+}
+
+.gex-workspace__rail .key-levels__net-note,
+.gex-workspace__rail .key-levels__freshness,
+.gex-workspace__rail .key-levels__note {
+  font-size: 10.5px;
+  line-height: 1.4;
+}
+
+.gex-workspace__rail .key-levels table {
+  width: 100%;
+  font-size: 11.5px;
+  font-variant-numeric: tabular-nums;
+}
+
+.gex-workspace__rail .key-levels :is(th, td) {
+  padding: 3px 4px;
+  white-space: nowrap;
+}
+
+.gex-workspace__rail .key-levels thead th {
+  white-space: normal;
+  line-height: 1.25;
+}
+
+/* The label column needs a floor, or the browser squeezes it to fit the three numeric columns
+   and "Gamma flip" breaks across two lines. With one, only "Max |gamma| strike" wraps. */
+.gex-workspace__rail .key-levels tbody th[scope='row'] {
+  white-space: normal;
+  min-width: 82px;
+  text-align: left;
+}
+
+/* --- the strike ladder -------------------------------------------------------------------- */
+
+/* Capped and scrolled rather than run to full length: the ladder is one of four blocks that
+   have to share a viewport, and a 120-row table would push everything under it off the screen
+   on every symbol. The header pins so the columns stay readable while it scrolls. */
+.strike-table-scroll {
+  max-height: 330px;
+  overflow: auto;
+}
+
+.strike-table caption {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
+
+.strike-table :is(th, td) {
+  height: 26px;
+  padding: 2px 10px;
+  font-size: 12px;
+  line-height: 1.3;
+}
+
+.strike-table thead th {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  background: var(--surface-raised);
+}
+
+.strike-table .num {
+  text-align: right;
+  font-family: var(--mono);
+  font-variant-numeric: tabular-nums;
+}
+
+.strike-table tbody th[scope='row'] {
+  font-family: var(--mono);
+  font-weight: 600;
+  color: var(--text-strong);
+}
+
+.strike-table__row--level {
+  background: color-mix(in srgb, var(--module-accent) 9%, transparent);
+}
+
+.strike-table__net--pos { color: var(--status-positive); }
+.strike-table__net--neg { color: var(--status-negative); }
+
+.strike-table__tag {
+  display: inline-block;
+  margin-right: 4px;
+  padding: 1px 6px;
+  border: 1px solid var(--border-default);
+  border-radius: 999px;
+  font-size: 10px;
+  letter-spacing: 0.04em;
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+
+.strike-table__tag--call { border-color: color-mix(in srgb, var(--status-info) 50%, transparent); color: var(--status-info); }
+.strike-table__tag--put { border-color: color-mix(in srgb, var(--status-negative) 50%, transparent); color: var(--status-negative); }
+.strike-table__tag--flip { border-color: color-mix(in srgb, var(--module-accent) 50%, transparent); color: var(--module-accent); }
+.strike-table__tag--spot { border-color: color-mix(in srgb, var(--status-positive) 50%, transparent); color: var(--status-positive); }
+
+/* --- responsive --------------------------------------------------------------------------- */
+
+/* Laptop: the rail narrows before the chart does — the chart is the thing being read. */
+@media (max-width: 1500px) {
+  .gex-workspace { grid-template-columns: minmax(0, 1fr) 270px; }
+  :root { --rail-width: 224px; }
+}
+
+/* Tablet: the rail drops under the chart as a two-column metric block rather than a column. */
+@media (max-width: 1100px) {
+  .gex-workspace {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-areas:
+      'chart'
+      'rail'
+      'ladder'
+      'analytics';
+  }
+
+  .gex-workspace__rail {
+    flex-direction: row;
+    flex-wrap: wrap;
+    align-items: flex-start;
+  }
+
+  .gex-workspace__rail > * {
+    flex: 1 1 320px;
+    min-width: 0;
+  }
+}
+
+@media (max-width: 720px) {
+  .gex-workspace__rail { flex-direction: column; }
+  .app-frame--gex .dashboard { padding: 10px; }
+}
+
 /* ---------------------------------------------------------------------------------------
    The launcher (`shell/Launcher.tsx`) — the page T75 deferred ("T75 ships a plain list; T81
    makes it a page worth looking at"). The design half of T81 only; see that file's docstring

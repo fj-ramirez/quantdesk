@@ -37,6 +37,24 @@ export function RailBrand({ moduleKey }: { moduleKey: ModuleKey }) {
 }
 
 /**
+ * The same identity at toolbar size: mark and name only. GEX's workspace folds this into its
+ * control bar rather than spending a second 56px row on it — see `ContextBar`. Nothing is
+ * lost that the rail does not already say.
+ */
+export function ModuleBadge({ moduleKey }: { moduleKey: ModuleKey }) {
+  const module = moduleByKey(moduleKey);
+  const Mark = module.mark;
+  return (
+    <span className="module-badge">
+      <span className="module-badge__mark" aria-hidden="true">
+        <Mark width={16} height={16} />
+      </span>
+      {module.name}
+    </span>
+  );
+}
+
+/**
  * The identity strip at the top of a module's content: mark, name, and the same one-line blurb
  * the launcher card carries. It is deliberately not a heading — every page under it already
  * renders its own `<h1>` through `PageHeader`, and a second competing heading would make the

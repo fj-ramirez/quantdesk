@@ -3,11 +3,12 @@ import { UNDERLYINGS, type Underlying, type KeyLevels as KeyLevelsData } from '.
 import { useGexResult } from '../api/queries';
 import { useDashboardParams } from '../state/urlState';
 import { KeyLevels } from '../components/KeyLevels';
+import { StrikeTable } from '../components/StrikeTable';
 import { GexByStrike } from '../components/charts/GexByStrike';
 import { GammaProfile } from '../components/GammaProfile';
 import { ErrorState } from '../components/ErrorState';
-import { PageHeader } from '../../../components/ui/PageHeader';
 import { MetricStrip, type MetricStripItem } from '../../../components/ui/MetricCard';
+import { DataTableFrame } from '../../../components/ui/DataTableFrame';
 import { SegmentedControl, Toolbar } from '../../../components/ui/Toolbar';
 import { formatDistance, formatDistancePct, formatGex, formatStrike } from '../../../lib/format';
 
@@ -173,10 +174,12 @@ export function Dashboard() {
 
   return (
     <div className="dashboard">
-      <PageHeader
-        title="GEX Explorer"
-        description="Single-symbol GEX state: current levels, GEX by strike, and the gamma profile."
-      />
+      {/* The page's name is in the rail (the active nav item) and its subject is in the
+          control bar (the symbol tabs), so spending a 70px `PageHeader` on repeating both
+          bought nothing on the one page where vertical pixels are the scarce resource. The
+          heading itself stays, for a screen reader and for the document outline — it is the
+          *presentation* that is gone, not the page's name. */}
+      <h1 className="sr-only">GEX Explorer — {symbol}</h1>
 
       {primary.isLoading && <p aria-live="polite">Loading {symbol} GEX…</p>}
       {primary.isError && (
@@ -187,12 +190,6 @@ export function Dashboard() {
 
       {primary.data && (
         <>
-          <MetricStrip
-            label={`${symbol} at a glance`}
-            metrics={keyLevelMetrics(primary.data)}
-            className="dashboard-metric-strip"
-          />
-
           {isNarrow && (
             <Toolbar>
               <SegmentedControl
@@ -205,34 +202,67 @@ export function Dashboard() {
             </Toolbar>
           )}
 
-          <div className="dashboard-charts">
+          <div className="gex-workspace">
+            {/* Chart left, numbers right, ladder underneath, second chart last — the reading
+                order of a strike ladder, and the one that puts spot, net GEX, both walls, the
+                flip point and the top of the ladder in the first viewport. */}
             {showStrikeChart && (
-              <GexByStrike
-                rows={primary.data.by_strike}
-                spot={primary.data.spot}
-                callWall={primary.data.levels.call_wall}
-                putWall={primary.data.levels.put_wall}
-                flipPoint={primary.data.levels.flip_point}
-                underlying={primary.data.underlying}
-              />
+              <div className="gex-workspace__chart dashboard-charts">
+                {/* `height` is sized to the metric rail beside it rather than left at the
+                    component default, so the two grid columns end on the same line instead of
+                    leaving a band of empty page under the chart. */}
+                <GexByStrike
+                  height={560}
+                  rows={primary.data.by_strike}
+                  spot={primary.data.spot}
+                  callWall={primary.data.levels.call_wall}
+                  putWall={primary.data.levels.put_wall}
+                  flipPoint={primary.data.levels.flip_point}
+                  underlying={primary.data.underlying}
+                />
+              </div>
             )}
 
-            {showProfileChart &&
-              (allProfile.isLoading || exZeroDteProfile.isLoading ? (
-                <p aria-live="polite">Loading gamma profile…</p>
-              ) : allProfile.isError || exZeroDteProfile.isError ? (
-                <ErrorState message="Failed to load gamma profile." />
-              ) : allProfile.data && exZeroDteProfile.data ? (
-                <GammaProfile
-                  allProfile={allProfile.data.profile}
-                  exZeroDteProfile={exZeroDteProfile.data.profile}
-                  spot={allProfile.data.spot}
-                  flipPoint={allProfile.data.levels.flip_point}
-                />
-              ) : null)}
-          </div>
+            <aside className="gex-workspace__rail">
+              <MetricStrip
+                label={`${symbol} at a glance`}
+                metrics={keyLevelMetrics(primary.data)}
+                className="dashboard-metric-strip gex-rail-metrics"
+              />
+              <KeyLevels levels={primary.data.levels} snapshot={primary.data.snapshot} />
+            </aside>
 
-          <KeyLevels levels={primary.data.levels} snapshot={primary.data.snapshot} />
+            <section className="gex-workspace__ladder">
+              <DataTableFrame
+                title={`${symbol} strike ladder`}
+                readingCue="Every strike in the current snapshot. Tagged rows are the same levels the chart marks."
+              >
+                <StrikeTable
+                  rows={primary.data.by_strike}
+                  levels={primary.data.levels}
+                  spot={primary.data.spot}
+                  underlying={primary.data.underlying}
+                />
+              </DataTableFrame>
+            </section>
+
+            {showProfileChart && (
+              <section className="gex-workspace__analytics dashboard-charts">
+                {allProfile.isLoading || exZeroDteProfile.isLoading ? (
+                  <p aria-live="polite">Loading gamma profile…</p>
+                ) : allProfile.isError || exZeroDteProfile.isError ? (
+                  <ErrorState message="Failed to load gamma profile." />
+                ) : allProfile.data && exZeroDteProfile.data ? (
+                  <GammaProfile
+                    allProfile={allProfile.data.profile}
+                    exZeroDteProfile={exZeroDteProfile.data.profile}
+                    spot={allProfile.data.spot}
+                    flipPoint={allProfile.data.levels.flip_point}
+                  />
+                ) : null}
+              </section>
+            )}
+          </div>
         </>
       )}
 
