@@ -17,8 +17,8 @@ from typing import Any
 import httpx
 import pytest
 
-from app.providers.base import SymbolNotSupported, Underlying, UpstreamUnavailable
-from app.providers.cboe import CboeProvider
+from app.modules.gex.providers.base import SymbolNotSupported, Underlying, UpstreamUnavailable
+from app.modules.gex.providers.cboe import CboeProvider
 
 FIXTURES_DIR = Path(__file__).parent / "fixtures" / "cboe"
 
@@ -62,7 +62,7 @@ async def _fetch(symbol: str, fixture: str, **kwargs: Any):
         ("GLD", "gld.json", 154, 3),
         ("DIA", "dia.json", 146, 3),
         # T47: one representative sector ETF from the 23 verified live 2026-09-09 (see
-        # `app/models/chain.py`'s `Underlying` enum for the full list and per-symbol counts).
+        # `app/modules/gex/models/chain.py`'s `Underlying` enum for the full list and per-symbol counts).
         # Same bare-ticker URL shape as GLD/DIA, single root == ticker.
         ("XLK", "xlk.json", 154, 2),
     ],

@@ -1714,3 +1714,61 @@ code {
   font-size: 12px;
   color: var(--text-muted);
 }
+
+/* ---------------------------------------------------------------------------------------
+   T75 launcher (`shell/Launcher.tsx`). Deliberately minimal -- the plan file reserves the
+   launcher's design for T81 ("T75 ships a plain list; T81 makes it a page worth looking
+   at"), so this is only enough for the page to be legible in both themes rather than an
+   unstyled stack of links. Every value is an existing token; nothing new is introduced for
+   T81 to have to undo.
+   --------------------------------------------------------------------------------------- */
+.launcher {
+  max-width: 640px;
+  margin: 0 auto;
+  padding: 64px 16px;
+}
+
+.launcher__title {
+  margin: 0 0 24px;
+  font-size: 24px;
+  letter-spacing: -0.01em;
+}
+
+.launcher__list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.launcher__link {
+  display: block;
+  padding: 16px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface);
+  color: inherit;
+  text-decoration: none;
+}
+
+.launcher__link:hover:not(.launcher__link--disabled) {
+  border-color: var(--text-muted);
+}
+
+.launcher__link--disabled {
+  opacity: 0.5;
+}
+
+.launcher__name {
+  display: block;
+  font-weight: 600;
+}
+
+.launcher__blurb {
+  display: block;
+  margin-top: 4px;
+  font-size: 13px;
+  color: var(--text-muted);
+}

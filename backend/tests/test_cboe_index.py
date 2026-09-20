@@ -1,4 +1,4 @@
-"""Tests for `app.providers.cboe_index.CboeIndexHistoryProvider` (T54,
+"""Tests for `app.modules.gex.providers.cboe_index.CboeIndexHistoryProvider` (T54,
 plans/continuation/06-cross-asset-regime.md).
 
 Entirely offline: every HTTP call goes through `httpx.MockTransport` serving the recorded
@@ -16,8 +16,12 @@ from typing import Any
 import httpx
 import pytest
 
-from app.providers.bars import BarProviderRegistry, SymbolNotSupported, UpstreamUnavailable
-from app.providers.cboe_index import CboeIndexHistoryProvider
+from app.modules.gex.providers.bars import (
+    BarProviderRegistry,
+    SymbolNotSupported,
+    UpstreamUnavailable,
+)
+from app.modules.gex.providers.cboe_index import CboeIndexHistoryProvider
 
 FIXTURES_DIR = Path(__file__).parent / "fixtures" / "cboe_index"
 
@@ -130,7 +134,7 @@ async def test_html_body_with_status_200_raises_upstream_unavailable():
 
 async def test_unsupported_symbol_raises_without_network():
     """Validation happens before any request is built -- no client/transport is needed, same
-    contract as `app.providers.cboe.CboeProvider`'s own unsupported-symbol path."""
+    contract as `app.modules.gex.providers.cboe.CboeProvider`'s own unsupported-symbol path."""
     provider = CboeIndexHistoryProvider()
     with pytest.raises(SymbolNotSupported):
         await provider.fetch_daily_bars("^ZZZZ", start=dt.date(2020, 1, 1))
@@ -217,7 +221,7 @@ def test_name_is_cboe_index():
 
 async def test_registry_routes_configured_symbols_to_this_provider():
     """T54's `BAR_PROVIDER_GROUPS` default routes the six index symbols here -- see
-    `app.config.settings.BAR_PROVIDER_GROUPS` and `app.providers.bars`'s group-beats-default
+    `app.core.config.settings.BAR_PROVIDER_GROUPS` and `app.modules.gex.providers.bars`'s group-beats-default
     precedence."""
     registry = BarProviderRegistry(
         default="yahoo", groups="cboe_index:^VIX,^VIX9D,^VIX3M,^VIX6M,^VVIX,^SKEW"

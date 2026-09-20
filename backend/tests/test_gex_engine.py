@@ -1,4 +1,4 @@
-"""Tests for app.gex.engine.
+"""Tests for app.modules.gex.gex.engine.
 
 Written so that correctness is provable without trusting the implementation. The centre of
 the suite is :func:`synthetic_chain`, a 20-contract chain whose every input is chosen by hand,
@@ -36,10 +36,10 @@ import httpx
 import numpy as np
 import pytest
 
-from app.config import settings
-from app.gex import engine as E
-from app.models.chain import ChainSnapshot, OptionContract, Underlying
-from app.providers.cboe import CboeProvider
+from app.core.config import settings
+from app.modules.gex.gex import engine as E
+from app.modules.gex.models.chain import ChainSnapshot, OptionContract, Underlying
+from app.modules.gex.providers.cboe import CboeProvider
 
 NY = ZoneInfo("America/New_York")
 FIXTURES_DIR = Path(__file__).parent / "fixtures" / "cboe"

@@ -2,7 +2,7 @@
 
 Entirely offline: every HTTP call goes through ``httpx.MockTransport`` serving fixtures under
 ``tests/fixtures/yahoo/`` -- ``spy_5d.json`` and ``vix_5d.json`` are trimmed *real* responses
-captured live on 2026-09-09 (see ``app/providers/yahoo.py``'s module docstring for the full
+captured live on 2026-09-09 (see ``app/modules/gex/providers/yahoo.py``'s module docstring for the full
 verification record), ``unknown_404.json`` is the real 404 body Yahoo served for a nonexistent
 symbol the same day. "Now" for the settled-session drop rule is always injected via ``now_fn=``
 rather than the real wall clock -- at several different times of day, not just different dates,
@@ -21,8 +21,8 @@ from zoneinfo import ZoneInfo
 import httpx
 import pytest
 
-from app.providers.bars import SymbolNotSupported, UpstreamUnavailable
-from app.providers.yahoo import YahooBarProvider
+from app.modules.gex.providers.bars import SymbolNotSupported, UpstreamUnavailable
+from app.modules.gex.providers.yahoo import YahooBarProvider
 
 FIXTURES_DIR = Path(__file__).parent / "fixtures" / "yahoo"
 
@@ -31,7 +31,7 @@ _NY = ZoneInfo("America/New_York")
 # The fixtures' final row is dated 2026-09-09 (NY) for SPY and 2026-09-09 (Chicago) for VIX --
 # see the module docstring's live-verification note. 2026-09-09 is a Wednesday, a trading day.
 _FIXTURE_LAST_DATE = dt.date(2026, 9, 9)
-# A Saturday -- not in app.jobs.calendar's holiday table at all, so `is_trading_day` returns
+# A Saturday -- not in app.modules.gex.jobs.calendar's holiday table at all, so `is_trading_day` returns
 # False purely from the weekday check, with no dependency on that table's contents.
 _A_SATURDAY = dt.date(2026, 9, 12)
 
@@ -89,7 +89,7 @@ async def _fetch(symbol: str, fixture: str, **kwargs: Any):
 # bar -- dropping it unconditionally would leave `daily_bars` permanently one trading day
 # stale, forever. The corrected rule drops today's bar only while its session has not yet
 # settled (before MARKET_CLOSE + a short buffer, or on a non-trading day), and always drops a
-# bar dated strictly after today. See app/providers/yahoo.py's module docstring.
+# bar dated strictly after today. See app/modules/gex/providers/yahoo.py's module docstring.
 
 
 async def test_partial_today_bar_is_dropped_before_the_close():

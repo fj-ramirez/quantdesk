@@ -28,7 +28,7 @@
  * discards it by returning `null` first.
  */
 import type { ReactNode } from 'react';
-import { useOverlayDismiss } from '../layout/useOverlayDismiss';
+import { useOverlayDismiss } from '../../shell/useOverlayDismiss';
 
 export interface DetailDrawerProps {
   open: boolean;

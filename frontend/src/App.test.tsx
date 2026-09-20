@@ -36,14 +36,14 @@ function renderApp(initialPath: string) {
 
 describe('App', () => {
   it('renders the Dashboard with mocked SPX data by default', async () => {
-    renderApp('/dashboard');
+    renderApp('/gex/dashboard');
     await waitFor(() => expect(screen.getByRole('heading', { name: 'SPX key levels' })).toBeInTheDocument());
     // GexByStrike (T13) is mounted too, not just KeyLevels.
     expect(screen.getByRole('img', { name: /GEX by strike for SPX/ })).toBeInTheDocument();
   });
 
   it('T47: the asset dropdown gains a second, labelled group for the extended ETFs', async () => {
-    renderApp('/dashboard');
+    renderApp('/gex/dashboard');
     await waitFor(() => expect(screen.getByRole('heading', { name: 'SPX key levels' })).toBeInTheDocument());
 
     fireEvent.click(screen.getByRole('button', { name: 'Symbol SPX' }));
@@ -56,7 +56,7 @@ describe('App', () => {
   });
 
   it('clicking the QQQ symbol option updates the URL and reloads QQQ data', async () => {
-    renderApp('/dashboard');
+    renderApp('/gex/dashboard');
     await waitFor(() => expect(screen.getByRole('heading', { name: 'SPX key levels' })).toBeInTheDocument());
 
     fireEvent.click(screen.getByRole('button', { name: 'Symbol SPX' }));
@@ -67,7 +67,7 @@ describe('App', () => {
   });
 
   it('deep link ?symbol=QQQ&filter=ZERO_DTE renders the all-null-walls case cleanly, not as zeros', async () => {
-    renderApp('/dashboard?symbol=QQQ&filter=ZERO_DTE');
+    renderApp('/gex/dashboard?symbol=QQQ&filter=ZERO_DTE');
 
     expect(screen.getByRole('button', { name: 'Symbol QQQ' })).toBeInTheDocument();
     await waitFor(() => expect(screen.getByRole('heading', { name: 'QQQ key levels' })).toBeInTheDocument());
@@ -82,12 +82,12 @@ describe('App', () => {
   });
 
   it('the QQQ fixture legitimately has a null flip point and the shell does not crash on it', async () => {
-    renderApp('/dashboard?symbol=QQQ');
+    renderApp('/gex/dashboard?symbol=QQQ');
     await waitFor(() => expect(screen.getByText(/No sign change within the profile grid/)).toBeInTheDocument());
   });
 
   it('navigating to /history preserves the current symbol in the URL', async () => {
-    renderApp('/dashboard?symbol=SPY');
+    renderApp('/gex/dashboard?symbol=SPY');
     await waitFor(() => expect(screen.getByRole('heading', { name: 'SPY key levels' })).toBeInTheDocument());
 
     fireEvent.click(screen.getByRole('link', { name: 'History' }));
@@ -107,14 +107,14 @@ describe('App', () => {
     // fixture (out of this task's scope), so the real assertion is that the shell renders the
     // existing error path rather than throwing -- the same path a genuine, temporary API
     // failure would hit for any symbol.
-    renderApp('/dashboard?symbol=XLK');
+    renderApp('/gex/dashboard?symbol=XLK');
     expect(screen.getByRole('button', { name: 'Symbol XLK' })).toBeInTheDocument();
     await waitFor(() => expect(screen.getByRole('alert')).toBeInTheDocument());
     expect(screen.getByRole('alert').textContent).toContain('Failed to load XLK GEX');
   });
 
   it('pressing "]" cycles the symbol forward (T16 keyboard shortcut) and updates the URL-driven view', async () => {
-    renderApp('/dashboard');
+    renderApp('/gex/dashboard');
     await waitFor(() => expect(screen.getByRole('heading', { name: 'SPX key levels' })).toBeInTheDocument());
 
     fireEvent.keyDown(window, { key: ']' });
@@ -132,7 +132,7 @@ describe('T55 scan-family nav and stub routes', () => {
   it('the nav has one link for each scan-family route, alongside the existing four', async () => {
     // Rendered at `/dashboard` because this test waits on a dashboard heading to know the app
     // has settled; the nav is identical on every route. `/` has been Overview since 2026-09-10.
-    renderApp('/dashboard');
+    renderApp('/gex/dashboard');
     await waitFor(() => expect(screen.getByRole('heading', { name: 'SPX key levels' })).toBeInTheDocument());
 
     // T63: the rail relabels /dashboard "GEX Explorer" and /decisions "Opportunities"
@@ -143,51 +143,66 @@ describe('T55 scan-family nav and stub routes', () => {
     }
   });
 
-  it('/ is the Overview landing page, and the dashboard lives at /dashboard', async () => {
+  it('/gex is the module landing page (Overview), and the dashboard lives at /gex/dashboard', async () => {
     // The user made Overview the landing page on 2026-09-10 (07-ui.md's T56 spec left it open).
-    // Both halves matter: the root must be Overview, and the dashboard must still be reachable
-    // -- SymbolCell links every option-chain symbol into `/dashboard?symbol=...`.
-    const { unmount } = renderApp('/');
+    // T75 moved the whole module one segment deeper, so the *module* root -- not the site root
+    // -- is what must be Overview. Both halves still matter: `/gex` must be Overview, and the
+    // dashboard must still be reachable, since SymbolCell links every option-chain symbol into
+    // `/gex/dashboard?symbol=...`.
+    const { unmount } = renderApp('/gex');
     expect(await screen.findByRole('region', { name: 'Tape' })).toBeInTheDocument();
     expect(screen.queryByRole('heading', { name: 'SPX key levels' })).not.toBeInTheDocument();
     unmount();
 
-    renderApp('/dashboard');
+    renderApp('/gex/dashboard');
     await waitFor(() => expect(screen.getByRole('heading', { name: 'SPX key levels' })).toBeInTheDocument());
   });
 
+  it('T75: / is the launcher, not a GEX page', async () => {
+    // The failure this guards is the quiet one: if `gexRoutes` were ever mounted at the root
+    // again, `/` would render Overview, everything would look fine, and the collision would
+    // only surface when a second module arrived.
+    renderApp('/');
+    expect(screen.getByRole('heading', { name: 'quantdesk' })).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: /GEX/ })).toHaveAttribute('href', '/gex');
+    expect(screen.queryByRole('region', { name: 'Tape' })).not.toBeInTheDocument();
+    // The two modules that do not exist yet are listed but not navigable (T77/T79).
+    expect(screen.queryByRole('link', { name: /EdgeLab/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: /xactx/ })).not.toBeInTheDocument();
+  });
+
   it('/overview renders the real overview page (T56), not a stub', async () => {
-    renderApp('/overview');
+    renderApp('/gex/overview');
     expect(await screen.findByRole('region', { name: 'Tape' })).toBeInTheDocument();
     expect(screen.queryByRole('region', { name: 'Overview is not built yet' })).not.toBeInTheDocument();
   });
 
   it('/scan renders the real scan page (T44), not a stub', async () => {
-    renderApp('/scan');
+    renderApp('/gex/scan');
     expect(await screen.findByRole('group', { name: 'View' })).toBeInTheDocument();
     expect(screen.queryByRole('region', { name: 'Scan is not built yet' })).not.toBeInTheDocument();
   });
 
   it('/regime renders the real regime page (T49), not a stub', async () => {
-    renderApp('/regime');
+    renderApp('/gex/regime');
     expect(await screen.findByRole('group', { name: 'Filter' })).toBeInTheDocument();
     expect(screen.queryByRole('region', { name: 'Regime is not built yet' })).not.toBeInTheDocument();
   });
 
   it('/rotation renders the real rotation page (T51), not a stub', async () => {
-    renderApp('/rotation');
+    renderApp('/gex/rotation');
     expect(await screen.findByRole('group', { name: 'Group' })).toBeInTheDocument();
     expect(screen.queryByRole('region', { name: 'Rotation is not built yet' })).not.toBeInTheDocument();
   });
 
   it('/flows renders the real flows page (T53), not a stub', async () => {
-    renderApp('/flows');
+    renderApp('/gex/flows');
     expect(await screen.findByRole('group', { name: 'Window' })).toBeInTheDocument();
     expect(screen.queryByRole('region', { name: 'Flows is not built yet' })).not.toBeInTheDocument();
   });
 
   it('the ContextBar drops the asset dropdown on /scan and shows it again after navigating back to /dashboard', async () => {
-    renderApp('/dashboard');
+    renderApp('/gex/dashboard');
     await waitFor(() => expect(screen.getByRole('heading', { name: 'SPX key levels' })).toBeInTheDocument());
     expect(screen.getByRole('button', { name: 'Symbol SPX' })).toBeInTheDocument();
 

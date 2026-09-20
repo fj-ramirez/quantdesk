@@ -11,7 +11,7 @@ from zoneinfo import ZoneInfo
 import pytest
 from pydantic import ValidationError
 
-from app.models.chain import (
+from app.modules.gex.models.chain import (
     ChainSnapshot,
     OptionContract,
     Right,

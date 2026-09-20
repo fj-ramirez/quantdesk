@@ -1,11 +1,11 @@
-"""Tests for the T09 seam in `app.jobs.capture.capture_snapshot`: GEX levels are computed and
+"""Tests for the T09 seam in `app.modules.gex.jobs.capture.capture_snapshot`: GEX levels are computed and
 stored right after a successful persist, and a failure there must never flip `result.ok` back
 to `False` -- the raw Parquet capture is durable and already returned as a success by the time
 this hook runs.
 
 Deliberately its own file rather than an addition to `tests/test_capture.py`: T09 only touches
 the seam `capture.py` already marks, and another agent may be independently reviewing/patching
-`app/jobs/` and `app/storage/` in a parallel worktree -- keeping this in a separate file avoids
+`app/modules/gex/jobs/` and `app/modules/gex/storage/` in a parallel worktree -- keeping this in a separate file avoids
 adding merge-conflict surface to a file T09 doesn't otherwise need to change.
 """
 
@@ -17,10 +17,11 @@ import logging
 import pytest
 from sqlalchemy import select
 
-from app.gex.store import DEFAULT_FILTERS
-from app.jobs.capture import capture_snapshot
-from app.models.chain import ChainSnapshot, OptionContract, Underlying
-from app.models.db import Base, GexLevel, get_engine, get_sessionmaker
+from app.core.db import get_engine, get_sessionmaker
+from app.modules.gex.gex.store import DEFAULT_FILTERS
+from app.modules.gex.jobs.capture import capture_snapshot
+from app.modules.gex.models.chain import ChainSnapshot, OptionContract, Underlying
+from app.modules.gex.models.db import Base, GexLevel
 
 
 @pytest.fixture
@@ -91,9 +92,9 @@ async def test_level_computation_failure_does_not_fail_an_already_durable_captur
     def _boom(*args, **kwargs):
         raise RuntimeError("simulated GEX computation bug")
 
-    monkeypatch.setattr("app.jobs.capture.compute_and_store", _boom)
+    monkeypatch.setattr("app.modules.gex.jobs.capture.compute_and_store", _boom)
 
-    with caplog.at_level(logging.ERROR, logger="app.jobs.capture"):
+    with caplog.at_level(logging.ERROR, logger="app.modules.gex.jobs.capture"):
         result = await capture_snapshot(
             "SPY",
             is_eod=True,
@@ -137,7 +138,7 @@ def _make_xlk_snapshot() -> ChainSnapshot:
 async def test_extended_symbol_capture_persists_a_non_zero_snapshot_with_stored_levels(
     tmp_path, session_factory
 ):
-    """T47 acceptance: `POST /api/snapshots/capture?underlying=XLK` (exercised here at the
+    """T47 acceptance: `POST /api/gex/snapshots/capture?underlying=XLK` (exercised here at the
     `capture_snapshot` level, which the route calls directly) must persist a snapshot with a
     non-zero contract count and stored levels for every default filter -- the exact same
     guarantee `test_successful_capture_writes_gex_levels_for_default_filters` pins for SPY,

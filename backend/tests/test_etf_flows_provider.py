@@ -1,4 +1,4 @@
-"""Tests for `app/providers/etf_flows.py` (T52; T59 adds VanEck/Invesco/USCF). Offline: every
+"""Tests for `app/modules/gex/providers/etf_flows.py` (T52; T59 adds VanEck/Invesco/USCF). Offline: every
 parser is exercised directly against the recorded fixtures under `tests/fixtures/etf_flows/`
 -- never the live site, per this task's constraint -- and the provider classes are exercised
 through an injected `httpx.MockTransport` client, same pattern as `test_yahoo.py`.
@@ -12,8 +12,8 @@ from pathlib import Path
 import httpx
 import pytest
 
-from app.providers.base import UpstreamUnavailable
-from app.providers.etf_flows import (
+from app.modules.gex.providers.base import UpstreamUnavailable
+from app.modules.gex.providers.etf_flows import (
     ISHARES_SYMBOLS,
     SPDR_SYMBOLS,
     InvescoShareclassProvider,
@@ -186,7 +186,7 @@ async def test_spdr_provider_non_200_raises_upstream_unavailable_after_retries(s
 
 
 async def test_ishares_provider_fetch_success_both_fixtures():
-    from app.providers.etf_flows import ISHARES_PRODUCT_URLS
+    from app.modules.gex.providers.etf_flows import ISHARES_PRODUCT_URLS
 
     fixtures = {
         "IWM": _ishares_text("ishares-IWM-product-page-2026-09-09.html"),
@@ -209,7 +209,7 @@ async def test_ishares_provider_fetch_success_both_fixtures():
 
 
 async def test_ishares_provider_one_symbol_failing_does_not_stop_the_others():
-    from app.providers.etf_flows import ISHARES_PRODUCT_URLS
+    from app.modules.gex.providers.etf_flows import ISHARES_PRODUCT_URLS
 
     tlt_body = _ishares_text("ishares-TLT-product-page-2026-09-09.html")
 
@@ -288,7 +288,7 @@ def test_parse_vaneck_fund_details_not_json_is_a_named_failure():
 
 
 async def test_vaneck_provider_fetch_success_both_funds():
-    from app.providers.etf_flows import VANECK_PAGE_IDS
+    from app.modules.gex.providers.etf_flows import VANECK_PAGE_IDS
 
     fixtures = {
         "SMH": _fixture_text("vaneck-SMH-funddetails-2026-09-10.json"),

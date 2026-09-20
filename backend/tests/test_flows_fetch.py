@@ -1,13 +1,13 @@
-"""Tests for `app/flows_fetch.py` (T52 CLI). Offline: `update_flows_job` itself is
+"""Tests for `app/modules/gex/flows_fetch.py` (T52 CLI). Offline: `update_flows_job` itself is
 monkeypatched, so this only exercises argument parsing and exit-code plumbing -- the job's own
 behavior is covered by `test_flows_job.py`. Mirrors `test_bars_backfill.py`'s scope split
-(if one exists) / `app.bars_backfill.main`'s own test style otherwise.
+(if one exists) / `app.modules.gex.bars_backfill.main`'s own test style otherwise.
 """
 
 from __future__ import annotations
 
-from app import flows_fetch
-from app.jobs.flows import FlowsFamilyResult
+from app.modules.gex import flows_fetch
+from app.modules.gex.jobs.flows import FlowsFamilyResult
 
 
 async def _fake_success(*args, **kwargs):

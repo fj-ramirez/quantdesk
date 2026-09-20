@@ -81,7 +81,7 @@ const barsMonthFormatter = new Intl.DateTimeFormat('en-US', { month: 'short', ti
 /**
  * T55: `"2026-09-08"` -> `"Tue 8 Sep"`, for `BarsFreshness`'s "Bars through ..." summary.
  *
- * `last_bar_date` (`app/api/health.py`'s `SymbolBarsHealth`) is a plain calendar date, not a
+ * `last_bar_date` (`app/modules/gex/api/health.py`'s `SymbolBarsHealth`) is a plain calendar date, not a
  * UTC instant like `captured_at` elsewhere in this app -- there is no time-of-day component
  * to convert to New York time, and treating it as one anyway (`new Date(iso)` parses a bare
  * date as UTC midnight, then a *local*-zone formatter renders it) risks rendering the

@@ -17,9 +17,10 @@ import pytest
 from sqlalchemy.exc import StatementError
 from sqlalchemy.orm import Session
 
-from app.models.chain import ChainSnapshot, Underlying
-from app.models.db import Base, Snapshot, get_engine, get_sessionmaker
-from app.storage.repository import SnapshotRepository
+from app.core.db import get_engine, get_sessionmaker
+from app.modules.gex.models.chain import ChainSnapshot, Underlying
+from app.modules.gex.models.db import Base, Snapshot
+from app.modules.gex.storage.repository import SnapshotRepository
 
 
 @pytest.fixture

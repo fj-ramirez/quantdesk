@@ -21,28 +21,44 @@ override: `docker compose -f compose.yaml -f compose.prod.yaml up -d`. See the R
 "Deploying to the homeserver". `make dev|prod|test|lint` wraps the same commands; `make` is
 optional and not installed on this Windows host.
 
-The backend listens on **8001**, not 8000. Health: `GET /health`; capture freshness:
-`GET /api/health/capture`.
+The backend listens on **8001**, not 8000. Health: `GET /health` (root level, unprefixed --
+it is the container healthcheck's contract); capture freshness: `GET /api/gex/health/capture`.
+
+Since T75 this repo is a **module host**: one API process, one React app, one compose stack,
+with GEX as `modules/gex` on both sides and every GEX URL carrying a `/gex` segment
+(`/dashboard` -> `/gex/dashboard`, `/api/snapshots` -> `/api/gex/snapshots`). `/` is the module
+launcher. The scheduled capture work runs in its own container (`gex-capture`); **the API
+process starts no background work at all.** See `plans/quantdesk/README.md`.
 
 ## Layout
 
 ```
 backend/app/
-  providers/   OptionChainProvider ABC + cboe.py (default), marketdata.py
-  models/      chain.py (Pydantic wire/domain types), db.py (SQLAlchemy tables)
-  gex/         greeks.py, engine.py (pure math), store.py (persist), backfill.py (CLI)
-  scan/        pure scan modules: indicators, breakouts, trend, regime, rotation, decisions (T60)
-  api/         routers: snapshots, health, gex, chains, report, bars, scan, symbols, decisions — all under /api
-  jobs/        capture, scheduler (APScheduler), calendar, catchup
-  storage/     parquet.py (raw chains), repository.py (snapshot index)
-frontend/src/  api/ components/ pages/ state/ theme/ mocks/
+  core/        config.py (settings), db.py (engine + session factory), schemas.py (schema names)
+  main.py      mounts each module's router under /api; no lifespan, starts nothing
+  workers/     gex_capture.py — APScheduler + startup catch-up, its own container
+  modules/gex/
+    router.py    APIRouter(prefix="/gex") composing the ten routers below
+    api/         routers: snapshots, health, gex, chains, report, bars, scan, symbols,
+                 decisions, stream — all under /api/gex
+    providers/   OptionChainProvider ABC + cboe.py (default), marketdata.py
+    models/      chain.py (Pydantic wire/domain types), db.py (Base, UTCDateTime, tables)
+    gex/         greeks.py, engine.py (pure math), store.py (persist), backfill.py (CLI)
+    scan/        pure scan modules: indicators, breakouts, trend, regime, rotation, decisions (T60)
+    jobs/        capture, scheduler (APScheduler), calendar, catchup
+    storage/     parquet.py (raw chains), repository.py (snapshot index)
+frontend/src/
+  shell/         AppFrame, SideRail, CommandPalette, navConfig, Launcher
+  modules/gex/   routes.tsx + api/ components/ pages/ state/ mocks/
+  lib/ theme/ components/ui/   shared by every module — formatting, time, theming, primitives
 context/       detailed docs — see the index below
 docs/          one-off reports (schema, validation, reviews)
+plans/quantdesk/  the module-host initiative (T75–T82)
 ```
 
 ## Invariants — do not violate without reading the linked doc
 
-1. `app/gex/engine.py` and `greeks.py` are **pure**: no HTTP, DB, filesystem or logging.
+1. `app/modules/gex/gex/engine.py` and `greeks.py` are **pure**: no HTTP, DB, filesystem or logging.
 2. The dealer sign (+calls / −puts) is applied **exactly once**, in `contract_gex`.
    `greeks.gamma()` and `OptionContract.gamma` are unsigned.
 3. Open interest `None` means *unknown* → contract excluded. `0` means zero → included.
@@ -52,6 +68,9 @@ docs/          one-off reports (schema, validation, reviews)
    Parquet. `snapshots.parquet_path` is relative to `DATA_DIR` — always resolve it via
    `storage.parquet.resolve_snapshot_path`.
 6. Provider swaps are a config change (`PROVIDER`), never an edit to callers.
+7. (T75) The API process runs **no background work**. `app/main.py` has no lifespan; anything
+   clock-bound belongs in `app/workers/` with its own container. Two schedulers means every
+   capture fires twice.
 
 ## Context index
 

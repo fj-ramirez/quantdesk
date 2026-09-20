@@ -1,4 +1,4 @@
-"""Tests for `app/scan/regime.py` (T48, plans/continuation/03-regime-board.md). Fully offline:
+"""Tests for `app/modules/gex/scan/regime.py` (T48, plans/continuation/03-regime-board.md). Fully offline:
 every test builds a hand-constructed `KeyLevels`/`StrikeGex` -- no database, no filesystem, no
 network, no Parquet, in keeping with the module's purity contract.
 """
@@ -9,9 +9,9 @@ import datetime as dt
 
 import pytest
 
-from app.gex.engine import KeyLevels, StrikeGex
-from app.gex.report import POSITIONING_RATIO_FLOOR
-from app.scan.regime import (
+from app.modules.gex.gex.engine import KeyLevels, StrikeGex
+from app.modules.gex.gex.report import POSITIONING_RATIO_FLOOR
+from app.modules.gex.scan.regime import (
     CONTINUATION_WALL_ATR,
     ROOM_BEYOND_FRACTION,
     ZERO_DTE_SHARE_FLOOR,

@@ -1,4 +1,4 @@
-"""Tests for `app/providers/bars.py`'s `BarProviderRegistry` symbol-routing logic.
+"""Tests for `app/modules/gex/providers/bars.py`'s `BarProviderRegistry` symbol-routing logic.
 
 Offline throughout -- no provider here ever makes an HTTP call; these tests only check which
 class gets constructed for which symbol, using `token=` overrides so `TiingoBarProvider`'s
@@ -9,9 +9,9 @@ from __future__ import annotations
 
 import pytest
 
-from app.providers.bars import BarProviderRegistry, get_bar_provider
-from app.providers.tiingo import TiingoBarProvider
-from app.providers.yahoo import YahooBarProvider
+from app.modules.gex.providers.bars import BarProviderRegistry, get_bar_provider
+from app.modules.gex.providers.tiingo import TiingoBarProvider
+from app.modules.gex.providers.yahoo import YahooBarProvider
 
 
 def test_default_provider_is_yahoo_when_unconfigured():
@@ -59,7 +59,7 @@ def test_unknown_provider_name_raises_on_construction():
 
 
 def test_provider_instances_are_cached_per_provider_name(monkeypatch):
-    from app import config
+    from app.core import config
 
     monkeypatch.setattr(config.settings, "TIINGO_TOKEN", "test-token")  # avoid MissingCredential
 

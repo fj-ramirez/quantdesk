@@ -1,4 +1,4 @@
-"""Tests for `app/jobs/catchup.py` (TASKS.md T29).
+"""Tests for `app/modules/gex/jobs/catchup.py` (TASKS.md T29).
 
 Entirely offline, same isolation pattern as `test_capture.py`: a stub provider stands in for
 Cboe, a temp-directory SQLite `session_factory` stands in for Postgres. The clock is always
@@ -19,7 +19,8 @@ import datetime as dt
 import pytest
 from sqlalchemy import select
 
-from app.jobs.catchup import (
+from app.core.db import get_engine, get_sessionmaker
+from app.modules.gex.jobs.catchup import (
     EOD_CUTOFF,
     catch_up_missed_eod,
     has_eod_snapshot_today,
@@ -27,10 +28,10 @@ from app.jobs.catchup import (
     previous_trading_day,
     startup_catchup_job,
 )
-from app.models.chain import ChainSnapshot, OptionContract, Underlying
-from app.models.db import Base, Snapshot, get_engine, get_sessionmaker
+from app.modules.gex.models.chain import ChainSnapshot, OptionContract, Underlying
+from app.modules.gex.models.db import Base, Snapshot
 
-# 2026-09-04 is a Friday and a trading day (verified against app/jobs/calendar.py's 2026
+# 2026-09-04 is a Friday and a trading day (verified against app/modules/gex/jobs/calendar.py's 2026
 # table); 09-05/09-06 are the following weekend; 09-07 is Labor Day (a listed 2026 holiday).
 TRADING_DAY = dt.date(2026, 9, 4)
 SATURDAY = dt.date(2026, 9, 5)
@@ -91,7 +92,7 @@ def make_snapshot(underlying=Underlying.SPX, captured_at=None) -> ChainSnapshot:
 class StubProvider:
     """Same shape as `test_capture.py`'s stub -- one instance's `fetch_chain` returns a fresh,
     strictly-increasing `captured_at` per call so consecutive symbols never collide on the
-    duplicate-capture check in `app/jobs/capture.py`.
+    duplicate-capture check in `app/modules/gex/jobs/capture.py`.
     """
 
     def __init__(self):
@@ -122,12 +123,12 @@ class StubProvider:
 @pytest.fixture
 def stub_provider(monkeypatch):
     provider = StubProvider()
-    monkeypatch.setattr("app.jobs.catchup.get_provider", lambda: provider)
+    monkeypatch.setattr("app.modules.gex.jobs.catchup.get_provider", lambda: provider)
     return provider
 
 
 def test_eod_cutoff_matches_the_scheduled_eod_job_time():
-    """The catch-up guard and `app/jobs/scheduler.py`'s cron trigger must agree on 16:20 --
+    """The catch-up guard and `app/modules/gex/jobs/scheduler.py`'s cron trigger must agree on 16:20 --
     drifting apart would either catch up too early (racing the vendor) or leave a real gap.
     """
     assert EOD_CUTOFF == dt.time(16, 20)
@@ -234,7 +235,7 @@ async def test_calling_catch_up_twice_does_not_double_capture(
     provider1 = StubProvider()
     provider2 = StubProvider()
     calls = iter([provider1, provider2])
-    monkeypatch.setattr("app.jobs.catchup.get_provider", lambda: next(calls))
+    monkeypatch.setattr("app.modules.gex.jobs.catchup.get_provider", lambda: next(calls))
 
     now = _at(TRADING_DAY, 20, 0)
     first = await catch_up_missed_eod(
@@ -264,7 +265,7 @@ async def test_catch_up_never_double_capture_when_time_advances_within_the_eveni
     provider1 = StubProvider()
     provider2 = StubProvider()
     calls = iter([provider1, provider2])
-    monkeypatch.setattr("app.jobs.catchup.get_provider", lambda: next(calls))
+    monkeypatch.setattr("app.modules.gex.jobs.catchup.get_provider", lambda: next(calls))
 
     await catch_up_missed_eod(
         ["SPX"], session_factory=session_factory, data_dir=tmp_path, now=_at(TRADING_DAY, 16, 25)
@@ -370,9 +371,9 @@ async def test_startup_catchup_job_survives_an_unexpected_exception(monkeypatch,
     async def boom(*args, **kwargs):
         raise RuntimeError("cboe is unreachable")
 
-    monkeypatch.setattr("app.jobs.catchup.catch_up_missed_eod", boom)
+    monkeypatch.setattr("app.modules.gex.jobs.catchup.catch_up_missed_eod", boom)
 
-    with caplog.at_level(logging.ERROR, logger="app.jobs.catchup"):
+    with caplog.at_level(logging.ERROR, logger="app.modules.gex.jobs.catchup"):
         await startup_catchup_job()  # must not raise
 
     assert any("unexpected top-level failure" in r.message for r in caplog.records)
@@ -385,7 +386,7 @@ async def test_startup_catchup_job_calls_catch_up_missed_eod_with_configured_sym
         seen["symbols"] = symbols
         return []
 
-    monkeypatch.setattr("app.jobs.catchup.catch_up_missed_eod", fake_catch_up)
+    monkeypatch.setattr("app.modules.gex.jobs.catchup.catch_up_missed_eod", fake_catch_up)
 
     await startup_catchup_job()
 

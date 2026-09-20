@@ -1,4 +1,4 @@
-"""Round-trip tests for `app/storage/parquet.py`.
+"""Round-trip tests for `app/modules/gex/storage/parquet.py`.
 
 No fixture data exists yet (the Cboe provider, T02, is being built concurrently in a
 different worktree) so every snapshot here is constructed by hand. The "nasty" fixture is
@@ -7,7 +7,7 @@ same expiry/strike/right, a mix of populated and all-`None` optional columns, `g
 a genuine value, and several distinct expiries -- because those are exactly the conditions
 under which pyarrow's dtype *inference* (as opposed to the explicit schema this module uses)
 would go wrong, and where `None` silently turning into `0`/`NaN` would corrupt GEX totals
-without any visible symptom (see `app/models/chain.py`'s module docstring).
+without any visible symptom (see `app/modules/gex/models/chain.py`'s module docstring).
 """
 
 from __future__ import annotations
@@ -18,8 +18,8 @@ from zoneinfo import ZoneInfo
 
 import pytest
 
-from app.models.chain import ChainSnapshot, OptionContract, Underlying
-from app.storage.parquet import _encode_captured_at, read_snapshot, write_snapshot
+from app.modules.gex.models.chain import ChainSnapshot, OptionContract, Underlying
+from app.modules.gex.storage.parquet import _encode_captured_at, read_snapshot, write_snapshot
 
 NY = ZoneInfo("America/New_York")
 
@@ -199,7 +199,7 @@ def test_write_snapshot_with_no_contracts(tmp_path: Path):
 
 
 def test_default_data_dir_comes_from_settings(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
-    from app import config
+    from app.core import config
 
     monkeypatch.setattr(config.settings, "DATA_DIR", str(tmp_path))
     snap = nasty_spx_snapshot()

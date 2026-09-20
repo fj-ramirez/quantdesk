@@ -1,7 +1,7 @@
 """Tests for the Tiingo bars provider skeleton.
 
 Entirely offline, same isolation pattern as `test_marketdata.py`: there is no Tiingo account or
-token available in this environment (see `app/providers/tiingo.py`'s module docstring), so the
+token available in this environment (see `app/modules/gex/providers/tiingo.py`'s module docstring), so the
 fixture under `tests/fixtures/tiingo/` is hand-built from Tiingo's published docs, not recorded
 live traffic. This suite proves the credential guard and the documented-shape parse work; it
 does not, and cannot, prove the provider matches what the live API actually returns.
@@ -17,8 +17,8 @@ from typing import Any
 import httpx
 import pytest
 
-from app.providers.bars import SymbolNotSupported, UpstreamUnavailable
-from app.providers.tiingo import MissingCredential, TiingoBarProvider
+from app.modules.gex.providers.bars import SymbolNotSupported, UpstreamUnavailable
+from app.modules.gex.providers.tiingo import MissingCredential, TiingoBarProvider
 
 FIXTURES_DIR = Path(__file__).parent / "fixtures" / "tiingo"
 
@@ -43,7 +43,7 @@ def _provider_for_fixture(
 
 
 def test_missing_token_raises_missing_credential(monkeypatch):
-    from app import config
+    from app.core import config
 
     monkeypatch.setattr(config.settings, "TIINGO_TOKEN", "")
     with pytest.raises(MissingCredential):

@@ -21,8 +21,8 @@ from typing import Any
 import httpx
 import pytest
 
-from app.providers.base import SymbolNotSupported, Underlying, UpstreamUnavailable
-from app.providers.marketdata import MarketDataProvider, MissingCredential
+from app.modules.gex.providers.base import SymbolNotSupported, Underlying, UpstreamUnavailable
+from app.modules.gex.providers.marketdata import MarketDataProvider, MissingCredential
 
 FIXTURES_DIR = Path(__file__).parent / "fixtures" / "marketdata"
 

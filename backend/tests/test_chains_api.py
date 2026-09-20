@@ -1,4 +1,4 @@
-"""Tests for `app/api/chains.py` (T11): `GET /chains/{underlying}/latest?expiry=`.
+"""Tests for `app/modules/gex/api/chains.py` (T11): `GET /chains/{underlying}/latest?expiry=`.
 
 Same offline pattern as `tests/test_gex_api.py`: the real SPX fixture through the real
 `CboeProvider`, written to a `tmp_path` Parquet root and indexed in a temp SQLite DB.
@@ -15,12 +15,13 @@ import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
-from app.api.chains import router
-from app.models.chain import ChainSnapshot
-from app.models.db import Base, get_engine, get_sessionmaker
-from app.providers.cboe import CboeProvider
-from app.storage.parquet import write_snapshot
-from app.storage.repository import SnapshotRepository
+from app.core.db import get_engine, get_sessionmaker
+from app.modules.gex.api.chains import router
+from app.modules.gex.models.chain import ChainSnapshot
+from app.modules.gex.models.db import Base
+from app.modules.gex.providers.cboe import CboeProvider
+from app.modules.gex.storage.parquet import write_snapshot
+from app.modules.gex.storage.repository import SnapshotRepository
 
 FIXTURES_DIR = Path(__file__).parent / "fixtures" / "cboe"
 
@@ -28,7 +29,9 @@ FIXTURES_DIR = Path(__file__).parent / "fixtures" / "cboe"
 @pytest.fixture
 def client():
     app = FastAPI()
-    app.include_router(router, prefix="/api")
+    # T75: `/api/gex`, matching how `app/main.py` mounts `app.modules.gex.router` -- these
+    # per-router mini-apps exist to keep the tests offline, not to serve a different URL space.
+    app.include_router(router, prefix="/api/gex")
     return TestClient(app)
 
 
@@ -67,7 +70,7 @@ def indexed_row(tmp_path, session_factory, spx_fixture_snapshot):
 
 
 def _patched(monkeypatch, client, session_factory):
-    monkeypatch.setattr("app.api.chains.get_session_factory", lambda: session_factory)
+    monkeypatch.setattr("app.modules.gex.api.chains.get_session_factory", lambda: session_factory)
     return client
 
 
@@ -75,7 +78,7 @@ def test_latest_chain_returns_only_the_requested_expiry(
     client, monkeypatch, session_factory, indexed_row
 ):
     _patched(monkeypatch, client, session_factory)
-    response = client.get("/api/chains/SPX/latest", params={"expiry": "2026-09-18"})
+    response = client.get("/api/gex/chains/SPX/latest", params={"expiry": "2026-09-18"})
     assert response.status_code == 200
     body = response.json()
     assert body["underlying"] == "SPX"
@@ -90,7 +93,7 @@ def test_latest_chain_effective_at_mid_session(client, monkeypatch, session_fact
     timestamp (14:18:34 ET) is mid-session, so `effective_at` must equal `captured_at`.
     """
     _patched(monkeypatch, client, session_factory)
-    body = client.get("/api/chains/SPX/latest", params={"expiry": "2026-09-18"}).json()
+    body = client.get("/api/gex/chains/SPX/latest", params={"expiry": "2026-09-18"}).json()
     assert body["snapshot"]["effective_at"] == body["snapshot"]["captured_at"]
 
 
@@ -101,7 +104,7 @@ def test_known_contract_fields_match_the_vendor_fixture_verbatim(
     diverges, the read API is misprojecting a field the provider layer already got right.
     """
     _patched(monkeypatch, client, session_factory)
-    body = client.get("/api/chains/SPX/latest", params={"expiry": "2026-09-18"}).json()
+    body = client.get("/api/gex/chains/SPX/latest", params={"expiry": "2026-09-18"}).json()
     contract = next(c for c in body["contracts"] if c["occ_symbol"] == "SPX260918C07700000")
 
     assert contract["root"] == "SPX"
@@ -124,7 +127,7 @@ def test_zero_open_interest_is_preserved_not_dropped(
     the response must carry the literal `0`, not `null` and not a filtered-out row.
     """
     _patched(monkeypatch, client, session_factory)
-    body = client.get("/api/chains/SPX/latest", params={"expiry": "2027-06-17"}).json()
+    body = client.get("/api/gex/chains/SPX/latest", params={"expiry": "2027-06-17"}).json()
     contracts = body["contracts"]
     assert len(contracts) == 41
     zero_oi = [c for c in contracts if c["open_interest"] == 0]
@@ -141,7 +144,7 @@ def test_open_interest_none_is_distinct_from_zero_end_to_end(
     docstring: "None means unknown ... 0 means genuinely zero") survives the Parquet
     round-trip and JSON serialization, never collapsing one into the other.
     """
-    from app.models.chain import OptionContract, Underlying
+    from app.modules.gex.models.chain import OptionContract, Underlying
 
     _patched(monkeypatch, client, session_factory)
 
@@ -161,7 +164,7 @@ def test_open_interest_none_is_distinct_from_zero_end_to_end(
     with session_factory() as session:
         SnapshotRepository(session).add(snapshot, path, is_eod=False)
 
-    response = client.get("/api/chains/SPY/latest", params={"expiry": "2026-09-18"})
+    response = client.get("/api/gex/chains/SPY/latest", params={"expiry": "2026-09-18"})
 
     assert response.status_code == 200
     by_symbol = {c["occ_symbol"]: c["open_interest"] for c in response.json()["contracts"]}
@@ -173,30 +176,30 @@ def test_unknown_expiry_returns_empty_contracts_not_404(
     client, monkeypatch, session_factory, indexed_row
 ):
     _patched(monkeypatch, client, session_factory)
-    response = client.get("/api/chains/SPX/latest", params={"expiry": "2099-01-01"})
+    response = client.get("/api/gex/chains/SPX/latest", params={"expiry": "2099-01-01"})
     assert response.status_code == 200
     assert response.json()["contracts"] == []
 
 
 def test_missing_expiry_query_param_is_422(client, monkeypatch, session_factory, indexed_row):
     _patched(monkeypatch, client, session_factory)
-    response = client.get("/api/chains/SPX/latest")
+    response = client.get("/api/gex/chains/SPX/latest")
     assert response.status_code == 422
 
 
 def test_malformed_expiry_is_422_not_500(client, monkeypatch, session_factory, indexed_row):
     _patched(monkeypatch, client, session_factory)
-    response = client.get("/api/chains/SPX/latest", params={"expiry": "not-a-date"})
+    response = client.get("/api/gex/chains/SPX/latest", params={"expiry": "not-a-date"})
     assert response.status_code == 422
 
 
 def test_unsupported_underlying_is_422(client, monkeypatch, session_factory):
     _patched(monkeypatch, client, session_factory)
-    response = client.get("/api/chains/DOGE/latest", params={"expiry": "2026-09-18"})
+    response = client.get("/api/gex/chains/DOGE/latest", params={"expiry": "2026-09-18"})
     assert response.status_code == 422
 
 
 def test_no_snapshot_yet_is_404(client, monkeypatch, session_factory):
     _patched(monkeypatch, client, session_factory)
-    response = client.get("/api/chains/SPX/latest", params={"expiry": "2026-09-18"})
+    response = client.get("/api/gex/chains/SPX/latest", params={"expiry": "2026-09-18"})
     assert response.status_code == 404

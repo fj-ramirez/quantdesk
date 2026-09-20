@@ -1,4 +1,4 @@
-"""Tests for `app/jobs/retention.py` (T32).
+"""Tests for `app/modules/gex/jobs/retention.py` (T32).
 
 The acceptance criterion this file exists to prove, from
 `plans/continuous-feed/01-capture-integrity.md`: with rows spanning 60 days of mixed `is_eod`,
@@ -17,15 +17,9 @@ import datetime as dt
 import pytest
 from sqlalchemy import select
 
-from app.jobs.retention import prune_intraday_strike_detail
-from app.models.db import (
-    Base,
-    GexByStrike,
-    GexLevel,
-    Snapshot,
-    get_engine,
-    get_sessionmaker,
-)
+from app.core.db import get_engine, get_sessionmaker
+from app.modules.gex.jobs.retention import prune_intraday_strike_detail
+from app.modules.gex.models.db import Base, GexByStrike, GexLevel, Snapshot
 
 NOW = dt.datetime(2026, 9, 11, 21, 0, tzinfo=dt.UTC)
 RETENTION_DAYS = 30
@@ -222,7 +216,7 @@ def test_empty_database_is_not_an_error(session_factory):
 def test_prunes_across_more_snapshots_than_one_chunk(session_factory):
     """The chunked commit loop must cover every stale snapshot, not just the first batch --
     the case the first run after enabling T18 will actually hit."""
-    from app.jobs.retention import _CHUNK_SIZE
+    from app.modules.gex.jobs.retention import _CHUNK_SIZE
 
     count = _CHUNK_SIZE * 2 + 7
     with session_factory() as session:

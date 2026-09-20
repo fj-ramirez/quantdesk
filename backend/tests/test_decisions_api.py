@@ -1,4 +1,4 @@
-"""Tests for `app/api/decisions.py` (T60). Offline: the two session factories `app.api.scan`
+"""Tests for `app/modules/gex/api/decisions.py` (T60). Offline: the two session factories `app.modules.gex.api.scan`
 reads are monkeypatched at their import site onto one SQLite engine -- exactly the fixture
 shape `test_scan_api.py`'s regime tests use, since this router runs on the same
 `build_regime_rows` pipeline.
@@ -13,11 +13,12 @@ import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
-from app.api.decisions import router
-from app.models.bars import DailyBar as DailyBarIn
-from app.models.chain import Underlying
-from app.models.db import Base, GexByStrike, GexLevel, Snapshot, get_engine, get_sessionmaker
-from app.storage.bars_repository import upsert_bars
+from app.core.db import get_engine, get_sessionmaker
+from app.modules.gex.api.decisions import router
+from app.modules.gex.models.bars import DailyBar as DailyBarIn
+from app.modules.gex.models.chain import Underlying
+from app.modules.gex.models.db import Base, GexByStrike, GexLevel, Snapshot
+from app.modules.gex.storage.bars_repository import upsert_bars
 
 _NY = ZoneInfo("America/New_York")
 
@@ -25,7 +26,9 @@ _NY = ZoneInfo("America/New_York")
 @pytest.fixture
 def client():
     app = FastAPI()
-    app.include_router(router, prefix="/api")
+    # T75: `/api/gex`, matching how `app/main.py` mounts `app.modules.gex.router` -- these
+    # per-router mini-apps exist to keep the tests offline, not to serve a different URL space.
+    app.include_router(router, prefix="/api/gex")
     return TestClient(app)
 
 
@@ -34,15 +37,15 @@ def session_factory(tmp_path, monkeypatch):
     engine = get_engine(f"sqlite:///{tmp_path / 'test.db'}")
     Base.metadata.create_all(engine)
     factory = get_sessionmaker(engine)
-    monkeypatch.setattr("app.api.scan.get_session_factory", lambda: factory)
-    monkeypatch.setattr("app.api.scan.get_gex_session_factory", lambda: factory)
+    monkeypatch.setattr("app.modules.gex.api.scan.get_session_factory", lambda: factory)
+    monkeypatch.setattr("app.modules.gex.api.scan.get_gex_session_factory", lambda: factory)
     # T61: the history/record routes read the `decisions` and bars tables through the
     # repositories' own cached factories -- point both at the same SQLite engine.
-    monkeypatch.setattr("app.storage.decisions_repository.get_session_factory", lambda: factory)
-    monkeypatch.setattr("app.storage.bars_repository.get_session_factory", lambda: factory)
+    monkeypatch.setattr("app.modules.gex.storage.decisions_repository.get_session_factory", lambda: factory)
+    monkeypatch.setattr("app.modules.gex.storage.bars_repository.get_session_factory", lambda: factory)
     # A one-symbol scan universe keeps the trend ranking cheap; the regime pipeline still
     # iterates every `Underlying` member for the universe route.
-    from app import config
+    from app.core import config
 
     monkeypatch.setattr(config.settings, "SCAN_UNIVERSE", "SPY")
     yield factory
@@ -129,23 +132,23 @@ def _seed_fade_snapshot(session_factory, underlying: str = "SPY") -> int:
 
 
 def test_unknown_symbol_is_422(client, session_factory):
-    assert client.get("/api/decisions/NOPE").status_code == 422
+    assert client.get("/api/gex/decisions/NOPE").status_code == 422
 
 
 def test_unpersisted_filter_is_422(client, session_factory):
-    response = client.get("/api/decisions?filter=THIS_WEEK")
+    response = client.get("/api/gex/decisions?filter=THIS_WEEK")
     assert response.status_code == 422
     assert "persisted" in response.json()["detail"]
 
 
 def test_never_captured_symbol_is_a_clean_404_with_the_gex_router_detail(client, session_factory):
-    response = client.get("/api/decisions/SPY")
+    response = client.get("/api/gex/decisions/SPY")
     assert response.status_code == 404
     assert response.json()["detail"] == "no snapshot captured yet for SPY"
 
 
 def test_universe_route_with_nothing_captured_lists_every_symbol_under_no_chain(client, session_factory):
-    response = client.get("/api/decisions")
+    response = client.get("/api/gex/decisions")
     assert response.status_code == 200
     body = response.json()
     assert body["filter"] == "ALL"
@@ -159,7 +162,7 @@ def test_seeded_fade_symbol_yields_two_ranked_fades(client, session_factory):
     _seed_bars(session_factory, "SPY", 60)
     _seed_fade_snapshot(session_factory)
 
-    response = client.get("/api/decisions")
+    response = client.get("/api/gex/decisions")
     assert response.status_code == 200
     body = response.json()
 
@@ -192,25 +195,25 @@ def test_min_score_filters_ranked_but_never_the_symbol_rows(client, session_fact
     _seed_bars(session_factory, "SPY", 60)
     _seed_fade_snapshot(session_factory)
 
-    body = client.get("/api/decisions?min_score=100").json()
+    body = client.get("/api/gex/decisions?min_score=100").json()
     assert body["ranked"] == []
     assert len(body["symbols"][0]["opportunities"]) == 2
 
-    assert client.get("/api/decisions?min_score=101").status_code == 422
+    assert client.get("/api/gex/decisions?min_score=101").status_code == 422
 
 
 def test_symbol_route_matches_the_universe_row(client, session_factory):
     _seed_bars(session_factory, "SPY", 60)
     _seed_fade_snapshot(session_factory)
 
-    single = client.get("/api/decisions/spy").json()
-    universe = client.get("/api/decisions").json()
+    single = client.get("/api/gex/decisions/spy").json()
+    universe = client.get("/api/gex/decisions").json()
     assert single == universe["symbols"][0]
 
 
 def test_symbol_without_bars_reports_no_trade_for_missing_atr(client, session_factory):
     _seed_fade_snapshot(session_factory)
-    body = client.get("/api/decisions/SPY").json()
+    body = client.get("/api/gex/decisions/SPY").json()
     assert body["atr14"] is None
     assert body["opportunities"] == []
     assert any("ATR" in r for r in body["no_trade_reasons"])
@@ -220,7 +223,7 @@ def test_symbol_without_bars_reports_no_trade_for_missing_atr(client, session_fa
 
 
 def test_history_is_empty_with_a_zeroed_summary_before_any_record(client, session_factory):
-    body = client.get("/api/decisions/history").json()
+    body = client.get("/api/gex/decisions/history").json()
     assert body["records"] == []
     assert body["summary"]["overall"]["n"] == 0
     assert body["summary"]["overall"]["hit_rate"] is None
@@ -228,19 +231,19 @@ def test_history_is_empty_with_a_zeroed_summary_before_any_record(client, sessio
 
 
 def test_history_rejects_an_unknown_outcome(client, session_factory):
-    assert client.get("/api/decisions/history?outcome=won").status_code == 422
+    assert client.get("/api/gex/decisions/history?outcome=won").status_code == 422
 
 
 def test_record_then_history_round_trip(client, session_factory):
     _seed_bars(session_factory, "SPY", 60)
     _seed_fade_snapshot(session_factory)
 
-    run = client.post("/api/decisions/record")
+    run = client.post("/api/gex/decisions/record")
     assert run.status_code == 201
     assert run.json()["recorded"] == 2
     assert run.json()["errors"] == []
 
-    body = client.get("/api/decisions/history?underlying=spy").json()
+    body = client.get("/api/gex/decisions/history?underlying=spy").json()
     assert [r["key"] for r in body["records"]] == ["FADE_CALL_WALL", "FADE_PUT_WALL"]
     record = body["records"][0]
     assert record["outcome"] == "pending"
@@ -248,4 +251,4 @@ def test_record_then_history_round_trip(client, session_factory):
     assert body["summary"]["overall"]["pending"] == 2
     assert body["summary"]["by_setup"]["fade"]["n"] == 2
 
-    assert client.post("/api/decisions/record").json()["recorded"] == 0
+    assert client.post("/api/gex/decisions/record").json()["recorded"] == 0

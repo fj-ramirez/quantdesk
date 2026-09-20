@@ -1,4 +1,4 @@
-"""Tests for `app/bars_backfill.py`. Offline: a stub provider/registry stands in for Yahoo, a
+"""Tests for `app/modules/gex/bars_backfill.py`. Offline: a stub provider/registry stands in for Yahoo, a
 temp-file SQLite `session_factory` stands in for Postgres. `today=` is always injected so
 "already up to date" skip logic is deterministic regardless of the real calendar date -- see
 `backfill`'s own docstring.
@@ -10,10 +10,11 @@ import datetime as dt
 
 import pytest
 
-from app.bars_backfill import backfill
-from app.models.bars import DailyBar
-from app.models.db import Base, get_engine, get_sessionmaker
-from app.providers.bars import UpstreamUnavailable
+from app.core.db import get_engine, get_sessionmaker
+from app.modules.gex.bars_backfill import backfill
+from app.modules.gex.models.bars import DailyBar
+from app.modules.gex.models.db import Base
+from app.modules.gex.providers.bars import UpstreamUnavailable
 
 
 @pytest.fixture
@@ -93,7 +94,7 @@ async def test_backfill_populates_rows(session_factory):
 
 
 async def test_second_backfill_run_inserts_zero_new_rows(session_factory):
-    """The T42 acceptance check: `uv run python -m app.bars_backfill --years 2 --symbols
+    """The T42 acceptance check: `uv run python -m app.modules.gex.bars_backfill --years 2 --symbols
     SPY,XLK,SPX` populates rows and a second run inserts zero new rows."""
     provider = _StubProvider(days=5)
     registry = _StubRegistry(provider)

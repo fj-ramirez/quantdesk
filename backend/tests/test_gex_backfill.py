@@ -1,4 +1,4 @@
-"""Tests for `app.gex.backfill` -- the CLI that computes GEX levels for any snapshot lacking
+"""Tests for `app.modules.gex.gex.backfill` -- the CLI that computes GEX levels for any snapshot lacking
 them. Entirely offline, same SQLite + `tmp_path` pattern as `tests/test_gex_store.py`.
 """
 
@@ -9,12 +9,13 @@ import datetime as dt
 import pytest
 from sqlalchemy import func, select
 
-from app.gex.backfill import backfill
-from app.gex.store import DEFAULT_FILTERS
-from app.models.chain import ChainSnapshot, OptionContract, Underlying
-from app.models.db import Base, GexByStrike, GexLevel, get_engine, get_sessionmaker
-from app.storage.parquet import write_snapshot
-from app.storage.repository import SnapshotRepository
+from app.core.db import get_engine, get_sessionmaker
+from app.modules.gex.gex.backfill import backfill
+from app.modules.gex.gex.store import DEFAULT_FILTERS
+from app.modules.gex.models.chain import ChainSnapshot, OptionContract, Underlying
+from app.modules.gex.models.db import Base, GexByStrike, GexLevel
+from app.modules.gex.storage.parquet import write_snapshot
+from app.modules.gex.storage.repository import SnapshotRepository
 
 
 def make_contract(symbol: str, **kw) -> OptionContract:
@@ -103,7 +104,7 @@ def test_backfill_only_processes_snapshots_missing_levels(tmp_path, session_fact
     id_a = add_snapshot(tmp_path, session_factory, minute=0)
     add_snapshot(tmp_path, session_factory, minute=15)
 
-    from app.gex.store import compute_and_store
+    from app.modules.gex.gex.store import compute_and_store
 
     compute_and_store(id_a, session_factory=session_factory, data_dir=tmp_path)
 

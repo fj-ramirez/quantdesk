@@ -1,4 +1,4 @@
-"""Tests for `app.gex.store.compute_and_store`.
+"""Tests for `app.modules.gex.gex.store.compute_and_store`.
 
 Entirely offline (SQLite + a `tmp_path` Parquet root), same isolation pattern as
 `tests/test_capture.py` and `tests/test_snapshot_repository.py`.
@@ -16,12 +16,13 @@ import datetime as dt
 import pytest
 from sqlalchemy import func, select
 
-from app.gex.engine import ExpiryFilter
-from app.gex.store import compute_and_store
-from app.models.chain import ChainSnapshot, OptionContract, Underlying
-from app.models.db import Base, GexByStrike, GexLevel, get_engine, get_sessionmaker
-from app.storage.parquet import write_snapshot
-from app.storage.repository import SnapshotRepository
+from app.core.db import get_engine, get_sessionmaker
+from app.modules.gex.gex.engine import ExpiryFilter
+from app.modules.gex.gex.store import compute_and_store
+from app.modules.gex.models.chain import ChainSnapshot, OptionContract, Underlying
+from app.modules.gex.models.db import Base, GexByStrike, GexLevel
+from app.modules.gex.storage.parquet import write_snapshot
+from app.modules.gex.storage.repository import SnapshotRepository
 
 # 2026-09-04 20:20 UTC == 16:20 America/New_York (EDT, UTC-4) -- after the PM-settlement
 # instant (16:00 NY) of a same-day expiry, exactly the "EOD capture, everything 0DTE is

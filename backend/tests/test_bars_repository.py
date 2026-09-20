@@ -1,4 +1,4 @@
-"""Tests for `app/storage/bars_repository.py`. Offline: every test uses a temp-file SQLite
+"""Tests for `app/modules/gex/storage/bars_repository.py`. Offline: every test uses a temp-file SQLite
 `session_factory`, never real Postgres -- same pattern as `test_snapshot_repository.py`.
 """
 
@@ -9,9 +9,10 @@ import datetime as dt
 import pandas as pd
 import pytest
 
-from app.models.bars import DailyBar as DailyBarIn
-from app.models.db import Base, get_engine, get_sessionmaker
-from app.storage.bars_repository import (
+from app.core.db import get_engine, get_sessionmaker
+from app.modules.gex.models.bars import DailyBar as DailyBarIn
+from app.modules.gex.models.db import Base
+from app.modules.gex.storage.bars_repository import (
     last_bar_date,
     read_bars,
     read_universe_closes,
@@ -224,7 +225,7 @@ def test_volume_column_is_64_bit_under_postgres():
     """
     from sqlalchemy.dialects import postgresql
 
-    from app.models.db import DailyBar
+    from app.modules.gex.models.db import DailyBar
 
     compiled = DailyBar.__table__.c.volume.type.compile(dialect=postgresql.dialect())
     assert compiled == "BIGINT"

@@ -20,7 +20,8 @@ from pathlib import Path
 import pytest
 from sqlalchemy import select, text
 
-from app.models.db import Base, GexByStrike, GexLevel, Snapshot, get_engine, get_sessionmaker
+from app.core.db import get_engine, get_sessionmaker
+from app.modules.gex.models.db import Base, GexByStrike, GexLevel, Snapshot
 
 _MIGRATION_PATH = (
     Path(__file__).resolve().parents[1]

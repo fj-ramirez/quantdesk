@@ -1,4 +1,4 @@
-"""Tests for `app/scan/breakouts.py` and `app/scan/indicators.py`. Fully offline: every test
+"""Tests for `app/modules/gex/scan/breakouts.py` and `app/modules/gex/scan/indicators.py`. Fully offline: every test
 builds a small synthetic `pd.DataFrame` by hand -- no database, no filesystem, no network, in
 keeping with the modules' purity contract (T43, plans/continuation/01-breakout-ledger.md).
 """
@@ -10,7 +10,7 @@ import datetime as dt
 import pandas as pd
 import pytest
 
-from app.scan.breakouts import (
+from app.modules.gex.scan.breakouts import (
     MIN_EVENTS_FOR_RATE,
     BreakoutEvent,
     Direction,
@@ -18,7 +18,7 @@ from app.scan.breakouts import (
     detect_events,
     summarize,
 )
-from app.scan.indicators import atr, true_range
+from app.modules.gex.scan.indicators import atr, true_range
 
 
 def _bars(

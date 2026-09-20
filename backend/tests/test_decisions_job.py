@@ -1,5 +1,5 @@
-"""Tests for `app/jobs/decisions.py` and `app/storage/decisions_repository.py` (T61). Offline:
-one SQLite engine serves the `decisions`, bars and snapshot tables; `app.api.scan`'s two
+"""Tests for `app/modules/gex/jobs/decisions.py` and `app/modules/gex/storage/decisions_repository.py` (T61). Offline:
+one SQLite engine serves the `decisions`, bars and snapshot tables; `app.modules.gex.api.scan`'s two
 module-level factories are monkeypatched onto it exactly as `test_decisions_api.py` does.
 """
 
@@ -9,11 +9,12 @@ import datetime as dt
 
 import pytest
 
-from app.jobs.decisions import record_decisions_job
-from app.models.bars import DailyBar as DailyBarIn
-from app.models.db import Base, get_engine, get_sessionmaker
-from app.storage import decisions_repository as repo
-from app.storage.bars_repository import upsert_bars
+from app.core.db import get_engine, get_sessionmaker
+from app.modules.gex.jobs.decisions import record_decisions_job
+from app.modules.gex.models.bars import DailyBar as DailyBarIn
+from app.modules.gex.models.db import Base
+from app.modules.gex.storage import decisions_repository as repo
+from app.modules.gex.storage.bars_repository import upsert_bars
 from tests.test_decisions_api import _seed_bars, _seed_fade_snapshot
 
 
@@ -22,9 +23,9 @@ def session_factory(tmp_path, monkeypatch):
     engine = get_engine(f"sqlite:///{tmp_path / 'test.db'}")
     Base.metadata.create_all(engine)
     factory = get_sessionmaker(engine)
-    monkeypatch.setattr("app.api.scan.get_session_factory", lambda: factory)
-    monkeypatch.setattr("app.api.scan.get_gex_session_factory", lambda: factory)
-    from app import config
+    monkeypatch.setattr("app.modules.gex.api.scan.get_session_factory", lambda: factory)
+    monkeypatch.setattr("app.modules.gex.api.scan.get_gex_session_factory", lambda: factory)
+    from app.core import config
 
     monkeypatch.setattr(config.settings, "SCAN_UNIVERSE", "SPY")
     yield factory
@@ -85,7 +86,7 @@ async def test_job_never_raises_when_the_pipeline_fails(session_factory, monkeyp
     def boom(*_args, **_kwargs):
         raise RuntimeError("pipeline down")
 
-    monkeypatch.setattr("app.jobs.decisions.build_regime_rows", boom)
+    monkeypatch.setattr("app.modules.gex.jobs.decisions.build_regime_rows", boom)
     result = await record_decisions_job(session_factory=session_factory, bars_session_factory=session_factory)
     assert result.recorded == 0
     assert result.errors and "pipeline down" in result.errors[0]

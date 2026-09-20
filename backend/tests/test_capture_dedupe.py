@@ -16,10 +16,11 @@ import datetime as dt
 import pytest
 from sqlalchemy import select
 
-from app.jobs.capture import capture_snapshot
-from app.models.chain import ChainSnapshot, Underlying
-from app.models.db import Base, Snapshot, get_engine, get_sessionmaker
-from app.storage.fingerprint import _token, chain_fingerprint
+from app.core.db import get_engine, get_sessionmaker
+from app.modules.gex.jobs.capture import capture_snapshot
+from app.modules.gex.models.chain import ChainSnapshot, Underlying
+from app.modules.gex.models.db import Base, Snapshot
+from app.modules.gex.storage.fingerprint import _token, chain_fingerprint
 
 from .test_capture import StubProvider, make_snapshot
 
@@ -189,7 +190,7 @@ async def test_content_duplicate_promotes_is_eod(tmp_path, session_factory):
     """16:15 intraday poll, then the 16:20 EOD job over a chain that is frozen after the close.
 
     Skipping without promoting would leave the day with no `is_eod` row at all, which is what
-    T29's catch-up and `GET /api/health/capture` key on -- an invisible permanent hole for a day
+    T29's catch-up and `GET /api/gex/health/capture` key on -- an invisible permanent hole for a day
     whose data is on disk.
     """
     poll = make_snapshot()
@@ -348,12 +349,12 @@ async def test_fingerprints_are_compared_per_underlying(tmp_path, session_factor
 def test_duplicate_reason_appears_in_the_structured_log(tmp_path, session_factory, caplog):
     """`_log_result` serialises the dataclass wholesale, so the new field must survive into the
     JSON line operators actually read."""
-    from app.jobs.capture import CaptureResult, _log_result
+    from app.modules.gex.jobs.capture import CaptureResult, _log_result
 
     result = CaptureResult(
         underlying="SPX", ok=True, skipped_duplicate=True, duplicate_reason="content"
     )
     assert "duplicate_reason" in dataclasses.asdict(result)
-    with caplog.at_level("INFO", logger="app.jobs.capture"):
+    with caplog.at_level("INFO", logger="app.modules.gex.jobs.capture"):
         _log_result(result)
     assert '"duplicate_reason": "content"' in caplog.text

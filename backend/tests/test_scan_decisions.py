@@ -1,4 +1,4 @@
-"""Tests for `app/scan/decisions.py` (T60). Fully offline: every test hand-builds a
+"""Tests for `app/modules/gex/scan/decisions.py` (T60). Fully offline: every test hand-builds a
 `RegimeRow` through `compute_regime_row` from a `KeyLevels`/`StrikeGex` fixture -- no database,
 no filesystem, no network -- in keeping with the module's purity contract.
 
@@ -13,9 +13,9 @@ import json
 
 import pytest
 
-from app.gex.engine import KeyLevels, StrikeGex
-from app.scan.breakouts import BreakoutEvent, BreakoutSummary, Direction, Outcome
-from app.scan.decisions import (
+from app.modules.gex.gex.engine import KeyLevels, StrikeGex
+from app.modules.gex.scan.breakouts import BreakoutEvent, BreakoutSummary, Direction, Outcome
+from app.modules.gex.scan.decisions import (
     FADE_REACH_ATR,
     FADE_STOP_BUFFER_ATR,
     LEVEL_STOP_BUFFER_ATR,
@@ -25,7 +25,7 @@ from app.scan.decisions import (
     WATCH_REACH_ATR,
     decide,
 )
-from app.scan.regime import compute_regime_row
+from app.modules.gex.scan.regime import compute_regime_row
 
 _NOW = dt.datetime(2026, 9, 9, 20, 15, tzinfo=dt.UTC)
 
@@ -276,7 +276,7 @@ def test_fade_structure_reads_the_iv_rv_ratio():
 
 
 def _short_gamma_levels(**overrides) -> KeyLevels:
-    """Net negative: `app.scan.regime` reads this as SHORT positioning -> continuation."""
+    """Net negative: `app.modules.gex.scan.regime` reads this as SHORT positioning -> continuation."""
     base = {
         "net_gex": -5.0e9,
         "call_gex": 7.0e9,

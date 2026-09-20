@@ -1,4 +1,4 @@
-"""Tests for `app/jobs/flows.py` (T52). Offline: stub providers stand in for
+"""Tests for `app/modules/gex/jobs/flows.py` (T52). Offline: stub providers stand in for
 SPDR/iShares, a temp-file SQLite `session_factory` stands in for Postgres -- same isolation
 pattern as `test_bars_job.py`.
 """
@@ -10,9 +10,10 @@ import logging
 
 import pytest
 
-from app.jobs.flows import update_flows_job
-from app.models.db import Base, get_engine, get_sessionmaker
-from app.providers.etf_flows import (
+from app.core.db import get_engine, get_sessionmaker
+from app.modules.gex.jobs.flows import update_flows_job
+from app.modules.gex.models.db import Base
+from app.modules.gex.providers.etf_flows import (
     ProviderError,
     SharesOutstandingFetchResult,
     SharesOutstandingRow,
@@ -86,7 +87,7 @@ async def test_update_flows_job_provider_error_is_a_named_family_failure_not_a_c
 ):
     provider = _StubProvider("spdr", ("XLK",), raises=ProviderError("upstream down"))
 
-    with caplog.at_level(logging.ERROR, logger="app.jobs.flows"):
+    with caplog.at_level(logging.ERROR, logger="app.modules.gex.jobs.flows"):
         results = await update_flows_job(providers=[provider], session_factory=session_factory)
 
     assert results[0].ok is False
@@ -96,7 +97,7 @@ async def test_update_flows_job_provider_error_is_a_named_family_failure_not_a_c
 async def test_update_flows_job_survives_a_non_provider_error(session_factory, caplog):
     provider = _StubProvider("spdr", ("XLK",), raises=RuntimeError("a bug, not a ProviderError"))
 
-    with caplog.at_level(logging.ERROR, logger="app.jobs.flows"):
+    with caplog.at_level(logging.ERROR, logger="app.modules.gex.jobs.flows"):
         results = await update_flows_job(providers=[provider], session_factory=session_factory)
 
     assert results[0].ok is False
@@ -120,7 +121,7 @@ async def test_update_flows_job_per_symbol_failures_are_named_not_a_crash(sessio
         "ishares", ("IWM", "TLT"), rows=[_row("TLT")], failures={"IWM": "moved page"}
     )
 
-    with caplog.at_level(logging.ERROR, logger="app.jobs.flows"):
+    with caplog.at_level(logging.ERROR, logger="app.modules.gex.jobs.flows"):
         results = await update_flows_job(providers=[provider], session_factory=session_factory)
 
     assert results[0].ok is True

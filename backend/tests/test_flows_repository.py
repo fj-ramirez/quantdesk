@@ -1,4 +1,4 @@
-"""Tests for `app/storage/flows_repository.py` (T52). Offline: every test uses a temp-file
+"""Tests for `app/modules/gex/storage/flows_repository.py` (T52). Offline: every test uses a temp-file
 SQLite `session_factory`, never real Postgres -- same pattern as `test_bars_repository.py`.
 """
 
@@ -9,9 +9,10 @@ import datetime as dt
 import pandas as pd
 import pytest
 
-from app.models.db import Base, get_engine, get_sessionmaker
-from app.providers.etf_flows import SharesOutstandingRow
-from app.storage.flows_repository import (
+from app.core.db import get_engine, get_sessionmaker
+from app.modules.gex.models.db import Base
+from app.modules.gex.providers.etf_flows import SharesOutstandingRow
+from app.modules.gex.storage.flows_repository import (
     insert_new_rows,
     last_as_of_date,
     read_shares_outstanding,

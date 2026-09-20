@@ -1,4 +1,4 @@
-"""Tests for app.gex.greeks.
+"""Tests for app.modules.gex.gex.greeks.
 
 Every number the dashboard shows traces back to ``gamma``, so this suite is written to be
 readable *without trusting the implementation*: the reference values below are computed from
@@ -23,9 +23,9 @@ from zoneinfo import ZoneInfo
 import numpy as np
 import pytest
 
-from app.config import settings
-from app.gex import greeks as g
-from app.models.chain import Right, Settlement
+from app.core.config import settings
+from app.modules.gex.gex import greeks as g
+from app.modules.gex.models.chain import Right, Settlement
 
 NY = ZoneInfo("America/New_York")
 

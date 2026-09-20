@@ -1,5 +1,5 @@
-"""Tests for `app/api/bars.py`. Offline: `get_session_factory` is monkeypatched at its import
-site in `app.api.bars`, no real Postgres -- same pattern as `test_snapshots_api.py`.
+"""Tests for `app/modules/gex/api/bars.py`. Offline: `get_session_factory` is monkeypatched at its import
+site in `app.modules.gex.api.bars`, no real Postgres -- same pattern as `test_snapshots_api.py`.
 """
 
 from __future__ import annotations
@@ -10,16 +10,19 @@ import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
-from app.api.bars import router
-from app.models.bars import DailyBar as DailyBarIn
-from app.models.db import Base, get_engine, get_sessionmaker
-from app.storage.bars_repository import upsert_bars
+from app.core.db import get_engine, get_sessionmaker
+from app.modules.gex.api.bars import router
+from app.modules.gex.models.bars import DailyBar as DailyBarIn
+from app.modules.gex.models.db import Base
+from app.modules.gex.storage.bars_repository import upsert_bars
 
 
 @pytest.fixture
 def client():
     app = FastAPI()
-    app.include_router(router, prefix="/api")
+    # T75: `/api/gex`, matching how `app/main.py` mounts `app.modules.gex.router` -- these
+    # per-router mini-apps exist to keep the tests offline, not to serve a different URL space.
+    app.include_router(router, prefix="/api/gex")
     return TestClient(app)
 
 
@@ -28,7 +31,7 @@ def session_factory(tmp_path, monkeypatch):
     engine = get_engine(f"sqlite:///{tmp_path / 'test.db'}")
     Base.metadata.create_all(engine)
     factory = get_sessionmaker(engine)
-    monkeypatch.setattr("app.api.bars.get_session_factory", lambda: factory)
+    monkeypatch.setattr("app.modules.gex.api.bars.get_session_factory", lambda: factory)
     yield factory
     engine.dispose()
 
@@ -55,7 +58,7 @@ def test_get_bars_for_spy_returns_stored_rows(client, session_factory):
         session_factory=session_factory,
     )
 
-    response = client.get("/api/bars/SPY", params={"start": "2026-01-01"})
+    response = client.get("/api/gex/bars/SPY", params={"start": "2026-01-01"})
 
     assert response.status_code == 200
     body = response.json()
@@ -66,7 +69,7 @@ def test_get_bars_for_spy_returns_stored_rows(client, session_factory):
 
 
 def test_get_bars_for_unknown_symbol_returns_empty_list_not_404(client, session_factory):
-    response = client.get("/api/bars/NOPE")
+    response = client.get("/api/gex/bars/NOPE")
     assert response.status_code == 200
     assert response.json() == []
 
@@ -77,7 +80,7 @@ def test_get_bars_respects_start_and_end(client, session_factory):
         session_factory=session_factory,
     )
     response = client.get(
-        "/api/bars/SPY", params={"start": "2026-09-02", "end": "2026-09-03"}
+        "/api/gex/bars/SPY", params={"start": "2026-09-02", "end": "2026-09-03"}
     )
     assert response.status_code == 200
     dates = [row["date"] for row in response.json()]
@@ -86,7 +89,7 @@ def test_get_bars_respects_start_and_end(client, session_factory):
 
 def test_get_bars_symbol_is_case_insensitive(client, session_factory):
     upsert_bars([_bar("SPY", dt.date(2026, 9, 4), 650.0)], session_factory=session_factory)
-    response = client.get("/api/bars/spy")
+    response = client.get("/api/gex/bars/spy")
     assert response.status_code == 200
     assert len(response.json()) == 1
 
@@ -98,7 +101,7 @@ def test_get_bars_for_percent_encoded_vix(client, session_factory):
     upsert_bars(
         [_bar("^VIX", dt.date(2026, 9, 4), 16.15, volume=0)], session_factory=session_factory
     )
-    response = client.get("/api/bars/%5EVIX")
+    response = client.get("/api/gex/bars/%5EVIX")
     assert response.status_code == 200
     body = response.json()
     assert len(body) == 1
@@ -111,7 +114,7 @@ def test_get_bars_for_literal_caret_vix(client, session_factory):
     upsert_bars(
         [_bar("^VIX", dt.date(2026, 9, 4), 16.15, volume=0)], session_factory=session_factory
     )
-    response = client.get("/api/bars/^VIX")
+    response = client.get("/api/gex/bars/^VIX")
     assert response.status_code == 200
     assert len(response.json()) == 1
 
@@ -124,21 +127,21 @@ def test_get_bars_spy_and_vix_are_distinct(client, session_factory):
         ],
         session_factory=session_factory,
     )
-    spy = client.get("/api/bars/SPY").json()
-    vix = client.get("/api/bars/%5EVIX").json()
+    spy = client.get("/api/gex/bars/SPY").json()
+    vix = client.get("/api/gex/bars/%5EVIX").json()
     assert len(spy) == 1
     assert len(vix) == 1
     assert spy[0]["close"] == pytest.approx(650.0)
     assert vix[0]["close"] == pytest.approx(16.15)
 
 
-# --- /api/universe -----------------------------------------------------------------------------
+# --- /api/gex/universe -----------------------------------------------------------------------------
 
 
 def test_get_universe_returns_scan_universe(client, monkeypatch):
-    from app import config
+    from app.core import config
 
     monkeypatch.setattr(config.settings, "SCAN_UNIVERSE", "SPY,QQQ,^VIX")
-    response = client.get("/api/universe")
+    response = client.get("/api/gex/universe")
     assert response.status_code == 200
     assert response.json() == {"symbols": ["SPY", "QQQ", "^VIX"]}

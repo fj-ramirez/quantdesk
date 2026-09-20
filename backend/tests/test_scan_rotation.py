@@ -1,10 +1,10 @@
-"""Tests for `app/scan/rotation.py` (T50, plans/continuation/04-sector-rotation.md). Fully
+"""Tests for `app/modules/gex/scan/rotation.py` (T50, plans/continuation/04-sector-rotation.md). Fully
 offline: every test builds a small synthetic `pd.DataFrame`/`pd.Series` -- no database, no
 filesystem, no network, in keeping with the module's purity contract.
 
 Every hand-checked fixture value in this file was independently re-derived a second way before
 being pasted into an assertion -- either a closed-form (the constant-multiple case) or a plain,
-unoptimized Python loop written straight from the formula with no calls into `app.scan
+unoptimized Python loop written straight from the formula with no calls into `app.modules.gex.scan
 .rotation` (the piecewise-linear RRG sequence, and the 3-symbol relative-return fixture). Both
 derivations, and their output, are also recorded in `docs/validation-scan.md`.
 """
@@ -15,7 +15,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from app.scan.rotation import (
+from app.modules.gex.scan.rotation import (
     SectorBreadth,
     relative_returns,
     rrg_approx,
@@ -214,14 +214,14 @@ def test_relative_returns_hand_built_3_symbol_fixture_matches_1e9():
     `A`/`BENCH` have 10 full rows; `C` has only its last 4 rows populated (rows 0-5 `NaN`,
     simulating a symbol added to the universe partway through the window). Independently
     re-derived with a plain Python loop reading straight off the formula
-    `(a_t/a_{t-n})/(b_t/b_{t-n}) - 1` (not calling `app.scan.rotation` at all):
+    `(a_t/a_{t-n})/(b_t/b_{t-n}) - 1` (not calling `app.modules.gex.scan.rotation` at all):
 
         return_2:  A=-0.014136904761904656, BENCH(self)=0.0, C=-0.016089108910890992
         return_5:  A=0.05519480519480524,  BENCH(self)=0.0, C=NaN (only 4 rows -- `C[t-5]`
                    does not exist)
 
     `return_5` for `C` is `NaN`, not `None` -- `relative_returns` returns a `DataFrame`, and
-    this module's convention (matching `app.scan.indicators`) is `NaN` for "insufficient
+    this module's convention (matching `app.modules.gex.scan.indicators`) is `NaN` for "insufficient
     history" at the `DataFrame`/`Series` level; only `SectorBreadth`, a frozen dataclass,
     translates to `None` at its own boundary.
     """

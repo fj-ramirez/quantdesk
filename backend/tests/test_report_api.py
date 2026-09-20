@@ -1,9 +1,9 @@
-"""Tests for `app/api/report.py` (T39).
+"""Tests for `app/modules/gex/api/report.py` (T39).
 
 Entirely offline, in the same shape as `tests/test_gex_api.py`: SQLite plus a `tmp_path`
 Parquet root, the committed GLD/DIA Cboe fixtures run through the real `CboeProvider` to get
-genuine `ChainSnapshot`s, then written and indexed exactly as `app.jobs.capture` would.
-`get_session_factory` is monkeypatched at its import site in `app.api.report`.
+genuine `ChainSnapshot`s, then written and indexed exactly as `app.modules.gex.jobs.capture` would.
+`get_session_factory` is monkeypatched at its import site in `app.modules.gex.api.report`.
 
 The load-bearing test here is `test_report_matches_a_direct_compute_and_build` — T39's own
 acceptance criterion. It re-runs `compute_all` + `build_report` in the test process and
@@ -23,14 +23,15 @@ import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
-from app.api.report import router
-from app.gex.engine import ExpiryFilter, compute_all, to_frame
-from app.gex.report import build_report, render_text
-from app.models.chain import ChainSnapshot
-from app.models.db import Base, get_engine, get_sessionmaker
-from app.providers.cboe import CboeProvider
-from app.storage.parquet import write_snapshot
-from app.storage.repository import SnapshotRepository
+from app.core.db import get_engine, get_sessionmaker
+from app.modules.gex.api.report import router
+from app.modules.gex.gex.engine import ExpiryFilter, compute_all, to_frame
+from app.modules.gex.gex.report import build_report, render_text
+from app.modules.gex.models.chain import ChainSnapshot
+from app.modules.gex.models.db import Base
+from app.modules.gex.providers.cboe import CboeProvider
+from app.modules.gex.storage.parquet import write_snapshot
+from app.modules.gex.storage.repository import SnapshotRepository
 
 FIXTURES_DIR = Path(__file__).parent / "fixtures" / "cboe"
 
@@ -38,7 +39,9 @@ FIXTURES_DIR = Path(__file__).parent / "fixtures" / "cboe"
 @pytest.fixture
 def client():
     app = FastAPI()
-    app.include_router(router, prefix="/api")
+    # T75: `/api/gex`, matching how `app/main.py` mounts `app.modules.gex.router` -- these
+    # per-router mini-apps exist to keep the tests offline, not to serve a different URL space.
+    app.include_router(router, prefix="/api/gex")
     return TestClient(app)
 
 
@@ -107,7 +110,7 @@ def indexed_xlk(tmp_path, session_factory, xlk_snapshot):
 
 
 def _patch(monkeypatch, session_factory):
-    monkeypatch.setattr("app.api.report.get_session_factory", lambda: session_factory)
+    monkeypatch.setattr("app.modules.gex.api.report.get_session_factory", lambda: session_factory)
 
 
 # --------------------------------------------------------------------------------------
@@ -118,7 +121,7 @@ def _patch(monkeypatch, session_factory):
 def test_report_matches_a_direct_compute_and_build(
     client, monkeypatch, session_factory, gld_snapshot, indexed_gld
 ):
-    """`GET /api/report/GLD` must equal a direct `compute_all` + `build_report` call.
+    """`GET /api/gex/report/GLD` must equal a direct `compute_all` + `build_report` call.
 
     Compared through the pure module's own `to_dict()` so this asserts the *whole* payload,
     not a handful of spot-checked fields. Only `snapshot` is excluded: the API merges `id`,
@@ -131,7 +134,7 @@ def test_report_matches_a_direct_compute_and_build(
     result = compute_all(gld_snapshot, ExpiryFilter.ALL, frame=frame)
     expected = build_report(result, frame, ExpiryFilter.ALL).to_dict()
 
-    body = client.get("/api/report/GLD", params={"filter": "ALL"}).json()
+    body = client.get("/api/gex/report/GLD", params={"filter": "ALL"}).json()
 
     assert body["snapshot"]["id"] == indexed_gld
     assert body["snapshot"]["is_eod"] is True
@@ -160,7 +163,7 @@ def test_report_text_format_matches_render_text(
     result = compute_all(gld_snapshot, ExpiryFilter.ALL, frame=frame)
     expected = render_text(build_report(result, frame, ExpiryFilter.ALL))
 
-    response = client.get("/api/report/GLD", params={"format": "text"})
+    response = client.get("/api/gex/report/GLD", params={"format": "text"})
 
     assert response.status_code == 200
     assert response.headers["content-type"].startswith("text/plain")
@@ -174,7 +177,7 @@ def test_report_text_format_matches_render_text(
 
 def test_report_carries_every_section(client, monkeypatch, session_factory, indexed_gld):
     _patch(monkeypatch, session_factory)
-    body = client.get("/api/report/GLD").json()
+    body = client.get("/api/gex/report/GLD").json()
 
     assert body["underlying"] == "GLD"
     assert body["filter"] == "ALL"
@@ -205,7 +208,7 @@ def test_iv_regime_label_is_null_on_a_single_snapshot_database(
     history" for this; it must never see a fabricated band.
     """
     _patch(monkeypatch, session_factory)
-    regime = client.get("/api/report/GLD").json()["iv_regime"]
+    regime = client.get("/api/gex/report/GLD").json()["iv_regime"]
 
     assert regime["atm_iv"] is not None
     assert regime["label"] is None
@@ -227,7 +230,7 @@ def test_ratios_are_puts_over_calls_over_the_wire(
     numerator over its own denominator, which is what a reader would check.
     """
     _patch(monkeypatch, session_factory)
-    ratios = client.get("/api/report/GLD").json()["ratios"]
+    ratios = client.get("/api/gex/report/GLD").json()["ratios"]
 
     assert ratios["open_interest_ratio"] == pytest.approx(
         ratios["put_open_interest"] / ratios["call_open_interest"]
@@ -243,7 +246,7 @@ def test_ratios_are_puts_over_calls_over_the_wire(
 
 def test_resistance_stays_above_support(client, monkeypatch, session_factory, indexed_dia):
     _patch(monkeypatch, session_factory)
-    levels = client.get("/api/report/DIA").json()["levels"]
+    levels = client.get("/api/gex/report/DIA").json()["levels"]
 
     if levels["resistance"] and levels["support"]:
         assert min(row["strike"] for row in levels["resistance"]) > max(
@@ -256,7 +259,7 @@ def test_empty_filter_scope_returns_a_report_not_an_error(
 ):
     """`ZERO_DTE` on an EOD capture admits nothing. 200 with empty sections, never a 500."""
     _patch(monkeypatch, session_factory)
-    response = client.get("/api/report/GLD", params={"filter": "ZERO_DTE"})
+    response = client.get("/api/gex/report/GLD", params={"filter": "ZERO_DTE"})
 
     assert response.status_code == 200
     body = response.json()
@@ -276,7 +279,7 @@ def test_uncaptured_symbol_is_a_clean_404_with_a_specific_detail(
 ):
     """The exact 404 body T37's empty state keys off. Not a 500, not a bare body."""
     _patch(monkeypatch, session_factory)
-    response = client.get("/api/report/SPX")
+    response = client.get("/api/gex/report/SPX")
 
     assert response.status_code == 404
     assert response.json()["detail"] == "no snapshot captured yet for SPX"
@@ -284,21 +287,21 @@ def test_uncaptured_symbol_is_a_clean_404_with_a_specific_detail(
 
 def test_unsupported_underlying_is_422(client, monkeypatch, session_factory):
     _patch(monkeypatch, session_factory)
-    response = client.get("/api/report/NOPE")
+    response = client.get("/api/gex/report/NOPE")
     assert response.status_code == 422
     assert "unsupported underlying" in response.json()["detail"]
 
 
 def test_unknown_filter_is_422(client, monkeypatch, session_factory, indexed_gld):
     _patch(monkeypatch, session_factory)
-    response = client.get("/api/report/GLD", params={"filter": "SOMEDAY"})
+    response = client.get("/api/gex/report/GLD", params={"filter": "SOMEDAY"})
     assert response.status_code == 422
     assert "unknown filter" in response.json()["detail"]
 
 
 def test_unknown_format_is_422(client, monkeypatch, session_factory, indexed_gld):
     _patch(monkeypatch, session_factory)
-    response = client.get("/api/report/GLD", params={"format": "pdf"})
+    response = client.get("/api/gex/report/GLD", params={"format": "pdf"})
     assert response.status_code == 422
     assert "unknown format" in response.json()["detail"]
 
@@ -308,7 +311,7 @@ def test_explicit_expiry_filter_round_trips(client, monkeypatch, session_factory
     _patch(monkeypatch, session_factory)
     expiry = min(c.expiry for c in gld_snapshot.contracts)
 
-    response = client.get("/api/report/GLD", params={"filter": f"EXPIRIES:{expiry.isoformat()}"})
+    response = client.get("/api/gex/report/GLD", params={"filter": f"EXPIRIES:{expiry.isoformat()}"})
 
     assert response.status_code == 200
     assert response.json()["filter"] == f"EXPIRIES:{expiry.isoformat()}"
@@ -316,7 +319,7 @@ def test_explicit_expiry_filter_round_trips(client, monkeypatch, session_factory
 
 def test_pinned_snapshot_id_is_honoured(client, monkeypatch, session_factory, indexed_gld):
     _patch(monkeypatch, session_factory)
-    body = client.get("/api/report/GLD", params={"snapshot": indexed_gld}).json()
+    body = client.get("/api/gex/report/GLD", params={"snapshot": indexed_gld}).json()
     assert body["snapshot"]["id"] == indexed_gld
 
 
@@ -324,7 +327,7 @@ def test_pinned_snapshot_for_the_wrong_symbol_is_404(
     client, monkeypatch, session_factory, indexed_gld
 ):
     _patch(monkeypatch, session_factory)
-    response = client.get("/api/report/DIA", params={"snapshot": indexed_gld})
+    response = client.get("/api/gex/report/DIA", params={"snapshot": indexed_gld})
     assert response.status_code == 404
 
 
@@ -340,10 +343,10 @@ def test_absent_cfd_spot_leaves_the_response_unchanged(
     request built before T41 existed would have returned."""
     _patch(monkeypatch, session_factory)
 
-    without = client.get("/api/report/GLD").json()
+    without = client.get("/api/gex/report/GLD").json()
     assert without["cfd"] is None
 
-    with_param_omitted_entirely = client.get("/api/report/GLD", params={"filter": "ALL"}).json()
+    with_param_omitted_entirely = client.get("/api/gex/report/GLD", params={"filter": "ALL"}).json()
     assert with_param_omitted_entirely["cfd"] is None
     without.pop("generated_at")
     with_param_omitted_entirely.pop("generated_at")
@@ -353,7 +356,7 @@ def test_absent_cfd_spot_leaves_the_response_unchanged(
 def test_cfd_spot_returns_a_converted_block_matching_the_percentage_invariant(
     client, monkeypatch, session_factory, gld_snapshot, indexed_gld
 ):
-    """`GET /api/report/GLD?cfd_spot=4412.50` -- T41's acceptance criterion at the wire.
+    """`GET /api/gex/report/GLD?cfd_spot=4412.50` -- T41's acceptance criterion at the wire.
 
     Cross-checked against a direct `translate_to_cfd` call so the endpoint cannot drift from
     the pure module, and the percentage-distance invariant is asserted on the actual numbers
@@ -366,7 +369,7 @@ def test_cfd_spot_returns_a_converted_block_matching_the_percentage_invariant(
     result = compute_all(gld_snapshot, ExpiryFilter.ALL, frame=frame)
     expected = build_report(result, frame, ExpiryFilter.ALL, cfd_spot=cfd_spot).to_dict()
 
-    body = client.get("/api/report/GLD", params={"cfd_spot": cfd_spot}).json()
+    body = client.get("/api/gex/report/GLD", params={"cfd_spot": cfd_spot}).json()
 
     assert body["cfd"] is not None
     assert body["cfd"] == expected["cfd"]
@@ -378,7 +381,7 @@ def test_cfd_spot_returns_a_converted_block_matching_the_percentage_invariant(
         assert translated["distance_pct"] == native["distance_pct"]
 
     # Never-convert fields: unaffected by the presence of `cfd_spot`.
-    without_cfd = client.get("/api/report/GLD").json()
+    without_cfd = client.get("/api/gex/report/GLD").json()
     assert body["positioning"] == without_cfd["positioning"]
     assert body["ratios"] == without_cfd["ratios"]
     assert body["iv_regime"] == without_cfd["iv_regime"]
@@ -393,7 +396,7 @@ def test_bad_cfd_spot_is_rejected_with_422(
     infinities -- `Query(..., gt=0)` handles the numeric cases and FastAPI's own type
     validation handles the non-numeric one."""
     _patch(monkeypatch, session_factory)
-    response = client.get("/api/report/GLD", params={"cfd_spot": bad_value})
+    response = client.get("/api/gex/report/GLD", params={"cfd_spot": bad_value})
     assert response.status_code == 422
 
 
@@ -412,7 +415,7 @@ def test_cfd_spot_for_an_unmapped_underlying_degrades_to_no_cfd_mapping(
     request succeeds, `cfd` stays `null`, and every other field is unaffected."""
     _patch(monkeypatch, session_factory)
 
-    response = client.get("/api/report/XLK", params={"cfd_spot": 250.0})
+    response = client.get("/api/gex/report/XLK", params={"cfd_spot": 250.0})
 
     assert response.status_code == 200
     body = response.json()
@@ -420,7 +423,7 @@ def test_cfd_spot_for_an_unmapped_underlying_degrades_to_no_cfd_mapping(
 
     # Identical to the response with no `cfd_spot` at all, except the timestamp the pure
     # module reads no clock for -- the degrade must be silent, not merely non-crashing.
-    without = client.get("/api/report/XLK").json()
+    without = client.get("/api/gex/report/XLK").json()
     body.pop("generated_at")
     without.pop("generated_at")
     assert body == without
@@ -432,6 +435,6 @@ def test_cfd_spot_for_a_mapped_underlying_is_unaffected_by_the_degrade(
     """The degrade in `_build` must not touch the five symbols `CFD_INSTRUMENTS` already
     covers -- GLD's existing T41 conversion still fires exactly as before."""
     _patch(monkeypatch, session_factory)
-    response = client.get("/api/report/GLD", params={"cfd_spot": 4412.50})
+    response = client.get("/api/gex/report/GLD", params={"cfd_spot": 4412.50})
     assert response.status_code == 200
     assert response.json()["cfd"] is not None

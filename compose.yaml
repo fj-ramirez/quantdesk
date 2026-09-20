@@ -62,7 +62,7 @@ services:
       # no reloader) so that a plain `docker compose build` and CI both exercise the artifact
       # that actually ships.
       target: runtime
-    environment:
+    environment: &backend_environment
       # Assembled from the same three variables postgres itself uses, so the credentials have
       # exactly one source. Note for whoever sets these: this is a URL, so a password
       # containing `@`, `:`, `/`, `?` or `#` must be percent-encoded here or the connection
@@ -93,6 +93,38 @@ services:
       # DATA_DIR. A bind mount in both environments: the Parquet tree is the one artifact in
       # this stack that is genuinely unbackfillable (the free Cboe endpoint serves only "now"),
       # so it stays visible and copyable on the host rather than hiding in a named volume.
+      - ./data:/data
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  # T75. The APScheduler jobs and the T29 startup catch-up used to run inside the API process's
+  # FastAPI lifespan. They are a separate container now, and this is the service that runs them.
+  #
+  # Why the split. Three modules will share one API process (`plans/quantdesk/README.md`), and
+  # background work in that process is wrong twice over: a `--reload` dev restart re-runs the
+  # catch-up, and redeploying the API for a change that has nothing to do with GEX interrupts a
+  # capture. `app/main.py` now starts nothing at all, which is what lets research (T77) and
+  # terminal (T79) add their own workers without the API growing a third scheduler.
+  #
+  # Same Dockerfile and the same build target as `backend`, not a second stage: the worker
+  # needs identical dependencies, identical source and the identical non-root user, and
+  # differs only in its command. A separate stage would be another thing to keep in sync for
+  # nothing. (The dev and prod overlays give it its own *tag* -- see compose.override.yaml for
+  # why two building services cannot share one.)
+  gex-capture:
+    build:
+      context: ./backend
+      target: runtime
+    # No `alembic upgrade head` here, deliberately -- the `backend` service runs it, and two
+    # containers racing `upgrade head` against one Postgres is a worse failure than the one it
+    # would prevent. The worker waits for the schema instead; see `_wait_for_schema` in
+    # `app/workers/gex_capture.py` for why that wait exists at all.
+    command: ["python", "-m", "app.workers.gex_capture"]
+    environment: *backend_environment
+    volumes:
+      # The same DATA_DIR bind mount as `backend`. This container is the one that actually
+      # *writes* the Parquet tree -- the API only reads it, plus the manual capture route.
       - ./data:/data
     depends_on:
       postgres:

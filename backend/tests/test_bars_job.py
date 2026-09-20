@@ -1,4 +1,4 @@
-"""Tests for `app/jobs/bars.py`. Offline: a stub provider/registry stands in for Yahoo, a
+"""Tests for `app/modules/gex/jobs/bars.py`. Offline: a stub provider/registry stands in for Yahoo, a
 temp-file SQLite `session_factory` stands in for Postgres -- same isolation pattern as
 `test_capture.py`.
 """
@@ -10,10 +10,11 @@ import logging
 
 import pytest
 
-from app.jobs.bars import update_bars_job, update_one_symbol
-from app.models.bars import DailyBar
-from app.models.db import Base, get_engine, get_sessionmaker
-from app.providers.bars import UpstreamUnavailable
+from app.core.db import get_engine, get_sessionmaker
+from app.modules.gex.jobs.bars import update_bars_job, update_one_symbol
+from app.modules.gex.models.bars import DailyBar
+from app.modules.gex.models.db import Base
+from app.modules.gex.providers.bars import UpstreamUnavailable
 
 
 @pytest.fixture
@@ -99,7 +100,7 @@ async def test_update_one_symbol_survives_a_non_provider_error(session_factory, 
             pass
 
     registry = _StubRegistry(_BuggyProvider())
-    with caplog.at_level(logging.ERROR, logger="app.jobs.bars"):
+    with caplog.at_level(logging.ERROR, logger="app.modules.gex.jobs.bars"):
         result = await update_one_symbol(
             "SPY", registry=registry, session_factory=session_factory
         )
@@ -116,7 +117,7 @@ async def test_update_bars_job_one_symbol_failing_does_not_stop_the_others(
     provider = _StubProvider(fail_for={"QQQ"})
     registry = _StubRegistry(provider)
 
-    with caplog.at_level(logging.ERROR, logger="app.jobs.bars"):
+    with caplog.at_level(logging.ERROR, logger="app.modules.gex.jobs.bars"):
         results = await update_bars_job(
             ["SPY", "QQQ", "DIA"], registry=registry, session_factory=session_factory
         )
@@ -145,7 +146,7 @@ async def test_update_bars_job_closes_a_registry_it_owns(session_factory):
 
 
 async def test_update_bars_job_defaults_to_scan_universe(session_factory, monkeypatch):
-    from app import config
+    from app.core import config
 
     monkeypatch.setattr(config.settings, "SCAN_UNIVERSE", "SPY,QQQ")
     provider = _StubProvider()

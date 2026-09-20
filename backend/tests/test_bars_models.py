@@ -1,4 +1,4 @@
-"""Tests for `app/models/bars.py`."""
+"""Tests for `app/modules/gex/models/bars.py`."""
 
 from __future__ import annotations
 
@@ -7,7 +7,7 @@ import datetime as dt
 import pytest
 from pydantic import ValidationError
 
-from app.models.bars import DailyBar
+from app.modules.gex.models.bars import DailyBar
 
 
 def _bar(**overrides) -> dict:

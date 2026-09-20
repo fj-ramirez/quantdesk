@@ -13,11 +13,12 @@ import datetime as dt
 import pytest
 from sqlalchemy import select
 
-from app.jobs.intraday_bars import session_daily_bar, update_one_symbol_intraday
-from app.models.bars import IntradayBar as IntradayBarIn
-from app.models.db import Base, DailyBar, IntradayBar, get_engine, get_sessionmaker
-from app.providers.yahoo import YahooBarProvider
-from app.storage.bars_repository import read_intraday_bars, upsert_intraday_bars
+from app.core.db import get_engine, get_sessionmaker
+from app.modules.gex.jobs.intraday_bars import session_daily_bar, update_one_symbol_intraday
+from app.modules.gex.models.bars import IntradayBar as IntradayBarIn
+from app.modules.gex.models.db import Base, DailyBar, IntradayBar
+from app.modules.gex.providers.yahoo import YahooBarProvider
+from app.modules.gex.storage.bars_repository import read_intraday_bars, upsert_intraday_bars
 
 # 2026-09-11 13:30:00Z == 09:30 ET, the session open. Buckets every 300 s.
 OPEN_EPOCH = 1789133400
@@ -220,7 +221,7 @@ def test_session_bar_aggregates_todays_buckets(session_factory):
 
 def test_session_bar_prefers_the_live_quote_for_close(session_factory):
     """The quote is up to one interval fresher than the newest bucket's close."""
-    from app.models.bars import LiveQuote
+    from app.modules.gex.models.bars import LiveQuote
 
     upsert_intraday_bars([_bar(0, close=100.5)], session_factory=session_factory)
     day = dt.datetime.fromtimestamp(OPEN_EPOCH, dt.UTC).date()
@@ -288,7 +289,7 @@ async def test_one_symbol_poll_reports_insert_and_update_counts(session_factory)
 
 async def test_a_provider_failure_returns_a_result_rather_than_raising(session_factory):
     """One symbol's bad poll must never stop the other five."""
-    from app.providers.bars import UpstreamUnavailable
+    from app.modules.gex.providers.bars import UpstreamUnavailable
 
     provider = _StubProvider([], error=UpstreamUnavailable("yahoo exploded"))
     result = await update_one_symbol_intraday("SPY", provider=provider, session_factory=session_factory)

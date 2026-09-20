@@ -1,6 +1,6 @@
 """Tests for T30: `Snapshot.parquet_path` must genuinely mean "relative to DATA_DIR", not
 whatever `write_snapshot` happened to return, and every reader must resolve it through the one
-shared helper (`app.storage.parquet.resolve_snapshot_path`) rather than reinventing the join.
+shared helper (`app.modules.gex.storage.parquet.resolve_snapshot_path`) rather than reinventing the join.
 
 The centerpiece scenario is the one the task exists to fix: a row written while `DATA_DIR`
 pointed at one directory must still resolve after `DATA_DIR` (or the caller's `data_dir`
@@ -17,15 +17,16 @@ import shutil
 
 import pytest
 
-from app.models.chain import ChainSnapshot, Underlying
-from app.models.db import Base, Snapshot, get_engine, get_sessionmaker
-from app.storage.parquet import (
+from app.core.db import get_engine, get_sessionmaker
+from app.modules.gex.models.chain import ChainSnapshot, Underlying
+from app.modules.gex.models.db import Base, Snapshot
+from app.modules.gex.storage.parquet import (
     read_snapshot,
     resolve_snapshot_path,
     to_data_dir_relative_path,
     write_snapshot,
 )
-from app.storage.repository import SnapshotRepository
+from app.modules.gex.storage.repository import SnapshotRepository
 
 
 def make_snapshot(**kw) -> ChainSnapshot:
@@ -85,7 +86,7 @@ def test_row_written_under_one_data_dir_resolves_after_data_dir_changes(tmp_path
 def test_resolve_snapshot_path_defaults_to_settings_data_dir(tmp_path, session, monkeypatch):
     """No explicit `data_dir` at either end -- both `write_snapshot` and `resolve_snapshot_path`
     must independently fall back to `settings.DATA_DIR`, and still agree."""
-    from app import config
+    from app.core import config
 
     monkeypatch.setattr(config.settings, "DATA_DIR", str(tmp_path))
     snapshot = make_snapshot()
@@ -162,7 +163,7 @@ def test_resolve_snapshot_path_normalizes_a_backslash_stored_value(tmp_path, ses
 
 
 # --- Legacy-row fallback (the migration decision, see the module docstring in
-# app/storage/parquet.py) -------------------------------------------------------------------
+# app/modules/gex/storage/parquet.py) -------------------------------------------------------------------
 
 
 def test_resolve_snapshot_path_falls_back_for_a_legacy_absolute_row(tmp_path, session):

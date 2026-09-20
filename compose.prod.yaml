@@ -54,7 +54,7 @@ services:
     # each other. If this image does not exist yet, compose builds it -- correctly targeted --
     # rather than reusing a dev image that happens to share a name.
     image: gex-backend:prod
-    environment:
+    environment: &prod_backend_environment
       DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:?required - set it in .env}:${POSTGRES_PASSWORD:?required - set it in .env}@postgres:5432/${POSTGRES_DB:?required - set it in .env}
     networks:
       # Both: `internal` to reach postgres, `edge` so Caddy can reach it on 8001. This is the
@@ -91,6 +91,30 @@ services:
       # migration on a populated database can take a while, and failing the healthcheck during
       # it would mark a perfectly healthy deploy as broken.
       start_period: 60s
+    logging:
+      driver: json-file
+      options:
+        max-size: 10m
+        max-file: "3"
+
+  # T75's capture worker. `internal` only: it talks to Postgres and to the outside world
+  # (Cboe, Yahoo, issuer pages) but nothing ever talks to *it*, so it has no reason to be on
+  # `edge` and no port to publish.
+  #
+  # No healthcheck, deliberately. There is no HTTP surface to probe and no cheap question worth
+  # asking -- "is the process alive" is what `restart: unless-stopped` already handles, and "did
+  # the 16:20 capture actually happen" is what `GET /api/gex/health/capture` answers properly,
+  # across the whole symbol universe, from the API. A shallow healthcheck here would mostly
+  # succeed while capture was quietly broken, which is worse than none.
+  gex-capture:
+    # A distinct tag from `gex-backend:prod`, for the reason spelled out in
+    # compose.override.yaml: two building services cannot share one tag without racing the
+    # export. Same Dockerfile, same `runtime` target, fully layer-cached.
+    image: gex-capture:prod
+    environment: *prod_backend_environment
+    networks:
+      internal: {}
+    restart: unless-stopped
     logging:
       driver: json-file
       options:

@@ -1,4 +1,4 @@
-"""Tests for `app.scan.cross_asset` (T54, plans/continuation/06-cross-asset-regime.md).
+"""Tests for `app.modules.gex.scan.cross_asset` (T54, plans/continuation/06-cross-asset-regime.md).
 
 Pure module, entirely offline -- no fixtures, no network, no database. Every test builds its
 own small `pd.Series`/`pd.DataFrame` by hand, hand-checkable the same way
@@ -11,7 +11,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from app.scan.cross_asset import (
+from app.modules.gex.scan.cross_asset import (
     CrossAssetRow,
     SectorCorrelationResult,
     compute_cross_asset_row,
@@ -20,7 +20,7 @@ from app.scan.cross_asset import (
     term_structure,
     vrp,
 )
-from app.scan.indicators import realized_vol
+from app.modules.gex.scan.indicators import realized_vol
 
 # ---------------------------------------------------------------------------------------
 # term_structure
@@ -344,7 +344,7 @@ def test_sector_correlation_window_counts_sessions_not_foreign_calendar_rows():
     """Dates on which *no* column trades are a calendar artifact, not a missing bar, and must
     not eat into the window.
 
-    Measured against live data before this was fixed: `/api/scan/cross-asset` reads one shared
+    Measured against live data before this was fixed: `/api/gex/scan/cross-asset` reads one shared
     wide frame holding the sector ETFs *and* the Cboe index symbols, and Cboe's index calendar
     carries ~33 dates over five years that the ETF histories do not (1287 `^VIX` rows against
     1254 for every sector). Those index-only dates are all-`NaN` in the sector slice, so a
@@ -377,7 +377,7 @@ def test_sector_correlation_window_counts_sessions_not_foreign_calendar_rows():
 def test_vrp_percentile_is_not_shortened_by_foreign_calendar_rows():
     """A rolling window costs `RV_PERIOD` observations per all-NaN row, not one.
 
-    Measured on live data before the fix: the `/api/scan/cross-asset` frame is the union
+    Measured on live data before the fix: the `/api/gex/scan/cross-asset` frame is the union
     calendar of the sector ETFs and the Cboe index symbols, and over its 400-day lookback it
     carried 8 dates `^VIX` has and `SPY` does not. Those 8 all-NaN SPY rows dropped the valid
     RV20 count from 256 to 129 and took `vrp_pct` down with it -- a tile labelled a one-year

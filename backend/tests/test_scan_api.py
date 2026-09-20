@@ -1,7 +1,7 @@
-"""Tests for `app/api/scan.py`. Offline: `get_session_factory` is monkeypatched at its import
-site in `app.api.scan`, no real Postgres -- same pattern as `test_bars_api.py`. Timing against
+"""Tests for `app/modules/gex/api/scan.py`. Offline: `get_session_factory` is monkeypatched at its import
+site in `app.modules.gex.api.scan`, no real Postgres -- same pattern as `test_bars_api.py`. Timing against
 the live, populated database (T43 acceptance: "returns within 2 s for 45 symbols x 500 bars")
-is measured separately, outside pytest, and recorded in `app/api/scan.py`'s module docstring
+is measured separately, outside pytest, and recorded in `app/modules/gex/api/scan.py`'s module docstring
 and in the T43 report -- it cannot be an automated test without violating "every test must be
 offline" (T43 task brief).
 """
@@ -18,14 +18,15 @@ import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
-from app.api.scan import router
-from app.models.bars import DailyBar as DailyBarIn
-from app.models.chain import ChainSnapshot, Underlying
-from app.models.db import Base, GexByStrike, GexLevel, Snapshot, get_engine, get_sessionmaker
-from app.providers.cboe import CboeProvider
-from app.storage.bars_repository import upsert_bars
-from app.storage.parquet import write_snapshot
-from app.storage.repository import SnapshotRepository
+from app.core.db import get_engine, get_sessionmaker
+from app.modules.gex.api.scan import router
+from app.modules.gex.models.bars import DailyBar as DailyBarIn
+from app.modules.gex.models.chain import ChainSnapshot, Underlying
+from app.modules.gex.models.db import Base, GexByStrike, GexLevel, Snapshot
+from app.modules.gex.providers.cboe import CboeProvider
+from app.modules.gex.storage.bars_repository import upsert_bars
+from app.modules.gex.storage.parquet import write_snapshot
+from app.modules.gex.storage.repository import SnapshotRepository
 
 FIXTURES_DIR = Path(__file__).parent / "fixtures" / "cboe"
 
@@ -33,7 +34,9 @@ FIXTURES_DIR = Path(__file__).parent / "fixtures" / "cboe"
 @pytest.fixture
 def client():
     app = FastAPI()
-    app.include_router(router, prefix="/api")
+    # T75: `/api/gex`, matching how `app/main.py` mounts `app.modules.gex.router` -- these
+    # per-router mini-apps exist to keep the tests offline, not to serve a different URL space.
+    app.include_router(router, prefix="/api/gex")
     return TestClient(app)
 
 
@@ -42,22 +45,22 @@ def session_factory(tmp_path, monkeypatch):
     engine = get_engine(f"sqlite:///{tmp_path / 'test.db'}")
     Base.metadata.create_all(engine)
     factory = get_sessionmaker(engine)
-    monkeypatch.setattr("app.api.scan.get_session_factory", lambda: factory)
+    monkeypatch.setattr("app.modules.gex.api.scan.get_session_factory", lambda: factory)
     yield factory
     engine.dispose()
 
 
 @pytest.fixture
 def gex_session_factory(session_factory, monkeypatch):
-    """T45's IV lookup uses a separate cached session factory (`app.jobs.capture
-    .get_session_factory`, imported into `app.api.scan` as `get_gex_session_factory`) from the
-    one `app.storage.bars_repository` uses for bars -- both point at the same underlying
+    """T45's IV lookup uses a separate cached session factory (`app.modules.gex.jobs.capture
+    .get_session_factory`, imported into `app.modules.gex.api.scan` as `get_gex_session_factory`) from the
+    one `app.modules.gex.storage.bars_repository` uses for bars -- both point at the same underlying
     engine in production, and in tests both are monkeypatched onto the *same* SQLite engine
     `session_factory` already created (`Base.metadata.create_all` already made every table,
     `snapshots` included), so a `Snapshot` row written through this fixture and a bars row
     written through `session_factory` are visible to the same in-memory database.
     """
-    monkeypatch.setattr("app.api.scan.get_gex_session_factory", lambda: session_factory)
+    monkeypatch.setattr("app.modules.gex.api.scan.get_gex_session_factory", lambda: session_factory)
     return session_factory
 
 
@@ -96,7 +99,7 @@ def _index_snapshot(tmp_path, gex_session_factory, snapshot: ChainSnapshot) -> i
 
 
 def _universe(monkeypatch, symbols: list[str]) -> None:
-    from app import config
+    from app.core import config
 
     monkeypatch.setattr(config.settings, "SCAN_UNIVERSE", ",".join(symbols))
 
@@ -156,7 +159,7 @@ def _seed_flat_then_breakout(
     upsert_bars(bars, session_factory=session_factory)
 
 
-# --- GET /api/scan/breakouts -----------------------------------------------------------------
+# --- GET /api/gex/scan/breakouts -----------------------------------------------------------------
 
 
 def test_get_breakouts_returns_a_summary_per_universe_symbol(client, session_factory, monkeypatch):
@@ -164,7 +167,7 @@ def test_get_breakouts_returns_a_summary_per_universe_symbol(client, session_fac
     _seed_monotone(session_factory, "QQQ", 60)
     _universe(monkeypatch, ["SPY", "QQQ"])
 
-    response = client.get("/api/scan/breakouts", params={"n": 20, "k": 5, "lookback": 40})
+    response = client.get("/api/gex/scan/breakouts", params={"n": 20, "k": 5, "lookback": 40})
 
     assert response.status_code == 200
     body = response.json()
@@ -182,7 +185,7 @@ def test_get_breakouts_default_params_match_the_plan_defaults(client, session_fa
     _seed_monotone(session_factory, "SPY", 60)
     _universe(monkeypatch, ["SPY"])
 
-    response = client.get("/api/scan/breakouts")
+    response = client.get("/api/gex/scan/breakouts")
     assert response.status_code == 200
     body = response.json()
     assert body["n"] == 20
@@ -192,13 +195,13 @@ def test_get_breakouts_default_params_match_the_plan_defaults(client, session_fa
 
 def test_get_breakouts_rejects_invalid_n(client, session_factory, monkeypatch):
     _universe(monkeypatch, ["SPY"])
-    response = client.get("/api/scan/breakouts", params={"n": 21})
+    response = client.get("/api/gex/scan/breakouts", params={"n": 21})
     assert response.status_code == 422
 
 
 def test_get_breakouts_rejects_invalid_k(client, session_factory, monkeypatch):
     _universe(monkeypatch, ["SPY"])
-    response = client.get("/api/scan/breakouts", params={"k": 4})
+    response = client.get("/api/gex/scan/breakouts", params={"k": 4})
     assert response.status_code == 422
 
 
@@ -208,7 +211,7 @@ def test_get_breakouts_open_breakouts_panel_lists_pending_events(client, session
     )  # 3 bars elapsed, k=10 -> still pending
     _universe(monkeypatch, ["SPY"])
 
-    response = client.get("/api/scan/breakouts", params={"n": 20, "k": 10, "lookback": 126})
+    response = client.get("/api/gex/scan/breakouts", params={"n": 20, "k": 10, "lookback": 126})
     assert response.status_code == 200
     body = response.json()
 
@@ -224,7 +227,7 @@ def test_get_breakouts_open_breakouts_panel_lists_pending_events(client, session
 
 
 def test_get_breakouts_excludes_a_symbol_with_a_gappy_history(client, session_factory, monkeypatch):
-    # A 2026 Monday start (a year `app.jobs.calendar` actually covers) with rows only every 3
+    # A 2026 Monday start (a year `app.modules.gex.jobs.calendar` actually covers) with rows only every 3
     # calendar days -- roughly half the expected trading days in the span are missing, well
     # over the 2% exclusion threshold.
     start = dt.date(2026, 1, 5)
@@ -232,7 +235,7 @@ def test_get_breakouts_excludes_a_symbol_with_a_gappy_history(client, session_fa
     upsert_bars(bars, session_factory=session_factory)
     _universe(monkeypatch, ["GAPPY"])
 
-    response = client.get("/api/scan/breakouts", params={"lookback": 10})
+    response = client.get("/api/gex/scan/breakouts", params={"lookback": 10})
     assert response.status_code == 200
     body = response.json()
 
@@ -245,7 +248,7 @@ def test_get_breakouts_excludes_a_symbol_with_a_gappy_history(client, session_fa
 
 def test_get_breakouts_symbol_with_no_bars_contributes_an_empty_summary(client, session_factory, monkeypatch):
     _universe(monkeypatch, ["NEWLY_ADDED"])
-    response = client.get("/api/scan/breakouts")
+    response = client.get("/api/gex/scan/breakouts")
     assert response.status_code == 200
     body = response.json()
     assert len(body["summaries"]) == 1
@@ -257,12 +260,12 @@ def test_get_breakouts_symbol_with_no_bars_contributes_an_empty_summary(client, 
     assert row["status"] is None
 
 
-# --- GET /api/scan/breakouts/{symbol} -----------------------------------------------------
+# --- GET /api/gex/scan/breakouts/{symbol} -----------------------------------------------------
 
 
 def test_get_symbol_breakouts_returns_event_list(client, session_factory, monkeypatch):
     _seed_monotone(session_factory, "SPY", 60)
-    response = client.get("/api/scan/breakouts/SPY", params={"n": 20, "k": 5, "lookback": 40})
+    response = client.get("/api/gex/scan/breakouts/SPY", params={"n": 20, "k": 5, "lookback": 40})
     assert response.status_code == 200
     body = response.json()
     assert body["symbol"] == "SPY"
@@ -288,7 +291,7 @@ def test_get_symbol_breakouts_returns_event_list(client, session_factory, monkey
 
 
 def test_get_symbol_breakouts_no_bars_returns_clean_empty_result(client, session_factory):
-    response = client.get("/api/scan/breakouts/NOPE")
+    response = client.get("/api/gex/scan/breakouts/NOPE")
     assert response.status_code == 200
     body = response.json()
     assert body["symbol"] == "NOPE"
@@ -297,20 +300,20 @@ def test_get_symbol_breakouts_no_bars_returns_clean_empty_result(client, session
 
 def test_get_symbol_breakouts_is_case_insensitive_and_normalizes_symbol(client, session_factory):
     _seed_monotone(session_factory, "SPY", 60)
-    response = client.get("/api/scan/breakouts/spy")
+    response = client.get("/api/gex/scan/breakouts/spy")
     assert response.status_code == 200
     assert response.json()["symbol"] == "SPY"
 
 
 def test_get_symbol_breakouts_percent_encoded_caret_symbol(client, session_factory):
     _seed_monotone(session_factory, "^VIX", 60)
-    response = client.get("/api/scan/breakouts/%5EVIX")
+    response = client.get("/api/gex/scan/breakouts/%5EVIX")
     assert response.status_code == 200
     assert response.json()["symbol"] == "^VIX"
 
 
 def test_get_symbol_breakouts_rejects_invalid_n(client, session_factory):
-    response = client.get("/api/scan/breakouts/SPY", params={"n": 7})
+    response = client.get("/api/gex/scan/breakouts/SPY", params={"n": 7})
     assert response.status_code == 422
 
 
@@ -320,12 +323,12 @@ def test_get_symbol_breakouts_not_excluded_for_gaps_unlike_universe_route(client
     start = dt.date(2026, 1, 5)
     bars = [_bar("GAPPY", start + dt.timedelta(days=3 * i), 100.0 + i) for i in range(30)]
     upsert_bars(bars, session_factory=session_factory)
-    response = client.get("/api/scan/breakouts/GAPPY", params={"lookback": 10})
+    response = client.get("/api/gex/scan/breakouts/GAPPY", params={"lookback": 10})
     assert response.status_code == 200
     assert response.json()["symbol"] == "GAPPY"
 
 
-# --- GET /api/scan/trend (T45) -----------------------------------------------------------------
+# --- GET /api/gex/scan/trend (T45) -----------------------------------------------------------------
 
 
 @pytest.fixture(scope="module")
@@ -336,14 +339,14 @@ def spy_snapshot() -> ChainSnapshot:
 def test_get_trend_returns_iv30_none_for_no_chain_and_a_number_for_spy(
     client, session_factory, gex_session_factory, tmp_path, monkeypatch, spy_snapshot
 ):
-    """Plan's own acceptance criterion, verbatim: "`GET /api/scan/trend` returns `iv30=None`
+    """Plan's own acceptance criterion, verbatim: "`GET /api/gex/scan/trend` returns `iv30=None`
     for a symbol without a chain and a number for SPY"."""
     _seed_monotone(session_factory, "SPY", 150)
     _seed_monotone(session_factory, "NOCHAIN", 150)
     _universe(monkeypatch, ["SPY", "NOCHAIN"])
     _index_snapshot(tmp_path, gex_session_factory, spy_snapshot)
 
-    response = client.get("/api/scan/trend")
+    response = client.get("/api/gex/scan/trend")
     assert response.status_code == 200
     body = response.json()
     rows = {row["symbol"]: row for row in body["rows"]}
@@ -367,7 +370,7 @@ def test_get_trend_returns_iv30_none_for_a_covered_underlying_never_captured(
     _seed_monotone(session_factory, "QQQ", 150)
     _universe(monkeypatch, ["QQQ"])
 
-    response = client.get("/api/scan/trend")
+    response = client.get("/api/gex/scan/trend")
     assert response.status_code == 200
     row = response.json()["rows"][0]
     assert row["symbol"] == "QQQ"
@@ -386,7 +389,7 @@ def test_get_trend_includes_symbol_with_insufficient_history_as_none_row(
     upsert_bars(bars, session_factory=session_factory)
     _universe(monkeypatch, ["NEWSYM"])
 
-    response = client.get("/api/scan/trend")
+    response = client.get("/api/gex/scan/trend")
     assert response.status_code == 200
     body = response.json()
     assert len(body["rows"]) == 1
@@ -413,7 +416,7 @@ def test_get_trend_rows_carry_percentiles_and_composite_across_universe(
     upsert_bars(choppy_bars, session_factory=session_factory)
     _universe(monkeypatch, ["TRENDY", "CHOPPY"])
 
-    response = client.get("/api/scan/trend")
+    response = client.get("/api/gex/scan/trend")
     assert response.status_code == 200
     rows = {row["symbol"]: row for row in response.json()["rows"]}
 
@@ -422,12 +425,12 @@ def test_get_trend_rows_carry_percentiles_and_composite_across_universe(
     assert rows["CHOPPY"]["adx_pct"] == 0.0
 
 
-# --- GET /api/scan/trend/{symbol} (T45) -------------------------------------------------------
+# --- GET /api/gex/scan/trend/{symbol} (T45) -------------------------------------------------------
 
 
 def test_get_symbol_trend_returns_current_and_history(client, session_factory, gex_session_factory):
     _seed_monotone(session_factory, "SPY", 150)
-    response = client.get("/api/scan/trend/SPY")
+    response = client.get("/api/gex/scan/trend/SPY")
     assert response.status_code == 200
     body = response.json()
     assert body["symbol"] == "SPY"
@@ -439,7 +442,7 @@ def test_get_symbol_trend_returns_current_and_history(client, session_factory, g
 
 
 def test_get_symbol_trend_no_bars_returns_clean_empty_result(client, session_factory, gex_session_factory):
-    response = client.get("/api/scan/trend/NOPE")
+    response = client.get("/api/gex/scan/trend/NOPE")
     assert response.status_code == 200
     body = response.json()
     assert body["symbol"] == "NOPE"
@@ -449,12 +452,12 @@ def test_get_symbol_trend_no_bars_returns_clean_empty_result(client, session_fac
 
 def test_get_symbol_trend_is_case_insensitive(client, session_factory, gex_session_factory):
     _seed_monotone(session_factory, "SPY", 150)
-    response = client.get("/api/scan/trend/spy")
+    response = client.get("/api/gex/scan/trend/spy")
     assert response.status_code == 200
     assert response.json()["symbol"] == "SPY"
 
 
-# --- GET /api/scan/rotation (T50) -------------------------------------------------------------
+# --- GET /api/gex/scan/rotation (T50) -------------------------------------------------------------
 
 
 def test_get_rotation_rejects_unknown_group_422(client):
@@ -462,19 +465,19 @@ def test_get_rotation_rejects_unknown_group_422(client):
     seeded -- `_validate_group` runs before any I/O, so this never touches the (unmocked, in
     this test) real session factory at all.
     """
-    response = client.get("/api/scan/rotation", params={"group": "nope"})
+    response = client.get("/api/gex/scan/rotation", params={"group": "nope"})
     assert response.status_code == 422
 
 
 def test_get_rotation_rejects_unknown_benchmark_422(client):
-    response = client.get("/api/scan/rotation", params={"benchmark": "NOPE"})
+    response = client.get("/api/gex/scan/rotation", params={"benchmark": "NOPE"})
     assert response.status_code == 422
 
 
 def test_get_rotation_rejects_weeks_out_of_range_422(client):
-    response = client.get("/api/scan/rotation", params={"weeks": 0})
+    response = client.get("/api/gex/scan/rotation", params={"weeks": 0})
     assert response.status_code == 422
-    response = client.get("/api/scan/rotation", params={"weeks": 27})
+    response = client.get("/api/gex/scan/rotation", params={"weeks": 27})
     assert response.status_code == 422
 
 
@@ -488,13 +491,13 @@ def test_get_rotation_returns_full_shape_for_seeded_and_unseeded_symbols(
     omitted or erroring.
     """
     anchor = dt.date(2026, 6, 5)  # a Friday -- arbitrary, just fixed so the test is deterministic
-    monkeypatch.setattr("app.api.scan._today", lambda: anchor)
+    monkeypatch.setattr("app.modules.gex.api.scan._today", lambda: anchor)
 
     start = anchor - dt.timedelta(days=299)
     _seed_monotone(session_factory, "XLK", 300, start=start, start_close=50.0)
     _seed_monotone(session_factory, "SPY", 300, start=start, start_close=400.0)
 
-    response = client.get("/api/scan/rotation", params={"group": "sectors", "weeks": 5})
+    response = client.get("/api/gex/scan/rotation", params={"group": "sectors", "weeks": 5})
     assert response.status_code == 200
     body = response.json()
 
@@ -506,7 +509,7 @@ def test_get_rotation_returns_full_shape_for_seeded_and_unseeded_symbols(
     assert body["breadth"]["label"] == "sector-level breadth"
 
     symbols = {row["symbol"] for row in body["symbols"]}
-    from app.scan.groups import SECTORS
+    from app.modules.gex.scan.groups import SECTORS
 
     assert symbols == set(SECTORS)
 
@@ -530,20 +533,20 @@ def test_get_rotation_returns_full_shape_for_seeded_and_unseeded_symbols(
 
 def test_get_rotation_accepts_rsp_benchmark(client, session_factory, monkeypatch):
     anchor = dt.date(2026, 6, 5)
-    monkeypatch.setattr("app.api.scan._today", lambda: anchor)
+    monkeypatch.setattr("app.modules.gex.api.scan._today", lambda: anchor)
     start = anchor - dt.timedelta(days=299)
     _seed_monotone(session_factory, "SPY", 300, start=start, start_close=400.0)
     _seed_monotone(session_factory, "RSP", 300, start=start, start_close=150.0)
     _seed_monotone(session_factory, "QQQ", 300, start=start, start_close=300.0)
 
     response = client.get(
-        "/api/scan/rotation", params={"group": "assets", "benchmark": "RSP"}
+        "/api/gex/scan/rotation", params={"group": "assets", "benchmark": "RSP"}
     )
     assert response.status_code == 200
     assert response.json()["benchmark"] == "RSP"
 
 
-# --- GET /api/scan/regime (T48, plans/continuation/03-regime-board.md) ------------------------
+# --- GET /api/gex/scan/regime (T48, plans/continuation/03-regime-board.md) ------------------------
 
 _NY = ZoneInfo("America/New_York")
 
@@ -638,7 +641,7 @@ def test_get_regime_returns_a_row_per_underlying_with_none_for_uncaptured_symbol
     """T48 acceptance item, verbatim: "the API returns a row per core and extended symbol with
     `None` where inputs are missing." Nothing is seeded at all here.
     """
-    response = client.get("/api/scan/regime")
+    response = client.get("/api/gex/scan/regime")
     assert response.status_code == 200
     body = response.json()
     assert body["filter"] == "ALL"
@@ -685,7 +688,7 @@ def test_get_regime_computes_a_fresh_fade_row_for_a_seeded_symbol(
     # ZERO_DTE: no rows at all -- the structural, live-measured (2026-09-09) EOD case.
     _seed_monotone(session_factory, "SPY", 60, start=dt.date(2025, 10, 1), start_close=90.0)
 
-    response = client.get("/api/scan/regime")
+    response = client.get("/api/gex/scan/regime")
     assert response.status_code == 200
     body = response.json()
     spy = next(row for row in body["rows"] if row["underlying"] == "SPY")
@@ -720,7 +723,7 @@ def test_get_regime_dia_fixture_never_yields_a_verdict(client, session_factory, 
         gex_session_factory, snap_id, "ALL", [(396.0, 0.0, -50.0), (404.0, 50.0, 0.0)]
     )
 
-    response = client.get("/api/scan/regime")
+    response = client.get("/api/gex/scan/regime")
     assert response.status_code == 200
     dia = next(row for row in response.json()["rows"] if row["underlying"] == "DIA")
 
@@ -755,7 +758,7 @@ def test_get_regime_stale_snapshot_suppresses_verdict(client, session_factory, g
         [(96.0, 0.0, -6.0), (100.0, 1.0, -1.0), (104.0, 8.0, 0.0)],
     )
 
-    response = client.get("/api/scan/regime")
+    response = client.get("/api/gex/scan/regime")
     assert response.status_code == 200
     xbi = next(row for row in response.json()["rows"] if row["underlying"] == "XBI")
 
@@ -766,12 +769,12 @@ def test_get_regime_stale_snapshot_suppresses_verdict(client, session_factory, g
 
 
 def test_get_regime_rejects_unpersisted_filter_422(client, session_factory, gex_session_factory):
-    response = client.get("/api/scan/regime", params={"filter": "THIS_WEEK"})
+    response = client.get("/api/gex/scan/regime", params={"filter": "THIS_WEEK"})
     assert response.status_code == 422
 
 
 def test_get_regime_accepts_zero_dte_filter(client, session_factory, gex_session_factory):
-    """`ZERO_DTE` is a persisted filter (`app.gex.store.DEFAULT_FILTERS`) even though it is
+    """`ZERO_DTE` is a persisted filter (`app.modules.gex.gex.store.DEFAULT_FILTERS`) even though it is
     structurally empty on EOD data -- the endpoint must accept it (422 only on a filter that is
     never persisted at all, e.g. `THIS_WEEK`), returning rows with every GEX-derived field
     `None` for a symbol whose `ZERO_DTE` levels admitted nothing.
@@ -794,7 +797,7 @@ def test_get_regime_accepts_zero_dte_filter(client, session_factory, gex_session
     _seed_regime_by_strike(gex_session_factory, snap_id, "ALL", [(104.0, 8.0, 0.0)])
     # No GexLevel/GexByStrike rows at all for ZERO_DTE -- exactly the live structural case.
 
-    response = client.get("/api/scan/regime", params={"filter": "ZERO_DTE"})
+    response = client.get("/api/gex/scan/regime", params={"filter": "ZERO_DTE"})
     assert response.status_code == 200
     qqq = next(row for row in response.json()["rows"] if row["underlying"] == "QQQ")
     # No `GexLevel` row for `ZERO_DTE` at all -- `_load_gex_inputs` returns `None` for this

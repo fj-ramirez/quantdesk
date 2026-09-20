@@ -1,4 +1,4 @@
-"""Tests for `app/jobs/calendar.py`.
+"""Tests for `app/modules/gex/jobs/calendar.py`.
 
 Covers the actual 2026/2027 holiday dates (T05 acceptance depends on the EOD job correctly
 skipping these), the weekday rule, and -- most important per the T05 brief -- that a year
@@ -13,7 +13,7 @@ import logging
 
 import pytest
 
-from app.jobs.calendar import (
+from app.modules.gex.jobs.calendar import (
     effective_data_time,
     is_market_holiday,
     is_regular_session,
@@ -72,7 +72,7 @@ def test_weekend_is_not_a_trading_day(weekend_day):
 def test_stale_calendar_year_treated_as_open_but_logs_error(caplog):
     """The core T05 requirement: an unmapped year must never silently skip a capture."""
     unmapped = dt.date(2030, 7, 4)
-    with caplog.at_level(logging.ERROR, logger="app.jobs.calendar"):
+    with caplog.at_level(logging.ERROR, logger="app.modules.gex.jobs.calendar"):
         result = is_market_holiday(unmapped)
     assert result is False
     assert any(
@@ -83,7 +83,7 @@ def test_stale_calendar_year_treated_as_open_but_logs_error(caplog):
 
 def test_stale_calendar_year_is_trading_day_if_weekday(caplog):
     # 2030-07-04 is a Thursday -- a stale calendar must not stop the capture from firing.
-    with caplog.at_level(logging.ERROR, logger="app.jobs.calendar"):
+    with caplog.at_level(logging.ERROR, logger="app.modules.gex.jobs.calendar"):
         assert is_trading_day(dt.date(2030, 7, 4)) is True
 
 
@@ -171,7 +171,7 @@ def test_table_covers_every_year_the_bars_backfill_reaches():
     and logs at ERROR once per query -- correct for a scheduler deciding about *today*, wrong
     and noisy for a historical window. 2021 is the earliest date T42's backfill stores.
     """
-    from app.jobs.calendar import _HOLIDAYS_BY_YEAR
+    from app.modules.gex.jobs.calendar import _HOLIDAYS_BY_YEAR
 
     assert set(_HOLIDAYS_BY_YEAR) == set(range(2021, 2028))
 
@@ -222,7 +222,7 @@ def test_historical_years_are_never_asked_about_without_data(caplog):
     T43's gap detector calls `is_trading_day` once per date across a lookback window, so a
     year resolving through the stale-calendar path would emit one ERROR per date.
     """
-    with caplog.at_level(logging.ERROR, logger="app.jobs.calendar"):
+    with caplog.at_level(logging.ERROR, logger="app.modules.gex.jobs.calendar"):
         day = dt.date(2021, 9, 10)
         while day <= dt.date(2026, 9, 8):
             is_trading_day(day)

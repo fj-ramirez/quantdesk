@@ -1,16 +1,21 @@
-"""Tests for `app/main.py`'s lifespan wiring (TASKS.md T29).
+"""Tests for `app/main.py`: the root `/health` contract, and the fact that the API process
+starts nothing.
 
-Confirms the startup catch-up is actually scheduled on boot and, critically, that it runs as
-a background task rather than being awaited -- a slow (or hanging) catch-up must not delay the
-app coming up. Does not touch a real scheduler firing or real Cboe; `build_scheduler` itself is
-already covered by `test_scheduler.py`.
+**T75 rewrote this file's remit.** It used to own the lifespan wiring -- that the startup
+catch-up was scheduled on boot, and critically that it ran as a background task rather than
+being awaited. All of that moved to `app/workers/gex_capture.py`, and the three tests that
+covered it moved with it, to `tests/test_workers_gex_capture.py`. Nothing was dropped: the
+assertions there are the same ones, including the 192.0.2.1 unreachable-database case, aimed
+at the worker instead of the app.
+
+What is left here is the `/health` route (a deployment contract -- see `compose.prod.yaml`)
+plus one new test asserting the *absence* of background work. That absence is the whole point
+of T75 and is exactly the kind of property that regresses silently: if a later task puts
+`build_scheduler()` back in a lifespan while the `gex-capture` container is also running,
+every capture fires twice and nothing fails until someone reads the log.
 """
 
 from __future__ import annotations
-
-import asyncio
-import datetime as dt
-import time
 
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine
@@ -19,89 +24,34 @@ from sqlalchemy.orm import sessionmaker
 import app.main as main_module
 
 
-def test_lifespan_schedules_startup_catchup_as_a_background_task(monkeypatch):
-    called = asyncio.Event()
+def test_the_api_process_starts_no_background_work():
+    """T75's load-bearing property, asserted directly.
 
-    async def fake_startup_catchup_job():
-        called.set()
+    Two schedulers is the failure this guards: the worker container runs `build_scheduler()`,
+    so if the API process ever starts one too, the 16:20 EOD capture, the 20:00 safety net and
+    every other job fire twice a day. T71's write idempotency would hide most of the damage,
+    which is exactly why this needs a test rather than trusting the symptom to show up.
 
-    monkeypatch.setattr(main_module, "startup_catchup_job", fake_startup_catchup_job)
-
-    with TestClient(main_module.app) as client:
-        task = client.app.state.startup_catchup_task
-        assert isinstance(task, asyncio.Task)
-        response = client.get("/health")
-        assert response.status_code == 200
-
-
-def test_lifespan_does_not_block_startup_on_a_slow_catchup(monkeypatch):
-    """A catch-up that takes a while (three sequential Cboe fetches, or a hung request) must
-    not stall the app coming up -- this is the whole reason `main.py` uses `create_task`
-    instead of `await`ing `startup_catchup_job()` directly.
+    Checked three ways, because any one alone is easy to defeat by accident: nothing left a
+    scheduler on `app.state`, nothing left a catch-up task there, and no startup/shutdown
+    handler is registered on the router.
     """
-
-    async def slow_startup_catchup_job():
-        await asyncio.sleep(5)
-
-    monkeypatch.setattr(main_module, "startup_catchup_job", slow_startup_catchup_job)
-
-    start = time.monotonic()
     with TestClient(main_module.app) as client:
-        elapsed = time.monotonic() - start
-        assert elapsed < 2.0  # generously under the 5s the fake catch-up would otherwise cost
-        response = client.get("/health")
-        assert response.status_code == 200
-        # Cancel it ourselves so this test doesn't wait out the 5s sleep on teardown -- the
-        # real lifespan's shutdown does the same cancellation for a task still in flight.
-        client.app.state.startup_catchup_task.cancel()
+        assert not hasattr(client.app.state, "scheduler")
+        assert not hasattr(client.app.state, "startup_catchup_task")
+
+    assert main_module.app.router.on_startup == []
+    assert main_module.app.router.on_shutdown == []
 
 
-def test_startup_completes_and_health_answers_when_database_is_unreachable(monkeypatch):
-    """T35 regression, at the real `app.main.app` boundary (not the fake `startup_catchup_job`
-    the other tests here use) -- `catch_up_missed_eod`'s `has_eod_snapshot_today` used to run
-    its blocking psycopg connect directly on the event loop inside the `create_task`d startup
-    coroutine, so an unreachable database starved the loop uvicorn itself needs to log
-    "Application startup complete" and start accepting connections (empirically confirmed
-    against a real unroutable Postgres host before this fix; see TASKS.md T35). This test
-    still exercises the real `catch_up_missed_eod` -> `has_eod_snapshot_today` path -- only the
-    session factory it lands on is swapped for one pointed at 192.0.2.1, an RFC 5737
-    TEST-NET-1 address guaranteed to exist and never answer, so the failure is deterministic
-    and doesn't depend on this machine's actual network topology. `connect_timeout=1` keeps
-    the test itself fast; the app must not need to wait even that long.
-
-    `is_trading_day`/`EOD_CUTOFF` are relaxed so the catch-up always reaches the DB check
-    regardless of the real wall-clock time this test happens to run at.
-    """
-    bad_engine = create_engine(
-        "postgresql+psycopg://gex:gex@192.0.2.1:5432/gex", connect_args={"connect_timeout": 1}
-    )
-    monkeypatch.setattr("app.jobs.catchup.get_session_factory", lambda: sessionmaker(bind=bad_engine))
-    monkeypatch.setattr("app.jobs.catchup.is_trading_day", lambda day: True)
-    monkeypatch.setattr("app.jobs.catchup.EOD_CUTOFF", dt.time.min)
-
-    start = time.monotonic()
-    with TestClient(main_module.app) as client:
-        elapsed = time.monotonic() - start
-        assert elapsed < 5.0  # startup must not itself wait on the DB connect attempt
-        response = client.get("/health")
-        assert response.status_code == 200
-        client.app.state.startup_catchup_task.cancel()
-
-
-def test_health_and_snapshots_and_capture_health_routes_are_registered(monkeypatch):
-    async def fake_startup_catchup_job():
-        return None
-
-    monkeypatch.setattr(main_module, "startup_catchup_job", fake_startup_catchup_job)
-
+def test_health_and_snapshots_and_capture_health_routes_are_registered():
     with TestClient(main_module.app) as client:
         assert client.get("/health").status_code == 200
         # No `underlying` query param -> 422 (route exists, request is malformed), not 404.
-        assert client.get("/api/snapshots").status_code == 422
+        assert client.get("/api/gex/snapshots").status_code == 422
         # Openapi schema is the simplest route-existence check that needs no real DB.
         schema = client.get("/openapi.json").json()
-        assert "/api/health/capture" in schema["paths"]
-        client.app.state.startup_catchup_task.cancel()
+        assert "/api/gex/health/capture" in schema["paths"]
 
 
 def test_health_reports_db_ok_when_the_database_answers(monkeypatch):
@@ -111,11 +61,6 @@ def test_health_reports_db_ok_when_the_database_answers(monkeypatch):
     SQLite in memory rather than a real Postgres: the probe is a bare `SELECT 1`, which says
     nothing engine-specific, and the point here is that a reachable database produces "ok".
     """
-
-    async def fake_startup_catchup_job():
-        return None
-
-    monkeypatch.setattr(main_module, "startup_catchup_job", fake_startup_catchup_job)
     monkeypatch.setattr(
         main_module, "get_session_factory", lambda: sessionmaker(bind=create_engine("sqlite://"))
     )
@@ -126,7 +71,6 @@ def test_health_reports_db_ok_when_the_database_answers(monkeypatch):
         # Additive: the pre-existing keys are untouched by the probe.
         assert body["status"] == "ok"
         assert "provider" in body and "symbols" in body
-        client.app.state.startup_catchup_task.cancel()
 
 
 def test_health_still_answers_200_with_db_error_when_the_database_is_unreachable(monkeypatch):
@@ -140,11 +84,6 @@ def test_health_still_answers_200_with_db_error_when_the_database_is_unreachable
     192.0.2.1 is RFC 5737 TEST-NET-1: guaranteed to exist as an address and never answer, so
     the failure does not depend on this machine's network. `connect_timeout=1` keeps it quick.
     """
-
-    async def fake_startup_catchup_job():
-        return None
-
-    monkeypatch.setattr(main_module, "startup_catchup_job", fake_startup_catchup_job)
     unreachable = create_engine(
         "postgresql+psycopg://gex:gex@192.0.2.1:5432/gex", connect_args={"connect_timeout": 1}
     )
@@ -159,4 +98,16 @@ def test_health_still_answers_200_with_db_error_when_the_database_is_unreachable
         # The password lives in DATABASE_URL and SQLAlchemy puts the URL in its connection
         # errors, so the probe must never let the exception text reach the response body.
         assert "gex:gex" not in response.text
-        client.app.state.startup_catchup_task.cancel()
+
+
+def test_health_stays_at_the_root_and_is_not_under_a_module_prefix():
+    """`compose.prod.yaml`'s backend healthcheck hits `http://127.0.0.1:8001/health`. T75 moved
+    every router under `/api/<module>`; this route deliberately did not move, and a later task
+    that "tidied" it behind a prefix would break every production deploy's healthcheck while
+    the test suite stayed green.
+    """
+    with TestClient(main_module.app) as client:
+        schema = client.get("/openapi.json").json()
+        assert "/health" in schema["paths"]
+        assert "/api/health" not in schema["paths"]
+        assert "/api/gex/health" not in schema["paths"]

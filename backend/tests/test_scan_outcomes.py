@@ -1,4 +1,4 @@
-"""Tests for `app/scan/outcomes.py` (T61). Fully offline, hand-built bars.
+"""Tests for `app/modules/gex/scan/outcomes.py` (T61). Fully offline, hand-built bars.
 
 Geometry throughout: LONG fade entry 100, stop 98 (risk 2), target 106 (3R); SHORT mirrors.
 """
@@ -10,7 +10,7 @@ import datetime as dt
 import pandas as pd
 import pytest
 
-from app.scan.outcomes import (
+from app.modules.gex.scan.outcomes import (
     MAX_HOLD_BARS,
     MIN_RESOLVED_FOR_RATE,
     TRIGGER_WINDOW_BARS,

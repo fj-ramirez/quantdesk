@@ -1,6 +1,6 @@
-"""Tests for `GET /api/scan/cross-asset` (T54, plans/continuation/06-cross-asset-regime.md).
+"""Tests for `GET /api/gex/scan/cross-asset` (T54, plans/continuation/06-cross-asset-regime.md).
 
-Offline: `get_session_factory` is monkeypatched at its import site in `app.api.scan`, no real
+Offline: `get_session_factory` is monkeypatched at its import site in `app.modules.gex.api.scan`, no real
 Postgres -- same pattern `test_scan_api.py`'s own rotation/regime tests use. This file is kept
 separate from `test_scan_api.py` rather than added to it, matching this task's "one additive
 block, self-contained" instruction for the route itself.
@@ -14,17 +14,20 @@ import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
-from app.api.scan import router
-from app.models.bars import DailyBar as DailyBarIn
-from app.models.db import Base, get_engine, get_sessionmaker
-from app.scan.groups import SECTORS
-from app.storage.bars_repository import upsert_bars
+from app.core.db import get_engine, get_sessionmaker
+from app.modules.gex.api.scan import router
+from app.modules.gex.models.bars import DailyBar as DailyBarIn
+from app.modules.gex.models.db import Base
+from app.modules.gex.scan.groups import SECTORS
+from app.modules.gex.storage.bars_repository import upsert_bars
 
 
 @pytest.fixture
 def client():
     app = FastAPI()
-    app.include_router(router, prefix="/api")
+    # T75: `/api/gex`, matching how `app/main.py` mounts `app.modules.gex.router` -- these
+    # per-router mini-apps exist to keep the tests offline, not to serve a different URL space.
+    app.include_router(router, prefix="/api/gex")
     return TestClient(app)
 
 
@@ -33,7 +36,7 @@ def session_factory(tmp_path, monkeypatch):
     engine = get_engine(f"sqlite:///{tmp_path / 'test.db'}")
     Base.metadata.create_all(engine)
     factory = get_sessionmaker(engine)
-    monkeypatch.setattr("app.api.scan.get_session_factory", lambda: factory)
+    monkeypatch.setattr("app.modules.gex.api.scan.get_session_factory", lambda: factory)
     yield factory
     engine.dispose()
 
@@ -62,7 +65,7 @@ def test_get_cross_asset_empty_when_nothing_seeded(client, session_factory):
     """Every universe member has zero bars -- the route must return a clean, fully-`None`
     (with reasons) row rather than a 404 or 500, the same "no data yet is not an error"
     contract every other T5x scan route already establishes."""
-    response = client.get("/api/scan/cross-asset")
+    response = client.get("/api/gex/scan/cross-asset")
     assert response.status_code == 200
     body = response.json()
 
@@ -81,7 +84,7 @@ def test_get_cross_asset_empty_when_nothing_seeded(client, session_factory):
 def test_get_cross_asset_full_shape_when_seeded(client, session_factory, monkeypatch):
     n = 100
     today = dt.date(2026, 6, 5)  # the route's own "as of today" anchor -- see monkeypatch below
-    monkeypatch.setattr("app.api.scan._today", lambda: today)
+    monkeypatch.setattr("app.modules.gex.api.scan._today", lambda: today)
     start = today - dt.timedelta(days=n - 1)  # last seeded row lands exactly on `today`
 
     # VIX rising, VIX3M flat below it, VIX9D flat above it -> unambiguous backwardation on the
@@ -102,7 +105,7 @@ def test_get_cross_asset_full_shape_when_seeded(client, session_factory, monkeyp
     _seed(session_factory, "GLD", [180.0 - i * 0.05 for i in range(n)], start=start)  # down
     _seed(session_factory, "TLT", [95.0] * n, start=start)  # flat
 
-    response = client.get("/api/scan/cross-asset")
+    response = client.get("/api/gex/scan/cross-asset")
     assert response.status_code == 200
     body = response.json()
 
@@ -163,11 +166,11 @@ def test_get_cross_asset_full_shape_when_seeded(client, session_factory, monkeyp
 def test_get_cross_asset_vix_pct_none_below_60_bars(client, session_factory, monkeypatch):
     n = 40
     today = dt.date(2026, 6, 5)
-    monkeypatch.setattr("app.api.scan._today", lambda: today)
+    monkeypatch.setattr("app.modules.gex.api.scan._today", lambda: today)
     start = today - dt.timedelta(days=n - 1)
     _seed(session_factory, "^VIX", [15.0 + i * 0.1 for i in range(n)], start=start)
 
-    response = client.get("/api/scan/cross-asset")
+    response = client.get("/api/gex/scan/cross-asset")
     assert response.status_code == 200
     body = response.json()
     assert body["vix"] is not None

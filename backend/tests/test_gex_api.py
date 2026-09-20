@@ -1,10 +1,10 @@
-"""Tests for `app/api/gex.py` (T11).
+"""Tests for `app/modules/gex/api/gex.py` (T11).
 
 Entirely offline: SQLite + a `tmp_path` Parquet root, the real SPX fixture
 (`tests/fixtures/cboe/spx.json`, 246 contracts, per T08's own test suite) run through the real
 `CboeProvider` to get a genuine `ChainSnapshot`, then written and indexed exactly as
-`app.jobs.capture.capture_snapshot` would. `get_session_factory` is monkeypatched at its import
-site in `app.api.gex`, same pattern as `tests/test_snapshots_api.py`.
+`app.modules.gex.jobs.capture.capture_snapshot` would. `get_session_factory` is monkeypatched at its import
+site in `app.modules.gex.api.gex`, same pattern as `tests/test_snapshots_api.py`.
 
 The live end-to-end path (real Postgres, a real captured snapshot, all four T11 routes hit for
 real) is covered separately by the manual verification run in the T11 report, not here.
@@ -21,13 +21,14 @@ import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
-from app.api.gex import router
-from app.gex.store import compute_and_store
-from app.models.chain import ChainSnapshot, OptionContract, Underlying
-from app.models.db import Base, get_engine, get_sessionmaker
-from app.providers.cboe import CboeProvider
-from app.storage.parquet import write_snapshot
-from app.storage.repository import SnapshotRepository
+from app.core.db import get_engine, get_sessionmaker
+from app.modules.gex.api.gex import router
+from app.modules.gex.gex.store import compute_and_store
+from app.modules.gex.models.chain import ChainSnapshot, OptionContract, Underlying
+from app.modules.gex.models.db import Base
+from app.modules.gex.providers.cboe import CboeProvider
+from app.modules.gex.storage.parquet import write_snapshot
+from app.modules.gex.storage.repository import SnapshotRepository
 
 FIXTURES_DIR = Path(__file__).parent / "fixtures" / "cboe"
 
@@ -35,7 +36,9 @@ FIXTURES_DIR = Path(__file__).parent / "fixtures" / "cboe"
 @pytest.fixture
 def client():
     app = FastAPI()
-    app.include_router(router, prefix="/api")
+    # T75: `/api/gex`, matching how `app/main.py` mounts `app.modules.gex.router` -- these
+    # per-router mini-apps exist to keep the tests offline, not to serve a different URL space.
+    app.include_router(router, prefix="/api/gex")
     return TestClient(app)
 
 
@@ -79,7 +82,7 @@ def indexed_row(tmp_path, session_factory, spx_fixture_snapshot):
 
 
 def _patched_client(monkeypatch, client, session_factory):
-    monkeypatch.setattr("app.api.gex.get_session_factory", lambda: session_factory)
+    monkeypatch.setattr("app.modules.gex.api.gex.get_session_factory", lambda: session_factory)
     return client
 
 
@@ -91,7 +94,7 @@ def _patched_client(monkeypatch, client, session_factory):
 def test_latest_returns_full_gex_result_shape(client, monkeypatch, tmp_path, session_factory, indexed_row):
     _patched_client(monkeypatch, client, session_factory)
 
-    response = client.get("/api/gex/SPX/latest", params={"filter": "ALL"})
+    response = client.get("/api/gex/gex/SPX/latest", params={"filter": "ALL"})
 
     assert response.status_code == 200
     body = response.json()
@@ -115,33 +118,33 @@ def test_latest_effective_at_equals_captured_at_mid_session(
     verbatim -- the intraday case (T18) this fix must not disturb.
     """
     _patched_client(monkeypatch, client, session_factory)
-    body = client.get("/api/gex/SPX/latest").json()
+    body = client.get("/api/gex/gex/SPX/latest").json()
     assert body["snapshot"]["effective_at"] == body["snapshot"]["captured_at"]
     assert body["snapshot"]["captured_at"] == "2026-09-04T18:18:34Z"
 
 
 def test_latest_defaults_to_all_filter(client, monkeypatch, session_factory, indexed_row):
     _patched_client(monkeypatch, client, session_factory)
-    response = client.get("/api/gex/SPX/latest")
+    response = client.get("/api/gex/gex/SPX/latest")
     assert response.status_code == 200
     assert response.json()["filter"] == "ALL"
 
 
 def test_latest_unsupported_underlying_is_422_not_500(client, monkeypatch, session_factory):
     _patched_client(monkeypatch, client, session_factory)
-    response = client.get("/api/gex/DOGE/latest")
+    response = client.get("/api/gex/gex/DOGE/latest")
     assert response.status_code == 422
 
 
 def test_latest_with_no_snapshot_yet_is_404(client, monkeypatch, session_factory):
     _patched_client(monkeypatch, client, session_factory)
-    response = client.get("/api/gex/SPX/latest")
+    response = client.get("/api/gex/gex/SPX/latest")
     assert response.status_code == 404
 
 
 def test_latest_rejects_unknown_filter_with_422(client, monkeypatch, session_factory, indexed_row):
     _patched_client(monkeypatch, client, session_factory)
-    response = client.get("/api/gex/SPX/latest", params={"filter": "BOGUS"})
+    response = client.get("/api/gex/gex/SPX/latest", params={"filter": "BOGUS"})
     assert response.status_code == 422
 
 
@@ -149,7 +152,7 @@ def test_latest_explicit_expiries_filter_restricts_by_expiry(
     client, monkeypatch, session_factory, indexed_row
 ):
     _patched_client(monkeypatch, client, session_factory)
-    response = client.get("/api/gex/SPX/latest", params={"filter": "EXPIRIES:2026-09-18"})
+    response = client.get("/api/gex/gex/SPX/latest", params={"filter": "EXPIRIES:2026-09-18"})
     assert response.status_code == 200
     body = response.json()
     assert body["filter"] == "EXPIRIES:2026-09-18"
@@ -160,7 +163,7 @@ def test_latest_explicit_expiries_bad_date_is_422_not_500(
     client, monkeypatch, session_factory, indexed_row
 ):
     _patched_client(monkeypatch, client, session_factory)
-    response = client.get("/api/gex/SPX/latest", params={"filter": "EXPIRIES:not-a-date"})
+    response = client.get("/api/gex/gex/SPX/latest", params={"filter": "EXPIRIES:not-a-date"})
     assert response.status_code == 422
 
 
@@ -174,7 +177,7 @@ def test_flip_point_serializes_as_json_null_never_zero(
     into indistinguishable-looking values once parsed as plain Python).
     """
     _patched_client(monkeypatch, client, session_factory)
-    response = client.get("/api/gex/SPX/latest", params={"filter": "ALL"})
+    response = client.get("/api/gex/gex/SPX/latest", params={"filter": "ALL"})
     body = response.json()
     flip = body["levels"]["flip_point"]
     assert flip is None or isinstance(flip, float)
@@ -192,20 +195,20 @@ def test_snapshot_by_id_matches_latest_for_the_same_row(
     client, monkeypatch, session_factory, indexed_row
 ):
     _patched_client(monkeypatch, client, session_factory)
-    latest = client.get("/api/gex/SPX/latest").json()
-    by_id = client.get(f"/api/gex/SPX/snapshots/{indexed_row}").json()
+    latest = client.get("/api/gex/gex/SPX/latest").json()
+    by_id = client.get(f"/api/gex/gex/SPX/snapshots/{indexed_row}").json()
     assert latest == by_id
 
 
 def test_snapshot_missing_id_is_404(client, monkeypatch, session_factory):
     _patched_client(monkeypatch, client, session_factory)
-    response = client.get("/api/gex/SPX/snapshots/999999")
+    response = client.get("/api/gex/gex/SPX/snapshots/999999")
     assert response.status_code == 404
 
 
 def test_snapshot_wrong_underlying_for_id_is_404(client, monkeypatch, session_factory, indexed_row):
     _patched_client(monkeypatch, client, session_factory)
-    response = client.get(f"/api/gex/SPY/snapshots/{indexed_row}")
+    response = client.get(f"/api/gex/gex/SPY/snapshots/{indexed_row}")
     assert response.status_code == 404
 
 
@@ -254,7 +257,7 @@ def test_zero_dte_after_close_nulls_not_zeros_over_the_wire(
     never a fabricated wall at strike zero.
     """
     _patched_client(monkeypatch, client, session_factory)
-    response = client.get("/api/gex/SPY/latest", params={"filter": "ZERO_DTE"})
+    response = client.get("/api/gex/gex/SPY/latest", params={"filter": "ZERO_DTE"})
     assert response.status_code == 200
     body = response.json()
     levels = body["levels"]
@@ -266,7 +269,7 @@ def test_zero_dte_after_close_nulls_not_zeros_over_the_wire(
     assert body["by_strike"] == []
 
     # EX_ZERO_DTE on the same snapshot has real, non-null levels.
-    live = client.get("/api/gex/SPY/latest", params={"filter": "EX_ZERO_DTE"}).json()
+    live = client.get("/api/gex/gex/SPY/latest", params={"filter": "EX_ZERO_DTE"}).json()
     assert live["levels"]["call_wall"] is not None
 
 
@@ -278,7 +281,7 @@ def test_effective_at_clamps_to_close_after_hours(client, monkeypatch, session_f
     `captured_at` itself must be untouched.
     """
     _patched_client(monkeypatch, client, session_factory)
-    body = client.get("/api/gex/SPY/latest").json()
+    body = client.get("/api/gex/gex/SPY/latest").json()
     snapshot = body["snapshot"]
     assert snapshot["captured_at"] == "2026-09-04T20:20:00Z"
     assert snapshot["effective_at"] == "2026-09-04T20:15:00Z"
@@ -301,14 +304,14 @@ def test_levels_history_never_opens_parquet(
     _patched_client(monkeypatch, client, session_factory)
 
     with session_factory() as session:
-        from app.models.db import Snapshot
+        from app.modules.gex.models.db import Snapshot
 
         row = session.get(Snapshot, indexed_row)
         parquet_file = tmp_path / row.parquet_path
     assert parquet_file.exists()
     parquet_file.unlink()
 
-    response = client.get("/api/gex/SPX/levels/history", params={"filter": "ALL"})
+    response = client.get("/api/gex/gex/SPX/levels/history", params={"filter": "ALL"})
     assert response.status_code == 200
     body = response.json()
     assert len(body) == 1
@@ -338,7 +341,7 @@ def test_levels_history_respects_eod_only_and_date_range(
         compute_and_store(row.id, session_factory=session_factory, data_dir=tmp_path)
 
     response = client.get(
-        "/api/gex/SPY/levels/history", params={"filter": "EX_ZERO_DTE", "eod_only": "true"}
+        "/api/gex/gex/SPY/levels/history", params={"filter": "EX_ZERO_DTE", "eod_only": "true"}
     )
     assert response.status_code == 200
     body = response.json()
@@ -347,7 +350,7 @@ def test_levels_history_respects_eod_only_and_date_range(
 
     # Date range: only the first day.
     response = client.get(
-        "/api/gex/SPY/levels/history",
+        "/api/gex/gex/SPY/levels/history",
         params={
             "filter": "EX_ZERO_DTE",
             "start": CAPTURED_AFTER_CLOSE.isoformat(),
@@ -361,23 +364,23 @@ def test_levels_history_rejects_explicit_expiries_filter(
     client, monkeypatch, session_factory, indexed_row
 ):
     """`gex_levels` never persists an `EXPIRIES:...` row (only the default filters are
-    computed by `app.gex.store`), so this must be a 422, not a silently-empty 200.
+    computed by `app.modules.gex.gex.store`), so this must be a 422, not a silently-empty 200.
     """
     _patched_client(monkeypatch, client, session_factory)
     response = client.get(
-        "/api/gex/SPX/levels/history", params={"filter": "EXPIRIES:2026-09-18"}
+        "/api/gex/gex/SPX/levels/history", params={"filter": "EXPIRIES:2026-09-18"}
     )
     assert response.status_code == 422
 
 
 def test_levels_history_unknown_underlying_is_422(client, monkeypatch, session_factory):
     _patched_client(monkeypatch, client, session_factory)
-    response = client.get("/api/gex/DOGE/levels/history")
+    response = client.get("/api/gex/gex/DOGE/levels/history")
     assert response.status_code == 422
 
 
 def test_levels_history_empty_for_a_symbol_with_no_captures(client, monkeypatch, session_factory):
     _patched_client(monkeypatch, client, session_factory)
-    response = client.get("/api/gex/QQQ/levels/history")
+    response = client.get("/api/gex/gex/QQQ/levels/history")
     assert response.status_code == 200
     assert response.json() == []

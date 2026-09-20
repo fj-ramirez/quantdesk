@@ -1,4 +1,4 @@
-"""Tests for `app/scan/trend.py` (T45, plans/continuation/02-trend-chop-scorer.md). Fully
+"""Tests for `app/modules/gex/scan/trend.py` (T45, plans/continuation/02-trend-chop-scorer.md). Fully
 offline: every test builds a small synthetic `pd.DataFrame` or hand-built `TrendComponents` --
 no database, no filesystem, no network, in keeping with the module's purity contract.
 """
@@ -10,7 +10,7 @@ import datetime as dt
 import pandas as pd
 import pytest
 
-from app.scan.trend import TrendComponents, rank_universe, score_symbol
+from app.modules.gex.scan.trend import TrendComponents, rank_universe, score_symbol
 
 
 def _bars(
@@ -161,7 +161,7 @@ def test_rank_universe_three_symbol_fixture_percentiles_are_exactly_0_half_1():
 
 def test_rank_universe_iv_rv_and_rv_excluded_from_composite():
     """Plan's design decision, verbatim: "IV/RV is a hint, not a component" -- and rv20/iv30
-    are excluded from the composite for the same underlying reason (see `app.scan.trend`'s
+    are excluded from the composite for the same underlying reason (see `app.modules.gex.scan.trend`'s
     module docstring). Two symbols identical on every composite-feeding component but wildly
     different on rv20/iv30 must land on the identical composite.
     """

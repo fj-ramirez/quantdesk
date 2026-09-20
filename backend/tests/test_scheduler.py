@@ -1,4 +1,4 @@
-"""Tests for `app/jobs/scheduler.py`.
+"""Tests for `app/modules/gex/jobs/scheduler.py`.
 
 Only ever builds the scheduler, never starts it -- these tests confirm the job is
 registered with the right id/trigger/misfire policy, and that `capture_eod_job` itself
@@ -12,8 +12,8 @@ import datetime as dt
 import logging
 from zoneinfo import ZoneInfo
 
-from app.jobs import scheduler as scheduler_module
-from app.jobs.scheduler import (
+from app.modules.gex.jobs import scheduler as scheduler_module
+from app.modules.gex.jobs.scheduler import (
     BARS_JOB_ID,
     BARS_PREOPEN_JOB_ID,
     DECISIONS_JOB_ID,
@@ -97,7 +97,7 @@ async def test_capture_eod_job_skips_on_a_holiday_without_calling_capture(monkey
 
     monkeypatch.setattr(scheduler_module, "capture_all_symbols", fake_capture_all_symbols)
 
-    with caplog.at_level(logging.INFO, logger="app.jobs.scheduler"):
+    with caplog.at_level(logging.INFO, logger="app.modules.gex.jobs.scheduler"):
         await capture_eod_job()
 
     assert called is False
@@ -134,7 +134,7 @@ async def test_capture_eod_job_survives_an_unexpected_exception(monkeypatch, cap
 
     monkeypatch.setattr(scheduler_module, "capture_all_symbols", boom)
 
-    with caplog.at_level(logging.ERROR, logger="app.jobs.scheduler"):
+    with caplog.at_level(logging.ERROR, logger="app.modules.gex.jobs.scheduler"):
         await capture_eod_job()  # must not raise
 
     assert any("unexpected top-level failure" in r.message for r in caplog.records)
@@ -183,7 +183,7 @@ async def test_capture_eod_safety_net_job_survives_an_unexpected_exception(monke
 
     monkeypatch.setattr(scheduler_module, "catch_up_missed_eod", boom)
 
-    with caplog.at_level(logging.ERROR, logger="app.jobs.scheduler"):
+    with caplog.at_level(logging.ERROR, logger="app.modules.gex.jobs.scheduler"):
         await capture_eod_safety_net_job()  # must not raise
 
     assert any("unexpected top-level failure" in r.message for r in caplog.records)
@@ -253,7 +253,7 @@ async def test_bars_update_job_survives_an_unexpected_exception(monkeypatch, cap
 
     monkeypatch.setattr(scheduler_module, "update_bars_job", boom)
 
-    with caplog.at_level(logging.ERROR, logger="app.jobs.scheduler"):
+    with caplog.at_level(logging.ERROR, logger="app.modules.gex.jobs.scheduler"):
         await bars_update_job()  # must not raise
 
     assert any("unexpected top-level failure" in r.message for r in caplog.records)
@@ -341,7 +341,7 @@ async def test_capture_extended_job_skips_on_a_holiday_without_calling_capture(m
 
     monkeypatch.setattr(scheduler_module, "capture_all_symbols", fake_capture_all_symbols)
 
-    with caplog.at_level(logging.INFO, logger="app.jobs.scheduler"):
+    with caplog.at_level(logging.INFO, logger="app.modules.gex.jobs.scheduler"):
         await capture_extended_job()
 
     assert called is False
@@ -379,7 +379,7 @@ async def test_capture_extended_job_one_symbol_failing_does_not_stop_the_others(
     it rather than some other, less resilient call path."""
     monkeypatch.setattr(scheduler_module, "is_trading_day", lambda day: True)
 
-    from app.jobs.capture import CaptureResult
+    from app.modules.gex.jobs.capture import CaptureResult
 
     async def fake_capture_all_symbols(symbols, *, is_eod, **kwargs):
         return [
@@ -408,7 +408,7 @@ async def test_capture_extended_job_survives_an_unexpected_exception(monkeypatch
 
     monkeypatch.setattr(scheduler_module, "capture_all_symbols", boom)
 
-    with caplog.at_level(logging.ERROR, logger="app.jobs.scheduler"):
+    with caplog.at_level(logging.ERROR, logger="app.modules.gex.jobs.scheduler"):
         await capture_extended_job()  # must not raise
 
     assert any("unexpected top-level failure" in r.message for r in caplog.records)
@@ -506,7 +506,7 @@ async def test_flows_update_job_survives_an_unexpected_exception(monkeypatch, ca
 
     monkeypatch.setattr(scheduler_module, "update_flows_job", boom)
 
-    with caplog.at_level(logging.ERROR, logger="app.jobs.scheduler"):
+    with caplog.at_level(logging.ERROR, logger="app.modules.gex.jobs.scheduler"):
         await flows_update_job()  # must not raise
 
     assert any("unexpected top-level failure" in r.message for r in caplog.records)
@@ -530,7 +530,7 @@ async def test_decisions_update_job_survives_an_unexpected_exception(monkeypatch
     async def boom():
         raise RuntimeError("kaboom")
 
-    monkeypatch.setattr("app.jobs.scheduler.record_decisions_job", boom)
+    monkeypatch.setattr("app.modules.gex.jobs.scheduler.record_decisions_job", boom)
     with caplog.at_level("ERROR"):
         await decisions_update_job()  # must not raise
     assert "decisions_update_job: unexpected top-level failure" in caplog.text
@@ -584,8 +584,8 @@ async def test_retention_prune_job_survives_an_unexpected_exception(monkeypatch,
     def boom(**kwargs):
         raise RuntimeError("kaboom")
 
-    monkeypatch.setattr("app.jobs.scheduler.prune_intraday_strike_detail", boom)
-    monkeypatch.setattr("app.jobs.scheduler.get_session_factory", lambda: None)
+    monkeypatch.setattr("app.modules.gex.jobs.scheduler.prune_intraday_strike_detail", boom)
+    monkeypatch.setattr("app.modules.gex.jobs.scheduler.get_session_factory", lambda: None)
     with caplog.at_level("ERROR"):
         await retention_prune_job()  # must not raise
     assert "retention_prune_job: unexpected top-level failure" in caplog.text
@@ -597,8 +597,8 @@ async def test_retention_prune_job_delegates_to_the_prune(monkeypatch):
     def fake_prune(*, session_factory):
         calls.append(session_factory)
 
-    monkeypatch.setattr("app.jobs.scheduler.prune_intraday_strike_detail", fake_prune)
-    monkeypatch.setattr("app.jobs.scheduler.get_session_factory", lambda: "factory")
+    monkeypatch.setattr("app.modules.gex.jobs.scheduler.prune_intraday_strike_detail", fake_prune)
+    monkeypatch.setattr("app.modules.gex.jobs.scheduler.get_session_factory", lambda: "factory")
     await retention_prune_job()
     assert calls == ["factory"]
 
@@ -702,7 +702,7 @@ async def test_intraday_job_skips_outside_the_window(monkeypatch, caplog):
     monkeypatch.setattr(
         scheduler_module, "capture_all_symbols", lambda *a, **k: calls.append(a)
     )
-    with caplog.at_level(logging.DEBUG, logger="app.jobs.scheduler"):
+    with caplog.at_level(logging.DEBUG, logger="app.modules.gex.jobs.scheduler"):
         await capture_intraday_job()
     assert calls == []
     assert "outside the 09:45-16:15 polling window" in caplog.text
@@ -722,7 +722,7 @@ async def test_intraday_job_skips_on_a_holiday(monkeypatch, caplog):
     monkeypatch.setattr(
         scheduler_module, "capture_all_symbols", lambda *a, **k: calls.append(a)
     )
-    with caplog.at_level(logging.INFO, logger="app.jobs.scheduler"):
+    with caplog.at_level(logging.INFO, logger="app.modules.gex.jobs.scheduler"):
         await capture_intraday_job()
     assert calls == []
     assert "not a trading day" in caplog.text
@@ -815,7 +815,7 @@ def test_intraday_bars_job_registers_every_five_minutes_when_enabled(monkeypatch
 def test_intraday_bars_window_starts_at_the_open_not_at_the_capture_window(monkeypatch):
     """Bars are not delayed, so the 09:30 opening bucket is immediately useful -- unlike the
     option capture, which waits until 09:45 for the 15-minute delay to clear."""
-    from app.jobs.scheduler import INTRADAY_BARS_FIRST, INTRADAY_BARS_LAST
+    from app.modules.gex.jobs.scheduler import INTRADAY_BARS_FIRST, INTRADAY_BARS_LAST
 
     assert INTRADAY_BARS_FIRST == dt.time(9, 30)
     assert INTRADAY_BARS_FIRST < INTRADAY_FIRST_CAPTURE

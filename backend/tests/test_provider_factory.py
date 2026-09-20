@@ -1,4 +1,4 @@
-"""Tests for the ``get_provider`` factory (``app.providers.__init__``).
+"""Tests for the ``get_provider`` factory (``app.modules.gex.providers.__init__``).
 
 No network: constructing a provider must not make any request, so these tests only check that
 the right class comes back (and, for ``marketdata``, that it is usable — i.e. actually
@@ -9,10 +9,10 @@ from __future__ import annotations
 
 import pytest
 
-from app.config import settings
-from app.providers import get_provider
-from app.providers.cboe import CboeProvider
-from app.providers.marketdata import MarketDataProvider, MissingCredential
+from app.core.config import settings
+from app.modules.gex.providers import get_provider
+from app.modules.gex.providers.cboe import CboeProvider
+from app.modules.gex.providers.marketdata import MarketDataProvider, MissingCredential
 
 
 def test_get_provider_cboe_by_name():

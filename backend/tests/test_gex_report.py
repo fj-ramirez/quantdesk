@@ -1,4 +1,4 @@
-"""Tests for `app/gex/report.py` (T39).
+"""Tests for `app/modules/gex/gex/report.py` (T39).
 
 Three layers, deliberately:
 
@@ -26,10 +26,10 @@ from typing import Any
 import httpx
 import pytest
 
-from app.gex import report as R
-from app.gex.engine import ExpiryFilter, compute_all, to_frame
-from app.models.chain import ChainSnapshot, OptionContract, Underlying
-from app.providers.cboe import CboeProvider
+from app.modules.gex.gex import report as R
+from app.modules.gex.gex.engine import ExpiryFilter, compute_all, to_frame
+from app.modules.gex.models.chain import ChainSnapshot, OptionContract, Underlying
+from app.modules.gex.providers.cboe import CboeProvider
 
 FIXTURES_DIR = Path(__file__).parent / "fixtures" / "cboe"
 
@@ -630,7 +630,7 @@ def test_to_dict_is_json_serializable(gld_report):
     assert '"underlying": "GLD"' in text
 
 
-#: Everything `app/gex/report.py` is allowed to import. Deliberately a hard allowlist rather
+#: Everything `app/modules/gex/gex/report.py` is allowed to import. Deliberately a hard allowlist rather
 #: than a denylist of known-bad modules: a denylist silently permits the next I/O library
 #: nobody thought to ban, which is exactly how a "pure" module stops being one.
 _ALLOWED_IMPORTS = {
@@ -642,7 +642,7 @@ _ALLOWED_IMPORTS = {
     "numpy",
     "pandas",
     "typing",
-    "app.gex.engine",
+    "app.modules.gex.gex.engine",
 }
 
 #: Call targets that would make the module non-deterministic or touch the outside world.
@@ -670,7 +670,7 @@ def test_report_module_performs_no_io():
             imported.add(node.module)
 
     assert imported <= _ALLOWED_IMPORTS, (
-        f"app/gex/report.py must stay pure; unexpected imports: {sorted(imported - _ALLOWED_IMPORTS)}"
+        f"app/modules/gex/gex/report.py must stay pure; unexpected imports: {sorted(imported - _ALLOWED_IMPORTS)}"
     )
 
     for node in ast.walk(tree):
@@ -684,7 +684,7 @@ def test_report_module_performs_no_io():
             if isinstance(target, ast.Attribute)
             else None
         )
-        assert name not in _FORBIDDEN_CALLS, f"app/gex/report.py must stay pure; calls {name}()"
+        assert name not in _FORBIDDEN_CALLS, f"app/modules/gex/gex/report.py must stay pure; calls {name}()"
 
 
 def test_render_text_snapshot(gld_report):

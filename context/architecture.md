@@ -1,5 +1,22 @@
 # Architecture
 
+## Shape, since T75
+
+This repository is a **module host**: one FastAPI process, one React app, one Postgres, one
+compose stack, with selectable modules underneath. `gex` is the only module that exists today;
+`research` (T77) and `terminal` (T79) land as siblings. Read
+`plans/quantdesk/README.md` for the model and `plans/quantdesk/00-monorepo-skeleton.md` for
+what T75 moved.
+
+Two rules from that task are load-bearing everywhere below:
+
+- **Modules compose, they do not register themselves.** `app/main.py` imports each module's
+  `router.py` by name; `frontend/src/App.tsx` imports each module's `routes.tsx`. A missing
+  module is an import error at boot, not a silently absent route.
+- **The split is request path vs. background work, not module vs. module.** The API process
+  starts nothing. Anything clock-bound is a worker in `app/workers/` with its own container --
+  today just `gex-capture`.
+
 ## The one-paragraph version
 
 A scheduled job fetches an option chain from a provider, normalizes it into a
@@ -19,7 +36,7 @@ Cboe delayed JSON  ──providers/cboe.py──▶  ChainSnapshot (models/chain
                                                           │ gex/engine.compute_all
                                                           └─▶ gex_levels, gex_by_strike
                                                                      │
-                                                          api/gex.py │ api/chains.py
+                                              modules/gex/api/gex.py │ api/chains.py
                                                                      ▼
                                                     frontend/src/api → pages/Dashboard
 ```
@@ -41,12 +58,14 @@ Cboe delayed JSON  ──providers/cboe.py──▶  ChainSnapshot (models/chain
 - **`gex/`** — pure math (`greeks.py`, `engine.py`) plus a thin persistence seam
   (`store.py`) and a CLI (`backfill.py`). The purity of `engine.py` is what makes it reusable
   from the capture job, the API and a future backtest loop.
-- **`api/`** — FastAPI routers, all included with `prefix="/api"` in `main.py`, each with its
-  own sub-prefix (`/snapshots`, `/health`, `/gex`, `/chains`). Routes read stored rows; they
-  do not recompute the engine.
-- **`jobs/`** — APScheduler wiring and the capture orchestration. `main.py`'s lifespan is the
-  only place `scheduler.start()` is called; `build_scheduler()` is separate so tests can
-  inspect registered jobs without starting anything.
+- **`api/`** — FastAPI routers, composed by the module's `router.py` into one
+  `APIRouter(prefix="/gex")` that `main.py` mounts at `/api`. Each keeps its own sub-prefix
+  (`/snapshots`, `/health`, `/gex`, `/chains`). Routes read stored rows; they do not recompute
+  the engine.
+- **`jobs/`** — APScheduler wiring and the capture orchestration. Since T75 the only caller of
+  `scheduler.start()` is `app/workers/gex_capture.py`, in its own container;
+  `build_scheduler()` stays separate from starting it so tests can inspect registered jobs
+  without starting anything.
 - **`storage/`** — Parquet read/write and the `SnapshotRepository` over the index table.
 
 ## Storage split, and why
@@ -64,10 +83,15 @@ hosts. Write side: `storage.parquet.to_data_dir_relative_path`. Read side:
 
 ## Deployment shape
 
-`docker-compose.yml` runs three services: `postgres:16` (named volume `pgdata`), `backend`
-(bind-mounts `./backend` and `./data`), `frontend` (bind-mounts `./frontend`). The backend
-container overrides `DATABASE_URL` to the `postgres` hostname and `DATA_DIR` to `/data`;
-`.env.example` uses `localhost` and `./data` for running on the host directly.
+Four services: `postgres:16`, `backend` (the API — runs `alembic upgrade head`, then uvicorn),
+`gex-capture` (the scheduler and startup catch-up, same Dockerfile and target as `backend`,
+different command and its own image *tag* — two building services cannot share one tag without
+racing the export), and `frontend`. `compose.yaml` is the shared base;
+`compose.override.yaml` (loaded automatically) adds the dev bind mounts, published ports and
+hot reload; `compose.prod.yaml` is the explicit opt-in that hardens it. The backend container
+overrides `DATABASE_URL` to the `postgres` hostname and `DATA_DIR` to `/data`, and the worker
+shares that environment through a YAML anchor so the two cannot drift; `.env.example` uses
+`localhost` and `./data` for running on the host directly.
 
 CORS allows exactly one origin, `http://localhost:5173`. Single-user app, no auth, no
 cookies — a narrow allowlist is simpler than wildcarding and just as safe.

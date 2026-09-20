@@ -1,4 +1,4 @@
-"""Tests for `app/scan/flows.py` (T52). Pure -- no DB, no HTTP; every fixture here is a
+"""Tests for `app/modules/gex/scan/flows.py` (T52). Pure -- no DB, no HTTP; every fixture here is a
 hand-built `DataFrame`, same style as `test_scan_trend.py`/`test_scan_rotation.py`.
 """
 
@@ -9,7 +9,7 @@ import datetime as dt
 import pandas as pd
 import pytest
 
-from app.scan.flows import compute_flows
+from app.modules.gex.scan.flows import compute_flows
 
 
 def _wide(dates: list[dt.date], values: dict[str, list[float | None]]) -> pd.DataFrame:

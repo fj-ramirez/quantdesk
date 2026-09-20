@@ -32,5 +32,16 @@ package = false
 line-length = 100
 target-version = "py312"
 
+[tool.ruff.lint.isort]
+# T75. Ruff infers which packages are first-party by resolving the imported path on disk. Once
+# GEX moved to `app.modules.gex`, the frozen revision scripts in `alembic/versions/` that still
+# `import app.models.db` (see `alembic/env.py` for why they are deliberately not rewritten)
+# stopped resolving, were reclassified as third-party, and `ruff check` began demanding they be
+# re-sorted -- in files this task is forbidden to touch.
+#
+# Stating it is also simply more correct than leaving it to inference: `app` is this project's
+# own package whether or not a particular submodule happens to exist when ruff looks.
+known-first-party = ["app"]
+
 [tool.pytest.ini_options]
 asyncio_mode = "auto"

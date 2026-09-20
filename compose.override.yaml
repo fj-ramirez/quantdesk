@@ -41,6 +41,30 @@ services:
       - ./backend:/app
       - /app/.venv
 
+  # T75. The capture worker gets exactly the same dev treatment as the API: the dev image
+  # (pytest/ruff present), source bind-mounted over it, and the anonymous volume that keeps the
+  # container's Linux-built virtualenv from being shadowed by the Windows host's
+  # ./backend/.venv. Without the bind mount this container would quietly run whatever was baked
+  # into the image at build time while the API hot-reloaded -- so an edit to a job would appear
+  # to do nothing, which is a bad afternoon.
+  #
+  # No `--reload` equivalent: uvicorn's reloader is an HTTP server feature and there is no
+  # supervisor here. Restart the container after editing a job (`docker compose restart
+  # gex-capture`), which is also how you re-read the scheduler's job-id log line.
+  gex-capture:
+    # Its own tag, not `gex-backend:dev`. Same Dockerfile and the same target -- so the build
+    # is entirely layer-cached and the two containers really do run identical code -- but two
+    # services that both build *and* both name one tag make buildx race to export it, which
+    # fails the build outright ("image already exists"). A distinct tag costs nothing: the
+    # layers are shared, only the name is new.
+    image: gex-capture:dev
+    build:
+      target: dev
+    command: ["uv", "run", "python", "-m", "app.workers.gex_capture"]
+    volumes:
+      - ./backend:/app
+      - /app/.venv
+
   frontend:
     image: gex-frontend:dev
     build:

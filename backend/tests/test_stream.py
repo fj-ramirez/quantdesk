@@ -1,5 +1,5 @@
-"""Tests for T19: the in-process broker (`app/events.py`) and the SSE route
-(`app/api/stream.py`).
+"""Tests for T19: the in-process broker (`app/modules/gex/events.py`) and the SSE route
+(`app/modules/gex/api/stream.py`).
 
 Both are new surfaces with no prior pattern in this codebase, so what is pinned here is the
 behaviour a future change could plausibly break without any test failing otherwise: queue
@@ -15,8 +15,8 @@ import datetime as dt
 import pytest
 from fastapi.testclient import TestClient
 
-from app.events import LevelsBroker
 from app.main import app
+from app.modules.gex.events import LevelsBroker
 
 READY_FRAME = 'event: ready\ndata: {"underlying": "SPX"}\n\n'
 KEEPALIVE_FRAME = ": keepalive\n\n"
@@ -78,7 +78,7 @@ async def test_a_slow_subscriber_drops_the_oldest_event_not_the_newest():
     """For a "something changed, re-fetch" signal the newest event strictly dominates: a client
     that receives only the latest of several dropped events does the right thing, while one
     that receives the oldest re-fetches stale data."""
-    from app.events import _QUEUE_MAXSIZE
+    from app.modules.gex.events import _QUEUE_MAXSIZE
 
     broker = LevelsBroker()
     queue = broker.subscribe("SPX")
@@ -118,7 +118,7 @@ def test_unknown_underlying_is_a_404_not_a_silent_stream():
     """An EventSource that connects and then never fires is a hard client bug to see, so a typo
     must fail in the ordinary way instead."""
     with TestClient(app) as client:
-        response = client.get("/api/stream/SPXX")
+        response = client.get("/api/gex/stream/SPXX")
     assert response.status_code == 404
 
 
@@ -132,7 +132,7 @@ async def test_stream_response_headers_are_set_for_a_live_channel():
     and a bad shape for a test -- the streaming behaviour itself is covered by the generator
     tests below, which can stop whenever they like.
     """
-    from app.api.stream import stream_levels
+    from app.modules.gex.api.stream import stream_levels
 
     response = await stream_levels("spx", _FakeRequest())  # lowercase: also checks normalizing
 
@@ -144,7 +144,7 @@ async def test_stream_response_headers_are_set_for_a_live_channel():
 async def test_stream_announces_readiness_immediately(monkeypatch):
     """Without this a client cannot tell "connected, nothing published yet" from "still
     connecting" for up to fifteen minutes."""
-    import app.api.stream as stream_module
+    import app.modules.gex.api.stream as stream_module
 
     monkeypatch.setattr(stream_module, "broker", LevelsBroker())
     stream = stream_module._event_stream("SPX", _FakeRequest())
@@ -153,7 +153,7 @@ async def test_stream_announces_readiness_immediately(monkeypatch):
 
 
 async def test_stream_delivers_a_published_event(monkeypatch):
-    import app.api.stream as stream_module
+    import app.modules.gex.api.stream as stream_module
 
     broker = LevelsBroker()
     monkeypatch.setattr(stream_module, "broker", broker)
@@ -181,7 +181,7 @@ async def test_stream_delivers_a_published_event(monkeypatch):
 async def test_stream_emits_a_keepalive_when_nothing_is_published(monkeypatch):
     """Idle connections are culled by proxies and some browsers; the reconnect that follows is
     invisible noise."""
-    import app.api.stream as stream_module
+    import app.modules.gex.api.stream as stream_module
 
     monkeypatch.setattr(stream_module, "broker", LevelsBroker())
     monkeypatch.setattr(stream_module, "_KEEPALIVE_SECONDS", 0.01)
@@ -195,7 +195,7 @@ async def test_stream_emits_a_keepalive_when_nothing_is_published(monkeypatch):
 async def test_stream_releases_its_queue_on_disconnect(monkeypatch):
     """The leak this guards against is invisible: a retained queue is written to by every later
     publish and never read, forever."""
-    import app.api.stream as stream_module
+    import app.modules.gex.api.stream as stream_module
 
     broker = LevelsBroker()
     monkeypatch.setattr(stream_module, "broker", broker)
@@ -215,7 +215,7 @@ async def test_stream_notices_a_disconnect_without_waiting_for_a_publish(monkeyp
     """At one capture per fifteen minutes, almost every disconnect happens while nothing is
     being published. Without the explicit check the generator would sit in `wait_for` until the
     next capture before noticing, holding its queue the whole time."""
-    import app.api.stream as stream_module
+    import app.modules.gex.api.stream as stream_module
 
     broker = LevelsBroker()
     monkeypatch.setattr(stream_module, "broker", broker)
@@ -236,9 +236,10 @@ async def test_stream_notices_a_disconnect_without_waiting_for_a_publish(monkeyp
 async def test_capture_publishes_after_levels_are_stored(tmp_path):
     """Order matters: a client woken by this event re-fetches immediately, so waking it before
     the level rows exist would serve it the previous snapshot's levels."""
-    from app.events import broker as app_broker
-    from app.jobs.capture import capture_snapshot
-    from app.models.db import Base, get_engine, get_sessionmaker
+    from app.core.db import get_engine, get_sessionmaker
+    from app.modules.gex.events import broker as app_broker
+    from app.modules.gex.jobs.capture import capture_snapshot
+    from app.modules.gex.models.db import Base
 
     from .test_capture import StubProvider, make_snapshot
 
@@ -269,9 +270,10 @@ async def test_capture_publishes_after_levels_are_stored(tmp_path):
 async def test_capture_does_not_publish_when_level_computation_fails(tmp_path, monkeypatch):
     """A failed `compute_and_store` leaves no levels to fetch, so nudging a client to re-fetch
     would hand it the previous snapshot and call it fresh."""
-    from app.events import broker as app_broker
-    from app.jobs import capture as capture_module
-    from app.models.db import Base, get_engine, get_sessionmaker
+    from app.core.db import get_engine, get_sessionmaker
+    from app.modules.gex.events import broker as app_broker
+    from app.modules.gex.jobs import capture as capture_module
+    from app.modules.gex.models.db import Base
 
     from .test_capture import StubProvider, make_snapshot
 

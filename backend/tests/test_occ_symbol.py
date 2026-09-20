@@ -10,7 +10,7 @@ import datetime as dt
 
 import pytest
 
-from app.models.chain import (
+from app.modules.gex.models.chain import (
     OCC_TAIL_LEN,
     Right,
     Settlement,

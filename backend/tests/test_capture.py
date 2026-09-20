@@ -1,4 +1,4 @@
-"""Tests for `app/jobs/capture.py`. Entirely offline: a hand-built stub provider stands in
+"""Tests for `app/modules/gex/jobs/capture.py`. Entirely offline: a hand-built stub provider stands in
 for the network, a temp-directory SQLite `session_factory` stands in for Postgres, and
 `data_dir` points writes at `tmp_path` -- see `test_snapshot_repository.py` /
 `test_parquet_storage.py` for the same two isolation patterns used independently elsewhere.
@@ -13,10 +13,16 @@ import logging
 import pytest
 from sqlalchemy import select
 
-from app.jobs.capture import CaptureResult, _log_result, capture_all_symbols, capture_snapshot
-from app.models.chain import ChainSnapshot, OptionContract, Underlying
-from app.models.db import Base, Snapshot, get_engine, get_sessionmaker
-from app.providers.base import UpstreamUnavailable
+from app.core.db import get_engine, get_sessionmaker
+from app.modules.gex.jobs.capture import (
+    CaptureResult,
+    _log_result,
+    capture_all_symbols,
+    capture_snapshot,
+)
+from app.modules.gex.models.chain import ChainSnapshot, OptionContract, Underlying
+from app.modules.gex.models.db import Base, Snapshot
+from app.modules.gex.providers.base import UpstreamUnavailable
 
 
 @pytest.fixture
@@ -135,7 +141,7 @@ async def test_capture_snapshot_closes_a_provider_it_constructed_itself(
     tmp_path, session_factory, monkeypatch
 ):
     provider = StubProvider(snapshot=make_snapshot())
-    monkeypatch.setattr("app.jobs.capture.get_provider", lambda: provider)
+    monkeypatch.setattr("app.modules.gex.jobs.capture.get_provider", lambda: provider)
 
     await capture_snapshot("SPX", is_eod=False, session_factory=session_factory, data_dir=tmp_path)
 
@@ -170,7 +176,7 @@ async def test_capture_snapshot_storage_failure_returns_error_result_without_rai
     def boom(*args, **kwargs):
         raise RuntimeError("disk is full")
 
-    monkeypatch.setattr("app.jobs.capture._persist_sync", boom)
+    monkeypatch.setattr("app.modules.gex.jobs.capture._persist_sync", boom)
 
     result = await capture_snapshot(
         "SPX", is_eod=True, provider=provider, session_factory=session_factory, data_dir=tmp_path
@@ -228,7 +234,7 @@ async def test_capture_all_symbols_one_failure_does_not_stop_the_others(tmp_path
 
     monkeypatch_provider = MultiStubProvider()
 
-    import app.jobs.capture as capture_module
+    import app.modules.gex.jobs.capture as capture_module
 
     original_get_provider = capture_module.get_provider
     capture_module.get_provider = lambda: monkeypatch_provider
@@ -287,7 +293,7 @@ async def test_capture_all_symbols_continues_past_a_non_provider_error(tmp_path,
         async def close(self) -> None:
             pass
 
-    import app.jobs.capture as capture_module
+    import app.modules.gex.jobs.capture as capture_module
 
     original_get_provider = capture_module.get_provider
     capture_module.get_provider = MultiStubProvider
@@ -365,10 +371,10 @@ def test_log_result_emits_valid_json_with_required_fields(caplog):
         snapshot_id=1,
         parquet_path="chains/SPX/2026/09/x.parquet",
     )
-    with caplog.at_level(logging.INFO, logger="app.jobs.capture"):
+    with caplog.at_level(logging.INFO, logger="app.modules.gex.jobs.capture"):
         _log_result(result)
 
-    record = next(r for r in caplog.records if r.name == "app.jobs.capture")
+    record = next(r for r in caplog.records if r.name == "app.modules.gex.jobs.capture")
     payload = json.loads(record.message)
     assert payload["event"] == "capture"
     assert payload["underlying"] == "SPX"
@@ -380,8 +386,8 @@ def test_log_result_emits_valid_json_with_required_fields(caplog):
 
 def test_log_result_failure_logs_at_error_level(caplog):
     result = CaptureResult(underlying="SPX", ok=False, error="boom")
-    with caplog.at_level(logging.INFO, logger="app.jobs.capture"):
+    with caplog.at_level(logging.INFO, logger="app.modules.gex.jobs.capture"):
         _log_result(result)
-    record = next(r for r in caplog.records if r.name == "app.jobs.capture")
+    record = next(r for r in caplog.records if r.name == "app.modules.gex.jobs.capture")
     assert record.levelno == logging.ERROR
     assert json.loads(record.message)["error"] == "boom"

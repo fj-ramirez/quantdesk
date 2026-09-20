@@ -1,4 +1,4 @@
-"""Tests for the T45 additions to `app/scan/indicators.py` (`adx`, `efficiency_ratio`,
+"""Tests for the T45 additions to `app/modules/gex/scan/indicators.py` (`adx`, `efficiency_ratio`,
 `choppiness`, `realized_vol`, `variance_ratio` -- plans/continuation/02-trend-chop-scorer.md).
 Fully offline: every test builds a small synthetic `pd.DataFrame` by hand, in keeping with the
 module's purity contract. `atr`/`true_range` (T43) are already covered in
@@ -19,7 +19,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from app.scan.indicators import (
+from app.modules.gex.scan.indicators import (
     ADX_PERIOD,
     CHOP_PERIOD,
     ER_PERIOD,
