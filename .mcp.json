@@ -1,0 +1,26 @@
+{
+  "$comment": [
+    "T82. Registers the quantdesk MCP connector for the Claude CLI at the project level.",
+    "",
+    "This file is AN INSTANCE of the registration, not the interface. The interface is the",
+    "command below: any MCP client that launches a stdio server can be pointed at the same",
+    "process, and context/mcp-connector.md gives the generic invocation. Nothing in the tool",
+    "definitions assumes a Claude-shaped client.",
+    "",
+    "DATABASE_URL_RO must authenticate as quantdesk_ro. There is deliberately no fallback to",
+    "DATABASE_URL: the server refuses to start rather than run with write access, because a",
+    "connector that works perfectly and is not read-only is the worst possible outcome.",
+    "",
+    "The ${VAR} form is expanded by the Claude CLI from the environment or the project .env.",
+    "Set QUANTDESK_RO_PASSWORD there, as .env.example describes."
+  ],
+  "mcpServers": {
+    "quantdesk": {
+      "command": "uv",
+      "args": ["run", "--directory", "backend", "python", "-m", "app.mcp"],
+      "env": {
+        "DATABASE_URL_RO": "postgresql://quantdesk_ro:${QUANTDESK_RO_PASSWORD}@localhost:5432/${POSTGRES_DB:-gex}"
+      }
+    }
+  }
+}

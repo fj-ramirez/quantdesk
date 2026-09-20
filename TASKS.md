@@ -1349,3 +1349,12 @@ module switcher. Spec: [plans/quantdesk/04-launcher-shell.md](plans/quantdesk/04
 MCP connector: a read-only stdio server over the three schemas, driven from the Claude CLI on
 the subscription rather than API credits. Spec:
 [plans/quantdesk/05-mcp-connector.md](plans/quantdesk/05-mcp-connector.md).
+
+**Done 2026-09-20.** 1,094 tests green (34 added), linter clean. Nine tools plus a schema
+resource, verified over a real stdio MCP handshake. `quantdesk_ro` is the safety boundary and the
+tests assert that a write phrased to pass the SQL guard (`WITH ... DELETE ... RETURNING`) is
+refused by Postgres. The startup read-only assertion was wrong on first run -- it probed with a
+temp table, which `PUBLIC` may always create -- and now asks Postgres's privilege functions.
+Caveats are payload: the leaderboard tool carries the noise ceiling and reports how many rows
+clear it. Two acceptance items are **not** verified and are named under the plan file's *Result*
+heading: a second non-Claude client, and `claude mcp list`.

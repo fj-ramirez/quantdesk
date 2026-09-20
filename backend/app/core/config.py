@@ -156,6 +156,20 @@ class Settings(BaseSettings):
     # close and after the sources publish, and an hour clear of the research search at 02:00 so
     # two CPU- and network-heavy jobs do not contend on a single-box deployment.
     XA_INGEST_CRON: str = "0 3 * * *"
+
+    # --- T82: the MCP connector -----------------------------------------------------------------
+    # The read-only DSN the connector authenticates with, as `quantdesk_ro` (created in T76 with
+    # SELECT on all three schemas and nothing else).
+    #
+    # **Deliberately separate from DATABASE_URL, and deliberately without a fallback.** If this
+    # is unset the server refuses to start rather than borrowing the application's credentials:
+    # a fallback would produce a connector that works perfectly, answers every question, and is
+    # not read-only -- which is invisible until the day it matters. `app/mcp/db.py` additionally
+    # proves at startup that the role it connected as cannot write, because pointing this at the
+    # app user is a plausible mistake that no amount of reading the setting would catch.
+    #
+    #     DATABASE_URL_RO=postgresql://quantdesk_ro:<QUANTDESK_RO_PASSWORD>@localhost:5432/gex
+    DATABASE_URL_RO: str = ""
     # Continuously compounded annualized risk-free rate for Greeks. A parameter, never
     # fetched from a rates feed (PLAN.md / TASKS.md T07).
     RISK_FREE_RATE: float = 0.04

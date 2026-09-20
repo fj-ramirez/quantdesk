@@ -42,7 +42,8 @@ backend/app/
   main.py      mounts each module's router under /api; no lifespan, starts nothing
   workers/     gex_capture.py, research_search.py, terminal_ingest.py — one container each
   config/      research.yaml — EdgeLab's search budget and cost model (T77)
-  scripts/     migrate_registry.py — one-shot SQLite→Postgres registry import (T77)
+  scripts/     migrate_registry.py, migrate_xactx.py — one-shot data imports (T77, T79)
+  mcp/         the read-only MCP connector over all three schemas (T82)
   modules/terminal/   xactx, ported in T79; its screens are T80
     api/         board, regime, edges, policy, brief, series — every one takes `as_of`
     store/db.py  the ONLY module that knows the engine — a DuckDB-shaped facade over psycopg
@@ -125,6 +126,7 @@ Read the file whose trigger matches; don't load them all.
 | [context/frontend.md](context/frontend.md) | editing React components, queries, URL state, theming, MSW mocks |
 | [context/data-and-ops.md](context/data-and-ops.md) | dealing with capture schedule, Parquet layout, env vars, Docker, CI |
 | [context/workflow.md](context/workflow.md) | planning work, delegating to agents, writing commits, picking the next task |
+| [context/mcp-connector.md](context/mcp-connector.md) | touching the MCP server, its tools, or the read-only role it uses |
 
 Reference documents (long, load deliberately):
 

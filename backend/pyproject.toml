@@ -26,6 +26,7 @@ dependencies = [
     "ccxt",
     "yfinance",
     "PyYAML",
+    "mcp>=2.2.0",
 ]
 
 [dependency-groups]
