@@ -2591,12 +2591,10 @@ code {
   --lx-hair: rgba(122, 162, 228, 0.13);
   --lx-hair-2: rgba(122, 162, 228, 0.26);
 
-  --lx-rail-w: 272px;
   --lx-gutter: 40px;
   --lx-font: 'Inter', system-ui, 'Segoe UI', Roboto, sans-serif;
 
-  display: grid;
-  grid-template-columns: var(--lx-rail-w) minmax(0, 1fr);
+  display: flex;
   min-height: 100svh;
   background: var(--lx-bg-0);
   color: var(--lx-text-1);
@@ -2623,8 +2621,7 @@ code {
 }
 
 /* The app sets `box-sizing` on `#root` only, not globally, so this page has to say it for
-   itself — without it `.lx__rail`'s `height: 100svh` is 100svh *plus* its padding, and the
-   marketing line at the bottom of the rail falls off the screen. */
+   itself — every width and height below is a border-box figure. */
 .lx,
 .lx *,
 .lx *::before,
@@ -2637,29 +2634,21 @@ code {
   outline-offset: 3px;
 }
 
-/* --- rail ---------------------------------------------------------------------------- */
+/* --- brand ----------------------------------------------------------------------------- */
 
-.lx__rail {
-  position: sticky;
-  top: 0;
-  align-self: start;
-  height: 100svh;
-  display: flex;
-  flex-direction: column;
-  gap: 30px;
-  padding: 26px 18px 24px;
-  background: var(--lx-bg-1);
-  border-right: 1px solid var(--lx-hair);
-}
+/* The launcher carried a nav rail for one revision. Its six destinations were the three module
+   roots (which are the cards), the page you were already on, and two pages one click inside a
+   module — a second copy of the cards down the left-hand side. What the rail is actually needed
+   for is the wordmark, so that moved into the top bar and the column went. */
 
 .lx-brand {
   display: flex;
   align-items: center;
-  gap: 11px;
+  gap: 10px;
+  flex: 0 0 auto;
   margin: 0;
-  padding: 2px 8px;
   font-family: var(--lx-font);
-  font-size: 26px;
+  font-size: 19px;
   font-weight: 700;
   letter-spacing: -0.025em;
   color: var(--lx-text-1);
@@ -2669,9 +2658,9 @@ code {
   display: grid;
   place-items: center;
   flex: 0 0 auto;
-  width: 34px;
-  height: 34px;
-  border-radius: 9px;
+  width: 30px;
+  height: 30px;
+  border-radius: 8px;
   color: var(--lx-blue-hi);
   background: color-mix(in srgb, var(--lx-blue) 16%, transparent);
   border: 1px solid color-mix(in srgb, var(--lx-blue) 34%, transparent);
@@ -2681,66 +2670,12 @@ code {
   color: var(--lx-blue-hi);
 }
 
-.lx-rail-nav {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-}
-
-.lx-rail-nav__link {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  height: 46px;
-  padding: 0 14px;
-  border: 1px solid transparent;
-  border-radius: 10px;
-  color: var(--lx-text-2);
-  font-size: 15px;
-  font-weight: 500;
-  text-decoration: none;
-}
-
-.lx-rail-nav__icon {
-  flex: 0 0 auto;
-  width: 19px;
-  height: 19px;
-}
-
-.lx-rail-nav__link:hover {
-  color: var(--lx-text-1);
-  background: color-mix(in srgb, var(--lx-blue) 7%, transparent);
-}
-
-.lx-rail-nav__link--active,
-.lx-rail-nav__link--active:hover {
-  color: var(--lx-text-1);
-  background: linear-gradient(
-    90deg,
-    color-mix(in srgb, var(--lx-blue) 22%, transparent),
-    color-mix(in srgb, var(--lx-blue) 7%, transparent)
-  );
-  border-color: color-mix(in srgb, var(--lx-blue) 30%, transparent);
-}
-
-.lx-rail-nav__link--active .lx-rail-nav__icon {
-  color: var(--lx-blue-hi);
-}
-
-.lx-rail-note {
-  margin: auto 0 0;
-  padding: 20px 14px 2px;
-  border-top: 1px solid var(--lx-hair);
-  color: var(--lx-text-3);
-  font-size: 13.5px;
-  line-height: 1.6;
-}
-
 /* --- top bar ------------------------------------------------------------------------- */
 
 .lx__main {
   position: relative;
   display: flex;
+  flex: 1 1 auto;
   flex-direction: column;
   min-width: 0;
   /* The page's only "glow": two very wide radial washes, one blue at the top right (behind
@@ -2756,9 +2691,8 @@ code {
   z-index: 2;
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  gap: 24px;
-  height: 64px;
+  gap: 28px;
+  height: 68px;
   padding: 0 var(--lx-gutter);
   border-bottom: 1px solid var(--lx-hair);
 }
@@ -2767,6 +2701,7 @@ code {
   display: flex;
   align-items: center;
   gap: 18px;
+  margin-left: auto;
 }
 
 .lx-search {
@@ -2906,6 +2841,9 @@ code {
 .lx__body {
   position: relative;
   flex: 1 1 auto;
+  width: 100%;
+  max-width: 1640px;
+  margin: 0 auto;
   min-width: 0;
   display: flex;
   flex-direction: column;
@@ -3143,6 +3081,15 @@ code {
   transition: transform 0.18s ease, border-color 0.18s ease;
 }
 
+/* The standing line that used to sit at the foot of the rail. */
+.lx-footnote {
+  position: relative;
+  z-index: 1;
+  margin: 8px 0 0;
+  font-size: 13px;
+  color: var(--lx-text-3);
+}
+
 /* --- responsive ---------------------------------------------------------------------- */
 
 /* Narrower than this, the gap between the headline's measure and the quote strip is too thin
@@ -3156,7 +3103,6 @@ code {
 
 @media (max-width: 1320px) {
   .lx {
-    --lx-rail-w: 240px;
     --lx-gutter: 28px;
   }
 
@@ -3180,51 +3126,14 @@ code {
   }
 }
 
-/* The same breakpoint the rest of the app uses to fold its rail away (`.side-rail`): the
-   persistent column becomes a compact, horizontally scrollable bar above the content. No JS
-   and no second nav definition — the rail's markup is unchanged. */
 @media (max-width: 900px) {
-  .lx {
-    grid-template-columns: minmax(0, 1fr);
-  }
-
-  .lx__rail {
-    position: static;
-    height: auto;
-    flex-direction: row;
-    align-items: center;
-    gap: 16px;
-    padding: 10px 16px;
-    border-right: none;
-    border-bottom: 1px solid var(--lx-hair);
-    overflow-x: auto;
-  }
-
   .lx-brand {
-    flex: 0 0 auto;
-    padding: 0;
-    font-size: 21px;
+    font-size: 17px;
   }
 
   .lx-brand__mark {
-    width: 30px;
-    height: 30px;
-  }
-
-  .lx-rail-nav {
-    flex-direction: row;
-    gap: 4px;
-  }
-
-  .lx-rail-nav__link {
-    height: 38px;
-    padding: 0 12px;
-    font-size: 14px;
-    white-space: nowrap;
-  }
-
-  .lx-rail-note {
-    display: none;
+    width: 28px;
+    height: 28px;
   }
 
   .lx__body {
@@ -3247,6 +3156,22 @@ code {
 }
 
 @media (max-width: 620px) {
+  .lx__topbar {
+    gap: 10px;
+  }
+
+  /* The mark alone at phone width: the wordmark and the search field cannot both have the
+     room they need, and the `<h1>`'s name comes from `aria-label`, so hiding the glyphs costs
+     the page's accessible name nothing. */
+  .lx-brand__word {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+    white-space: nowrap;
+  }
+
   .lx-search__kbd {
     display: none;
   }

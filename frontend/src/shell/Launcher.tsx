@@ -16,64 +16,31 @@
  * T75's. It now lives in `shell/modules.ts`, because the module frames need the same three
  * facts (`plans/quantdesk/04-launcher-shell.md`: "the module registry is one file").
  *
- * The page is a desk shell rather than a marketing splash: a fixed rail (the same nav idea as
- * `SideRail`, but pointing at *modules*, not at GEX's pages), a thin top bar, a hero, and one
- * card per module. Three things on it are real rather than decorative, which is the whole
- * difference between this and a template:
+ * The page is a thin top bar, a hero, and one card per module — and nothing else. It carried a
+ * nav rail for one revision; the rail's six destinations were three module roots (which are
+ * the cards), the page you were already on, and two pages one click inside a module, so it was
+ * a second copy of the cards down the left-hand side. A launcher with three things on it does
+ * not need navigation to reach them.
  *
- *  - the rail's six destinations are existing routes, not placeholders;
- *  - the search pill opens the real `CommandPalette` (Ctrl/Cmd+K works here now too);
+ * Two things on the page are real rather than decorative, which is the difference between this
+ * and a template:
+ *
+ *  - the search pill opens the real `CommandPalette` (Ctrl/Cmd+K works here too), which is now
+ *    also how you reach a page *inside* a module without going through its card;
  *  - the quote strip is `/api/gex/scan/regime`, labelled and dated — see `LauncherTape`.
  *
  * The candlestick field behind the hero is the one thing on the page that is invented, and it
  * is drawn as texture at single-digit opacity with no axis, symbol or price anywhere near it
  * (`LauncherBackdrop`).
  */
-import { Link, NavLink } from 'react-router-dom';
-import {
-  IconAnalysis,
-  IconArrowRight,
-  IconBacktest,
-  IconGexMark,
-  IconHome,
-  IconMarkets,
-  IconMoon,
-  IconSearch,
-  IconSettings,
-  IconSun,
-  IconWatchlist,
-} from './icons';
+import { Link } from 'react-router-dom';
+import { IconArrowRight, IconGexMark, IconMoon, IconSearch, IconSun } from './icons';
 import { CommandPalette } from './CommandPalette';
 import { openCommandPalette } from './commandPaletteBus';
 import { LauncherBackdrop } from './LauncherBackdrop';
 import { LauncherTape } from './LauncherTape';
-import { MODULES, type IconComponent, type ModuleEntry } from './modules';
+import { MODULES, type ModuleEntry } from './modules';
 import { useTheme } from '../theme/ThemeContext';
-
-interface RailItem {
-  key: string;
-  label: string;
-  to: string;
-  icon: IconComponent;
-  /** `NavLink`'s own `end` — only the launcher itself needs it, since `/` prefixes everything. */
-  end?: boolean;
-}
-
-/**
- * The rail's destinations. Every one is a route that exists today (`App.tsx`) — this page
- * does not link anywhere it cannot go. The labels are the desk's vocabulary rather than each
- * module's internal name: "Markets" is GEX's board, "Analysis" is the xactx terminal,
- * "Backtesting" is EdgeLab's search, "Watchlist" is EdgeLab's paper book. Renaming a label
- * here renames nothing inside a module.
- */
-const RAIL_ITEMS: readonly RailItem[] = [
-  { key: 'home', label: 'Home', to: '/', icon: IconHome, end: true },
-  { key: 'markets', label: 'Markets', to: '/gex', icon: IconMarkets },
-  { key: 'analysis', label: 'Analysis', to: '/terminal', icon: IconAnalysis },
-  { key: 'backtesting', label: 'Backtesting', to: '/research', icon: IconBacktest },
-  { key: 'watchlist', label: 'Watchlist', to: '/research/paper', icon: IconWatchlist },
-  { key: 'settings', label: 'Settings', to: '/gex/settings', icon: IconSettings },
-];
 
 /** The card's inner content, shared by the linked and the not-yet-built cases so the two can
  * never drift apart visually. */
@@ -115,48 +82,21 @@ function ThemeButton() {
 export function Launcher() {
   return (
     <div className="lx">
-      <aside className="lx__rail">
-        {/* The page's `<h1>`: on a launcher, the desk's own name *is* the heading, and the
-            hero line below is its subtitle. `aria-label` carries the name so the two-tone
-            wordmark cannot be announced as "quant desk". */}
-        <h1 className="lx-brand" aria-label="quantdesk">
-          <span className="lx-brand__mark" aria-hidden="true">
-            <IconGexMark width={22} height={22} />
-          </span>
-          <span className="lx-brand__word" aria-hidden="true">
-            <span className="lx-brand__quant">quant</span>
-            <span className="lx-brand__desk">desk</span>
-          </span>
-        </h1>
-
-        <nav className="lx-rail-nav" aria-label="Desk">
-          {RAIL_ITEMS.map((item) => {
-            const Glyph = item.icon;
-            return (
-              <NavLink
-                key={item.key}
-                to={item.to}
-                end={item.end}
-                className={({ isActive }) => `lx-rail-nav__link${isActive ? ' lx-rail-nav__link--active' : ''}`}
-              >
-                <Glyph className="lx-rail-nav__icon" />
-                <span>{item.label}</span>
-              </NavLink>
-            );
-          })}
-        </nav>
-
-        <p className="lx-rail-note">
-          Better data.
-          <br />
-          Deeper analysis.
-          <br />
-          Smarter decisions.
-        </p>
-      </aside>
-
       <div className="lx__main">
         <header className="lx__topbar">
+          {/* The page's `<h1>`: on a launcher, the desk's own name *is* the heading, and the
+              hero line below is its subtitle. `aria-label` carries the name so the two-tone
+              wordmark cannot be announced as "quant desk". */}
+          <h1 className="lx-brand" aria-label="quantdesk">
+            <span className="lx-brand__mark" aria-hidden="true">
+              <IconGexMark width={20} height={20} />
+            </span>
+            <span className="lx-brand__word" aria-hidden="true">
+              <span className="lx-brand__quant">quant</span>
+              <span className="lx-brand__desk">desk</span>
+            </span>
+          </h1>
+
           <button type="button" className="lx-search" onClick={openCommandPalette}>
             <IconSearch className="lx-search__icon" />
             <span className="lx-search__text">Search markets, tickers, or tools…</span>
@@ -207,6 +147,8 @@ export function Launcher() {
               </li>
             ))}
           </ul>
+
+          <p className="lx-footnote">Better data. Deeper analysis. Smarter decisions.</p>
         </main>
       </div>
 
