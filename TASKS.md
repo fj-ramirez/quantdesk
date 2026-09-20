@@ -1196,7 +1196,7 @@ buckets at read time and typed so it cannot pass as a settled one.
 
 **Next:** the frontend still reads the settled daily series. Wiring `session_bar` into the
 symbol views and charting the 5-minute series is UI work, not data work, and is the obvious
-follow-on. Next free ID is **T85** (T83 and T84 are logged under the quantdesk initiative below).
+follow-on. Next free ID is **T86** (T83, T84 and T85 are logged under the quantdesk initiative below).
 
 ---
 
@@ -1316,6 +1316,28 @@ code) and the point-in-time invariant against the real migrated data.
 
 `/api/terminal/*` and the board -- change board, regime, transmission graph, policy path,
 brief -- with a global as-of control. Spec: same file as T79.
+
+**Done 2026-09-19.** 1,074 backend / 398 frontend tests green (21 added), both linters clean,
+production build clean. Six `as_of`-aware endpoints and five screens: change board, regime,
+transmission graph, policy path and brief. The as-of control lives in the module frame as URL
+state, so setting it re-renders every screen and a view of the world is a shareable link; a
+pinned past moment is flagged in a permanent coloured bar. Live board reads 38 of 75 series
+scored with the whole rates curve 2.3-3.2 sigma against compressed vol. Two pandas/Pydantic
+serialisation traps and a GET-that-writes were found by running it; the last is logged as T85.
+Full account under the plan file's *Result -- T80* heading.
+
+## T85 · Sonnet · T80
+
+`GET /api/terminal/brief` writes to the database. The ported `brief.section_affects` calls
+`graph.register()` and `graph.estimate_all()`, so generating the brief registers edge definitions
+and recomputes the whole transmission graph. That was reasonable when `brief` was a CLI command
+run after ingesting; for an HTTP GET it means the endpoint cannot be cached, cannot be served
+from a replica, cannot be read by the `quantdesk_ro` role, and re-estimates the full panel on
+every page load.
+
+Fix in `brief.py`: `section_affects` should read stored `edge_stats` at the requested `as_of`,
+exactly as `app/modules/terminal/api/edges.py` already does. Then change the endpoint's
+`connect(read_only=False)` back to `read_only=True` -- the comment there marks the spot.
 
 ## T81 · Sonnet · T78, T80
 

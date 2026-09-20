@@ -17,6 +17,8 @@ The app is a **module host**. `src/App.tsx` is two lines of routing: `/` renders
 - `src/modules/gex/` — `routes.tsx`, `api/`, `pages/`, `components/`, `state/`, `mocks/`.
   Everything that knows what a gamma wall is.
 - `src/modules/research/` — same shape (T78). EdgeLab's leaderboard and paper watchlist.
+- `src/modules/terminal/` — same shape (T80). The cross-asset board, regime, transmission graph,
+  policy path and brief.
 - `src/lib/`, `src/theme/`, `src/components/ui/` — **shared, and must stay that way.** A
   percentage, a strike, a New York timestamp and a Surface must render identically in every
   future module, so they cannot belong to one. T78 moved two more things here for that
@@ -50,6 +52,8 @@ Every GEX route is one segment deeper since T75. `modules/gex/routes.tsx` nests 
 | `/gex/demo/gamma-profile`, `/gex/demo/gex-by-strike` | component sandboxes (`pages/demo/`) |
 | `/research` | `Leaderboard` — ranked trials with the noise ceiling (T78) |
 | `/research/paper` | `Paper` — the forward-tracking watchlist |
+| `/terminal` | `Board` — the normalized change board (T80) |
+| `/terminal/regime`, `/graph`, `/policy`, `/brief` | the other four screens |
 
 ## Data layer — three files, three jobs
 
@@ -93,6 +97,27 @@ produces an impressive-looking best row whether or not any edge exists. So:
 In-sample figures appear only in the trial drawer, never on the leaderboard: IS is what the
 search fitted, so beside a ranking it reads as corroboration, while beside OOS the *gap* is the
 informative part.
+
+## The terminal module (T80) — as-of is the product
+
+`/terminal` is a point-in-time workstation, not a quote board. The one thing to preserve:
+
+- **The as-of control lives in `TerminalFrame`, not on a page, and it is URL state.** Setting it
+  re-renders every screen under it, and a board view is therefore a shareable link. A terminal
+  where the board was historical and the regime strip was live would be worse than either alone.
+- **`asOf` is part of every query key**, so a control that stopped being threaded through would
+  break visibly rather than quietly show today.
+- **A pinned past moment is flagged permanently and loudly.** The expensive mistake this screen
+  can cause is reading a historical board as live, and that looks exactly like reading a live one.
+- **The MSW fixtures vary by `as_of`** — fewer scored rows early, no edge estimates before the
+  night they were computed. A mock that ignored the parameter would let a broken control pass
+  every test.
+- **A missing value is never a zero.** Unscored series are listed with their reason
+  (`no_data`, `insufficient_history`); at a historical as-of most series legitimately have none,
+  and a grid of zeros would render an eerily calm market.
+- **The z scale is banded, not continuous**, nothing under 1 sigma is coloured, and the number is
+  always printed. Colour reinforces; it never carries the value alone.
+- **`expected_sign === 0` means regime-dependent, not unknown**, and the graph says so in words.
 
 ## Error and empty states (T37 — do not regress)
 

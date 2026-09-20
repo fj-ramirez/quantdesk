@@ -166,10 +166,12 @@ describe('T55 scan-family nav and stub routes', () => {
     expect(screen.getByRole('heading', { name: 'quantdesk' })).toBeInTheDocument();
     expect(screen.getByRole('link', { name: /GEX/ })).toHaveAttribute('href', '/gex');
     expect(screen.queryByRole('region', { name: 'Tape' })).not.toBeInTheDocument();
-    // T78 made the research module real, so EdgeLab is now a link like GEX. `xactx` is still
-    // listed-but-not-navigable until T80.
+    // All three modules are real as of T80, so the launcher is three links. This assertion
+    // has now inverted twice (T78, T80) as each module landed -- which is the point of keeping
+    // it: `/` must list exactly what exists, and a module that silently stopped being
+    // reachable would look identical to one that was never built.
     expect(screen.getByRole('link', { name: /EdgeLab/ })).toHaveAttribute('href', '/research');
-    expect(screen.queryByRole('link', { name: /xactx/ })).not.toBeInTheDocument();
+    expect(screen.getByRole('link', { name: /xactx/ })).toHaveAttribute('href', '/terminal');
   });
 
   it('/overview renders the real overview page (T56), not a stub', async () => {

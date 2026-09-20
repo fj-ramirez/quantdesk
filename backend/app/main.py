@@ -8,6 +8,7 @@ from app.core.config import settings
 from app.core.db import get_session_factory
 from app.modules.gex.router import router as gex_module_router
 from app.modules.research.router import router as research_module_router
+from app.modules.terminal.router import router as terminal_module_router
 
 # The structured JSON capture logging in `app/modules/gex/jobs/capture.py` (T05: "every
 # capture logged -- symbol, contract count, spot, duration, error") is only useful if it
@@ -55,6 +56,7 @@ app.include_router(gex_module_router, prefix="/api")
 # T78. The second module's routes. Nothing else in `main.py` changed to add it, which is
 # the whole point of the T75 split: a module is a router and a worker, not a special case.
 app.include_router(research_module_router, prefix="/api")
+app.include_router(terminal_module_router, prefix="/api")
 
 
 @app.get("/health")

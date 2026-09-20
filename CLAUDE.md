@@ -1,8 +1,8 @@
 # CLAUDE.md
 
-Personal, single-user market-analysis desk. Two modules so far: **gex** (gamma exposure for
-SPX, SPY, QQQ, GLD and DIA options) and **research** (EdgeLab — automated trading-edge search);
-**terminal** (xactx) is T79.
+Personal, single-user market-analysis desk — three modules: **gex** (gamma exposure for SPX,
+SPY, QQQ, GLD and DIA options), **research** (EdgeLab — automated trading-edge search) and
+**terminal** (xactx — a cross-asset workstation that renders the world as of any past moment).
 Analysis and charts only — **no order routing, ever**. Python/FastAPI backend, React/Vite
 frontend, Postgres for computed results, Parquet on disk for raw chains and OHLCV.
 
@@ -43,7 +43,8 @@ backend/app/
   workers/     gex_capture.py, research_search.py, terminal_ingest.py — one container each
   config/      research.yaml — EdgeLab's search budget and cost model (T77)
   scripts/     migrate_registry.py — one-shot SQLite→Postgres registry import (T77)
-  modules/terminal/   xactx, ported in T79 from projects/market-terminal
+  modules/terminal/   xactx, ported in T79; its screens are T80
+    api/         board, regime, edges, policy, brief, series — every one takes `as_of`
     store/db.py  the ONLY module that knows the engine — a DuckDB-shaped facade over psycopg
     tables.py    the six tables (named tables.py, not models/, because xactx owns models.py)
     analytics/ adapters/ brief.py graph.py policy.py derive.py — the science, carried over
@@ -72,6 +73,8 @@ frontend/src/
   shell/         AppFrame, SideRail, CommandPalette, navConfig, Launcher
   modules/gex/       routes.tsx + api/ components/ pages/ state/ mocks/
   modules/research/  leaderboard + paper watchlist, same shape (T78)
+  modules/terminal/  change board, regime, transmission graph, policy path, brief (T80)
+                 the as-of control lives in the frame, as URL state
   mocks/         composes every module's MSW handlers into one server/worker
   lib/ theme/ components/ui/   shared by every module — formatting, time, theming, primitives,
                  and lib/http.ts (base URL, ApiError, apiFetch)

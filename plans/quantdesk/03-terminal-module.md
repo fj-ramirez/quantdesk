@@ -248,3 +248,89 @@ the honest gap in this task. What exists instead is `tests/test_terminal_store.p
 coverage of `translate_sql` (the genuinely new and riskiest code in the port) plus
 Postgres-gated tests of the point-in-time invariant, the payrolls revision, the naive-`as_of`
 refusal and the lookahead guard. Logged as **T84**.
+
+## Result — T80
+
+**Done 2026-09-19.** 1,074 backend tests and 398 frontend tests green (21 added), both linters
+clean (frontend 0 errors), production build clean. Six endpoints and five screens, all `as_of`-
+aware.
+
+xactx was specified as a screen and became a CLI during its build. It is a screen now. The CLI
+survives as a debugging side-door and is no longer how anyone is expected to read this data.
+
+### The as-of control is the product
+
+It lives in the module frame, not on a page, and it is URL state. Setting it re-renders the
+board, the regime strip, the graph, the policy path and the brief together -- a terminal where
+the board was historical and the regime strip was live would be worse than either alone. `asOf`
+is part of every query key, so a control that stopped being threaded through would change what
+the tests assert rather than silently show today.
+
+When a past moment is pinned the frame says so in a coloured bar, permanently, not as a subtle
+input state. The expensive mistake this screen can cause is reading a historical board as if it
+were live, and that mistake looks exactly like reading a live one.
+
+### What the live data shows
+
+Rendered from the real 218,915-observation store: **38 of 75 series scored**, ranked by |z|, and
+the top of the board is a rates-led selloff -- the whole curve 2.3 to 3.2 sigma, most of it
+against *compressed* trailing volatility. That last column is why the board exists: a 3-sigma
+move in a market that had gone quiet is a different event from a 3-sigma move in a volatile one,
+and a plain change table cannot tell you which you are looking at.
+
+The other 37 series are listed with their reason (`no_data`, `insufficient_history`), never as
+zeros. At a historical as-of most series legitimately have no value yet, and a grid of zeros
+would render an eerily calm market.
+
+### Design decisions
+
+**Nothing is precomputed.** `build_board` and `classify` run per request. That is what lets
+`as_of` be any instant rather than one of the moments a nightly job happened to fire, and it is
+why `board`, `regime`, `factors` and `brief` are deliberately absent from the ingest worker's
+sequence.
+
+**Sign conflicts are pulled to the top of the graph and written out in words.** Spec 4 names
+`sign_conflict` and `corr_percentile` the two highest-value outputs, and a correlation table
+buries both. `expected_sign == 0` renders as "regime-dependent", never as "unknown" -- it is a
+deliberate statement that the sign flips with the regime.
+
+**The z colour scale is banded, not continuous**, and nothing under 1 sigma is coloured at all;
+a gradient would make every row look like it was saying something. Direction is hue, magnitude
+is intensity, and the number is always printed, so the board survives a screenshot, a projector
+and colour blindness.
+
+**The brief's markdown is rendered by a ~120-line parser rather than a dependency.** The document
+emits headings, paragraphs, tables, blockquotes and lists; pulling in a markdown stack plus a
+sanitiser (it would then be rendering HTML) to cover constructs this document never produces
+would be more attack surface than the feature is worth. Inline handling is `**bold**` and
+`` `code` `` only, and raw HTML is never rendered.
+
+**MSW fixtures honour `as_of`.** They return fewer scored rows at an early moment and no edge
+estimates before the night they were computed -- mirroring the real store. A mock that ignored
+the parameter would let a broken as-of control look perfectly fine in development *and* in every
+test.
+
+### Caught by doing
+
+- **`/edges` returned a 500 that the same code returned cleanly in a shell.** pandas has no
+  nullable integer, so an int column containing one NaN becomes `float64` and `beta_window`
+  arrives as `250.0`. Fixed generically by casting from each model's own annotations rather than
+  listing the integer columns by hand -- a hand-written list going stale is a 500, not a warning.
+- **Then a second 500 from the same endpoint, at serialisation rather than validation.**
+  `pandas.Timestamp` subclasses `datetime`, so Pydantic validates it happily and pydantic-core
+  then fails on its nanosecond precision with the identical "'float' object cannot be interpreted
+  as an integer". `_clean` now converts Timestamps at the boundary.
+- **`/brief` writes during a GET.** The ported `section_affects` calls `graph.register()` and
+  `graph.estimate_all()` -- sensible when `brief` was a CLI command you ran after ingesting,
+  wrong for an HTTP GET that should be cacheable, servable from a replica and readable by
+  `quantdesk_ro`. Given a writable connection with the reasoning recorded in place rather than
+  papered over. **Logged as T85**, and the fix belongs in `brief.py`: `section_affects` should
+  read stored `edge_stats` the way `/edges` already does, which is also far cheaper than
+  re-estimating the whole panel on every page load.
+
+### Not done here
+
+T81 still owns the module shell. `TerminalFrame` and `ResearchFrame` are both placeholders that
+duplicate a little nav chrome; T81 should absorb them and give all three modules one switcher.
+The board has no chart -- a series detail view with its vintage history (`/series/{id}` already
+returns it) is the obvious next screen and is not built.

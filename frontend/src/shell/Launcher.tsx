@@ -16,7 +16,7 @@ interface ModuleEntry {
   key: string;
   name: string;
   blurb: string;
-  /** `null` until the module exists. Research filled this in at T78; terminal is T80. */
+  /** `null` until the module exists. All three are live as of T80. */
   to: string | null;
 }
 
@@ -36,8 +36,8 @@ const MODULES: readonly ModuleEntry[] = [
   {
     key: 'terminal',
     name: 'xactx',
-    blurb: 'Cross-asset board, macro regime and the daily brief. Arrives in T79.',
-    to: null,
+    blurb: 'Cross-asset change board, macro regime, transmission graph and the daily brief — rendered as of any moment you choose.',
+    to: '/terminal',
   },
 ];
 

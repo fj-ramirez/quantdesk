@@ -12,5 +12,6 @@
  */
 import { handlers as gexHandlers } from '../modules/gex/mocks/handlers';
 import { researchHandlers } from '../modules/research/mocks/handlers';
+import { terminalHandlers } from '../modules/terminal/mocks/handlers';
 
-export const handlers = [...gexHandlers, ...researchHandlers];
+export const handlers = [...gexHandlers, ...researchHandlers, ...terminalHandlers];

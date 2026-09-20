@@ -1981,3 +1981,358 @@ code {
   color: var(--text-strong);
   font-weight: 600;
 }
+
+/* ---------------------------------------------------------------------------------------
+   Terminal module (T80)
+
+   A denser register than the rest of the desk, deliberately. This is a monitoring surface:
+   the job is to let someone sweep 75 rows and find the three that matter, which means tight
+   rows, tabular numerals, and colour carrying magnitude. Everything still comes from the
+   shared tokens — no new palette, and every colour reinforces a value that is also written
+   out as text.
+   --------------------------------------------------------------------------------------- */
+
+.terminal-page {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-5, 20px);
+}
+
+.terminal-loading {
+  color: var(--text-muted);
+}
+
+/* --- the as-of control: this module's whole product, so it is loud ---------------------- */
+
+.terminal__topbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-4);
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--space-3) var(--space-4);
+  border-bottom: 1px solid var(--border-default);
+  background: var(--surface-app);
+  position: sticky;
+  top: 0;
+  z-index: 5;
+}
+
+.asof {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+}
+
+.asof__field {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.asof__label {
+  color: var(--text-muted);
+  font-size: 0.85em;
+}
+
+.asof input {
+  padding: var(--space-1) var(--space-2);
+  border: 1px solid var(--border-default);
+  border-radius: 4px;
+  background: var(--surface-app);
+  color: var(--text-default);
+  font: inherit;
+}
+
+.asof__badge {
+  padding: 2px var(--space-2);
+  border-radius: 999px;
+  font-size: 0.78em;
+  background: var(--surface-raised);
+  color: var(--text-muted);
+}
+
+.asof__badge--live {
+  color: var(--status-positive);
+}
+
+/* Pinned to the past: unmissable, because reading a historical board as if it were live is
+   the one expensive mistake this screen can cause. */
+.asof--historical .asof__badge {
+  background: color-mix(in srgb, var(--status-caution) 18%, var(--surface-app));
+  color: var(--status-caution);
+  font-weight: 600;
+}
+
+.asof--historical input {
+  border-color: var(--status-caution);
+}
+
+.asof__clear {
+  padding: 2px var(--space-2);
+  border: 1px solid var(--border-default);
+  border-radius: 4px;
+  background: transparent;
+  color: var(--text-default);
+  font-size: 0.8em;
+  cursor: pointer;
+}
+
+/* --- regime strip ----------------------------------------------------------------------- */
+
+.regime-strip {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-3);
+  font-size: 0.85em;
+}
+
+.regime-strip__state {
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+}
+
+.regime-strip--risk_off .regime-strip__state { color: var(--status-negative); }
+.regime-strip--risk_on .regime-strip__state { color: var(--status-positive); }
+.regime-strip--rates_led .regime-strip__state { color: var(--status-info); }
+.regime-strip--quiet .regime-strip__state { color: var(--text-muted); }
+
+.regime-strip__window,
+.regime-strip__leg-name {
+  color: var(--text-muted);
+}
+
+.regime-strip__leg {
+  display: inline-flex;
+  gap: var(--space-1);
+  font-variant-numeric: tabular-nums;
+}
+
+/* --- the board -------------------------------------------------------------------------- */
+
+.terminal-filters {
+  display: flex;
+  align-items: flex-end;
+  gap: var(--space-4);
+}
+
+.terminal-filters__field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  font-size: 0.85em;
+  color: var(--text-muted);
+}
+
+.terminal-filters__field select {
+  padding: var(--space-1) var(--space-2);
+  border: 1px solid var(--border-default);
+  border-radius: 4px;
+  background: var(--surface-app);
+  color: var(--text-default);
+  font: inherit;
+}
+
+.terminal-filters__count {
+  color: var(--text-muted);
+  font-size: 0.85em;
+}
+
+.terminal-table__scroll {
+  overflow-x: auto;
+}
+
+.terminal-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-variant-numeric: tabular-nums;
+  font-size: 0.9em;
+}
+
+.terminal-table th,
+.terminal-table td {
+  padding: var(--space-1) var(--space-3);
+  text-align: left;
+  border-bottom: 1px solid var(--border-default);
+  white-space: nowrap;
+}
+
+.terminal-table .is-numeric {
+  text-align: right;
+}
+
+.terminal-table__id {
+  font-family: var(--mono);
+  font-size: 0.92em;
+}
+
+.terminal-table__name {
+  display: block;
+  color: var(--text-muted);
+  font-size: 0.82em;
+}
+
+.terminal-table__unit {
+  color: var(--text-muted);
+  font-size: 0.85em;
+}
+
+.terminal-table__row--conflict {
+  background: color-mix(in srgb, var(--status-caution) 10%, transparent);
+}
+
+/* z bands: hue for direction, intensity for magnitude, nothing under 1 sigma coloured at all.
+   The number is always printed in the cell — colour never carries it alone. */
+.z-cell { font-weight: 600; }
+.z-cell--flat { color: var(--text-muted); font-weight: 400; }
+.z-cell--up-1 { background: color-mix(in srgb, var(--status-positive) 12%, transparent); }
+.z-cell--up-2 { background: color-mix(in srgb, var(--status-positive) 26%, transparent); }
+.z-cell--up-3 { background: color-mix(in srgb, var(--status-positive) 44%, transparent); }
+.z-cell--down-1 { background: color-mix(in srgb, var(--status-negative) 12%, transparent); }
+.z-cell--down-2 { background: color-mix(in srgb, var(--status-negative) 26%, transparent); }
+.z-cell--down-3 { background: color-mix(in srgb, var(--status-negative) 44%, transparent); }
+
+.vol-flag {
+  font-size: 0.78em;
+  padding: 1px var(--space-2);
+  border-radius: 999px;
+  background: var(--surface-raised);
+  color: var(--text-muted);
+}
+
+.vol-flag--compressed { color: var(--status-info); }
+.vol-flag--elevated { color: var(--status-caution); }
+
+.terminal-unscored {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.terminal-unscored li {
+  display: flex;
+  gap: var(--space-3);
+  padding: var(--space-1) 0;
+  border-bottom: 1px solid var(--border-default);
+}
+
+.terminal-unscored__why {
+  color: var(--text-muted);
+  font-size: 0.88em;
+}
+
+/* --- transmission graph ------------------------------------------------------------------ */
+
+.conflict-banner {
+  padding: var(--space-3) var(--space-4);
+  border-left: 3px solid var(--border-default);
+  background: var(--surface-subtle);
+  color: var(--text-muted);
+}
+
+.conflict-banner--active {
+  border-left-color: var(--status-caution);
+  color: var(--text-default);
+}
+
+.conflict-banner ul {
+  margin: var(--space-2) 0 0;
+  padding-left: var(--space-4);
+}
+
+.flag {
+  display: inline-block;
+  font-size: 0.75em;
+  padding: 1px var(--space-2);
+  border-radius: 999px;
+  margin-right: var(--space-1);
+  background: var(--surface-raised);
+  color: var(--text-muted);
+}
+
+.flag--conflict { color: var(--status-caution); font-weight: 600; }
+.flag--sig { color: var(--status-positive); }
+
+/* --- regime page -------------------------------------------------------------------------- */
+
+.regime-hero {
+  padding: var(--space-5);
+}
+
+.regime-hero__state {
+  font-size: 2rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+}
+
+.regime-hero--risk_off .regime-hero__state { color: var(--status-negative); }
+.regime-hero--risk_on .regime-hero__state { color: var(--status-positive); }
+.regime-hero--rates_led .regime-hero__state { color: var(--status-info); }
+.regime-hero--quiet .regime-hero__state { color: var(--text-muted); }
+
+.regime-hero__detail { margin: var(--space-2) 0 0; }
+
+.regime-hero__meta {
+  margin: var(--space-1) 0 0;
+  color: var(--text-muted);
+  font-size: 0.85em;
+}
+
+.regime-rules { padding: var(--space-4); }
+.regime-rules h2 { margin-top: 0; }
+
+.regime-rules dl {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  gap: var(--space-2) var(--space-4);
+  margin: 0;
+}
+
+.regime-rules dt { font-weight: 600; }
+.regime-rules dd { margin: 0; color: var(--text-muted); }
+
+/* --- policy path --------------------------------------------------------------------------- */
+
+.policy-bar {
+  width: 160px;
+  height: 10px;
+  background: var(--surface-raised);
+  border-radius: 2px;
+  overflow: hidden;
+}
+
+.policy-bar__fill { height: 100%; }
+.policy-bar__fill--hike { background: var(--status-negative); }
+.policy-bar__fill--cut { background: var(--status-positive); }
+.policy-bar__fill--none { background: transparent; }
+
+/* --- brief ---------------------------------------------------------------------------------- */
+
+.brief-banner { padding: var(--space-3) var(--space-4); }
+
+.brief-banner--gaps {
+  border-left: 3px solid var(--status-caution);
+}
+
+.brief-doc {
+  max-width: 76ch;
+  line-height: 1.6;
+}
+
+.brief-doc h2 { margin-top: var(--space-5); }
+.brief-doc code { font-family: var(--mono); font-size: 0.9em; }
+
+.brief-doc blockquote {
+  margin: var(--space-3) 0;
+  padding-left: var(--space-4);
+  border-left: 3px solid var(--status-caution);
+  color: var(--text-default);
+}
+
+.brief-doc hr {
+  border: none;
+  border-top: 1px solid var(--border-default);
+  margin: var(--space-5) 0;
+}
