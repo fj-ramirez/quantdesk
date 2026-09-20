@@ -82,7 +82,7 @@ def cmd_ingest(args: argparse.Namespace, settings: Settings) -> int:
         sorted(universe.FETCHABLE_SOURCES) if args.source == "all" else [args.source]
     )
 
-    with Store(settings.db_path) as store:
+    with Store() as store:
         loader = Loader(store)
 
         # Register the whole universe, including series no adapter fills yet. A
@@ -170,7 +170,7 @@ def cmd_derive(args: argparse.Namespace, settings: Settings) -> int:
 
     failures: list[tuple[str, str]] = []
     written = 0
-    with Store(settings.db_path) as store:
+    with Store() as store:
         loader = Loader(store)
         batch = loader.start_batch("derived", f"{start}..{end} as_of={as_of.isoformat()}")
         try:
@@ -205,7 +205,7 @@ def cmd_fomc(args: argparse.Namespace, settings: Settings) -> int:
     """
     from . import fomc
 
-    path = settings.db_path.parent / "fomc_calendar.json"
+    path = settings.fomc_calendar_path
     if args.refresh:
         meetings = fomc.fetch_calendar(settings.http_timeout_seconds)
         fomc.save_calendar(meetings, path)
@@ -236,7 +236,7 @@ def cmd_policy(args: argparse.Namespace, settings: Settings) -> int:
     from .adapters.cme import CmeFileAdapter, parse_contract_month
     from .store.query import get
 
-    calendar_path = settings.db_path.parent / "fomc_calendar.json"
+    calendar_path = settings.fomc_calendar_path
     meetings = fomc.load_calendar(calendar_path)
 
     adapter = CmeFileAdapter(snapshot_tz=settings.snapshot_tz)
@@ -253,7 +253,7 @@ def cmd_policy(args: argparse.Namespace, settings: Settings) -> int:
         if raw and raw not in {"-", "."}:
             settles[month] = float(raw)
 
-    with Store(settings.db_path) as store:
+    with Store() as store:
         if args.spot is not None:
             spot = args.spot
             spot_note = "supplied on the command line"
@@ -346,7 +346,7 @@ def cmd_board(args: argparse.Namespace, settings: Settings) -> int:
         stale_warn_days=settings.stale_warn_days,
     )
 
-    with Store(settings.db_path, read_only=True) as store:
+    with Store(read_only=True) as store:
         board = build_board(store.conn, params)
 
     if board.empty:
@@ -386,7 +386,7 @@ def cmd_factors(args: argparse.Namespace, settings: Settings) -> int:
     if as_of.tzinfo is None:
         as_of = as_of.replace(tzinfo=tz)
 
-    with Store(settings.db_path, read_only=True) as store:
+    with Store(read_only=True) as store:
         panel = build_panel(
             store.conn,
             as_of,
@@ -449,7 +449,7 @@ def cmd_regime(args: argparse.Namespace, settings: Settings) -> int:
     if as_of.tzinfo is None:
         as_of = as_of.replace(tzinfo=tz)
 
-    with Store(settings.db_path, read_only=True) as store:
+    with Store(read_only=True) as store:
         reading = classify(
             store.conn,
             as_of,
@@ -483,7 +483,7 @@ def cmd_edges(args: argparse.Namespace, settings: Settings) -> int:
     if as_of.tzinfo is None:
         as_of = as_of.replace(tzinfo=tz)
 
-    with Store(settings.db_path) as store:
+    with Store() as store:
         n_defs = graph.register(store.conn)
         stats, skipped = graph.estimate_all(
             store.conn,
@@ -567,7 +567,7 @@ def cmd_brief(args: argparse.Namespace, settings: Settings) -> int:
     if as_of.tzinfo is None:
         as_of = as_of.replace(tzinfo=tz)
 
-    with Store(settings.db_path) as store:
+    with Store() as store:
         path, text, unanswered = brief.write(store.conn, as_of, settings, args.out)
 
     if args.stdout:
@@ -581,7 +581,7 @@ def cmd_brief(args: argparse.Namespace, settings: Settings) -> int:
 
 
 def cmd_status(args: argparse.Namespace, settings: Settings) -> int:
-    with Store(settings.db_path, read_only=True) as store:
+    with Store(read_only=True) as store:
         rows = store.conn.execute(
             """
             SELECT m.series_id, m.source, m.vintage_source,
