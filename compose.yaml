@@ -30,9 +30,16 @@
 # that GEX -- 174 snapshots and 59M of chains -- had been left behind until 2026-09-20.
 # `gex-trading_pgdata` is kept as the pre-migration copy and is attached to nothing.
 #
-# On the homeserver the stack directory is `/srv/docker/gex/`, so the project is `gex` there
-# without anything having to say so -- matching the `compose@gex` systemd unit. Dev and prod
-# therefore run under different project names, which is fine: they share no resources.
+# On the homeserver the stack directory is `/srv/docker/quantdesk/`, so the project is
+# `quantdesk` there without anything having to say so -- matching the `compose@quantdesk`
+# systemd unit. It was `/srv/docker/gex/` (and `compose@gex`) before the rename; that move
+# cost nothing, unlike the one above, because production keeps Postgres in a bind mount
+# (`./data/postgres`, see compose.prod.yaml) which travels with the directory rather than
+# staying behind under the old project's name. What the rename did change is every container
+# name -- `gex-backend-1` is `quantdesk-backend-1` now -- so anything on that host still
+# addressing a container by the old name needs updating. Caddy does not: it targets the
+# explicit `gex-backend` / `gex-frontend` network aliases, which are declared in
+# compose.prod.yaml and are unaffected by the project name.
 
 services:
   postgres:

@@ -3,7 +3,7 @@
 # Push the data tree (data/chains -- the raw option chains -- and data/research) to the
 # homeserver, sending only what is missing or changed there.
 #
-#   scripts/data-push.sh                    # delta-push data/ -> homeserver:/srv/docker/gex/data
+#   scripts/data-push.sh                    # delta-push data/ -> homeserver:/srv/docker/quantdesk/data
 #   scripts/data-push.sh -n                 # list what would be sent, send nothing
 #   scripts/data-push.sh --sudo             # remote writes go through `sudo -n`, then chown
 #   scripts/data-push.sh chains/SPX         # one subtree
@@ -33,7 +33,7 @@
 source "$(dirname -- "${BASH_SOURCE[0]}")/_common.sh"
 
 REMOTE_HOST=${QD_REMOTE_HOST:-homeserver}
-REMOTE_DIR=${QD_DATA_REMOTE_DIR:-/srv/docker/gex/data}
+REMOTE_DIR=${QD_DATA_REMOTE_DIR:-/srv/docker/quantdesk/data}
 LOCAL_DIR=${QD_DATA_DIR:-$REPO_ROOT/data}
 REMOTE_OWNER=${QD_REMOTE_OWNER:-10001:10001}
 SSH=${QD_SSH:-ssh}

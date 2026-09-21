@@ -70,8 +70,8 @@ export COMPOSE_FILE=compose.yaml:compose.prod.yaml
 
 ## Deploying to the homeserver
 
-Target: Arch Linux, Docker + compose v2, stack at `/srv/docker/gex/`, managed by a
-`compose@gex` systemd template unit whose `WorkingDirectory` is the stack directory (so
+Target: Arch Linux, Docker + compose v2, stack at `/srv/docker/quantdesk/`, managed by a
+`compose@quantdesk` systemd template unit whose `WorkingDirectory` is the stack directory (so
 `./.env` is picked up automatically). Caddy reverse-proxies from a shared external network.
 
 ### 1. Create the shared proxy network (once per host)
@@ -123,17 +123,17 @@ exist with matching ownership *before* the first `up`. Docker creates a missing 
 source as `root:root`, which both services then refuse to use.
 
 ```
-sudo mkdir -p /srv/docker/gex/data/postgres
-sudo chown -R 10001:10001 /srv/docker/gex/data          # backend's app user
-sudo chown -R 999:999     /srv/docker/gex/data/postgres # postgres user inside postgres:16
+sudo mkdir -p /srv/docker/quantdesk/data/postgres
+sudo chown -R 10001:10001 /srv/docker/quantdesk/data          # backend's app user
+sudo chown -R 999:999     /srv/docker/quantdesk/data/postgres # postgres user inside postgres:16
 ```
 
 Everything the stack persists lives under `data/`, so the whole thing tars as one unit:
 
 ```
-sudo systemctl stop compose@gex
-sudo tar czf gex-backup-$(date +%F).tar.gz -C /srv/docker gex
-sudo systemctl start compose@gex
+sudo systemctl stop compose@quantdesk
+sudo tar czf quantdesk-backup-$(date +%F).tar.gz -C /srv/docker quantdesk
+sudo systemctl start compose@quantdesk
 ```
 
 ### 4. Add the Caddy site block
@@ -189,7 +189,7 @@ automatic HTTPS.
 ### 5. Deploy
 
 ```
-cd /srv/docker/gex
+cd /srv/docker/quantdesk
 docker compose -f compose.yaml -f compose.prod.yaml up -d --build
 docker compose -f compose.yaml -f compose.prod.yaml ps      # all three should read healthy
 curl -s localhost/health                                    # via Caddy: {"status":"ok",...,"db":"ok"}
@@ -249,10 +249,10 @@ scripts/db-dump-push.sh                       # --prod to dump a production stac
 scripts/db-dump-push.sh --local-only          # just write backups/quantdesk.dump
 
 # homeserver
-cd /srv/docker/gex && scripts/db-restore.sh --prod
+cd /srv/docker/quantdesk && scripts/db-restore.sh --prod
 ```
 
-Defaults: host `homeserver`, remote directory `/srv/docker/gex/backups` — i.e. `backups/`
+Defaults: host `homeserver`, remote directory `/srv/docker/quantdesk/backups` — i.e. `backups/`
 inside the stack directory, which is where `db-restore.sh` looks by default on that side.
 Override with `--host` / `--remote-dir` or `QD_REMOTE_HOST` / `QD_REMOTE_DIR`.
 
@@ -278,7 +278,7 @@ What `db-restore.sh` does beyond `pg_restore`:
 Neither database script touches `data/`. That is `data-push.sh`:
 
 ```
-scripts/data-push.sh                  # delta-push data/ -> homeserver:/srv/docker/gex/data
+scripts/data-push.sh                  # delta-push data/ -> homeserver:/srv/docker/quantdesk/data
 scripts/data-push.sh -n               # list what would be sent, send nothing
 scripts/data-push.sh chains/SPX       # one subtree
 scripts/data-push.sh --sudo           # write through `sudo -n`, then chown to 10001:10001

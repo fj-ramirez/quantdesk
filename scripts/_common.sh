@@ -24,7 +24,7 @@ PG_SERVICE=${QD_PG_SERVICE:-postgres}
 APP_SERVICES=${QD_APP_SERVICES:-"backend gex-capture research-search terminal-ingest"}
 
 # Git Bash rewrites anything that looks like a POSIX path before handing it to a native
-# Windows binary, which turns `homeserver:/srv/docker/gex` into `homeserver;C:/Program
+# Windows binary, which turns `homeserver:/srv/docker/quantdesk` into `homeserver;C:/Program
 # Files/Git/srv/...` on its way into ssh.exe. Harmless to export on Linux.
 export MSYS_NO_PATHCONV=1
 export MSYS2_ARG_CONV_EXCL='*'

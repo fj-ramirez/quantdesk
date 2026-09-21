@@ -7,7 +7,7 @@
 #   scripts/db-dump-push.sh                 # dev stack here -> homeserver
 #   scripts/db-dump-push.sh --prod          # dump the production stack instead
 #   scripts/db-dump-push.sh --local-only    # write the dump, send nothing
-#   scripts/db-dump-push.sh --host nas --remote-dir /srv/docker/gex/backups
+#   scripts/db-dump-push.sh --host nas --remote-dir /srv/docker/quantdesk/backups
 #
 # Environment overrides: QD_REMOTE_HOST, QD_REMOTE_DIR, QD_DUMP_NAME, QD_DUMP_DIR,
 # QD_PG_SERVICE, QD_SSH (e.g. QD_SSH="ssh -p 2222").
@@ -20,7 +20,7 @@
 source "$(dirname -- "${BASH_SOURCE[0]}")/_common.sh"
 
 REMOTE_HOST=${QD_REMOTE_HOST:-homeserver}
-REMOTE_DIR=${QD_REMOTE_DIR:-/srv/docker/gex/backups}
+REMOTE_DIR=${QD_REMOTE_DIR:-/srv/docker/quantdesk/backups}
 SEND=1
 
 usage() { sed -n '2,/^$/p' "${BASH_SOURCE[0]}" | sed 's/^#\{1,2\} \{0,1\}//'; }
@@ -88,6 +88,6 @@ $SSH "$REMOTE_HOST" "ls -lh '$REMOTE_DIR/$DUMP_NAME'"
 
 log ""
 log "Done. On $REMOTE_HOST:"
-log "    cd /srv/docker/gex && ./scripts/db-restore.sh --prod"
+log "    cd /srv/docker/quantdesk && ./scripts/db-restore.sh --prod"
 log ""
 log "The Parquet tree is not included -- send it with scripts/data-push.sh."
