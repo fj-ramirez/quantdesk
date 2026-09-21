@@ -142,3 +142,82 @@ def test_worker_sequence_steps_are_real_subcommands(command: str) -> None:
     from app.workers.terminal_ingest import SEQUENCE
 
     assert command in SEQUENCE
+
+
+# --- T90: the nightly sequence must not be killable by a usage error ------------------------
+#
+# The bug these cover is the same shape as the one at the top of this file and was found the
+# same way -- by looking at the database rather than at the code. `policy` was step 4 of the
+# worker's sequence and takes a required positional settlement file, so `cli.main(["policy"])`
+# raised `SystemExit(2)` from argparse. `SystemExit` is a `BaseException`, so `_run_sequence`'s
+# `except Exception` did not catch it, and the night ended before `edges` ran. Every scheduled
+# run since the step was added produced no transmission-graph refresh at all, while
+# `edge_stats` kept serving rows from the last hand-run.
+
+
+def test_cli_main_returns_a_code_for_a_usage_error_rather_than_raising() -> None:
+    """A bad invocation is an exit code, not an exception, because callers are in-process.
+
+    `main` is annotated `-> int` and the worker calls it directly. argparse's default of
+    raising `SystemExit` makes that annotation a lie for exactly the inputs a caller is most
+    likely to get wrong.
+    """
+    assert cli.main(["policy"]) == 2  # missing the required `settlements` positional
+    assert cli.main(["no-such-command"]) == 2
+
+
+def test_cli_main_still_reports_success_for_help() -> None:
+    """`--help` also raises `SystemExit`, with code 0. It is not an error and must not read
+    as one -- a worker that logged a failure for it would be crying wolf."""
+    assert cli.main(["--help"]) == 0
+
+
+def test_policy_is_not_in_the_worker_sequence() -> None:
+    """`policy` cannot run unattended: CME's terms prohibit fetching the settlements it needs.
+
+    Asserted rather than commented, because the failure mode of putting it back is silent --
+    the sequence simply stops early and the only symptom is a stale `as_of` on a screen.
+    """
+    from app.workers.terminal_ingest import SEQUENCE, UNSCHEDULED_STEPS
+
+    assert "policy" not in SEQUENCE
+    assert "policy" in dict(UNSCHEDULED_STEPS)
+
+
+def test_sequence_survives_a_step_that_raises_system_exit(monkeypatch, caplog) -> None:
+    """Belt and braces for the next required argument someone adds.
+
+    `cli.main` no longer raises `SystemExit`, but a library it calls still might, and the
+    property `_run_sequence` documents -- every step is attempted -- has to hold regardless of
+    which of the two a step chooses to fail with.
+    """
+    from app.workers import terminal_ingest
+
+    attempted: list[str] = []
+
+    def fake_main(argv: list[str]) -> int:
+        attempted.append(argv[0])
+        if argv[0] == "derive":
+            raise SystemExit(2)
+        return 0
+
+    monkeypatch.setattr(cli, "main", fake_main)
+    with caplog.at_level("INFO"):
+        terminal_ingest._run_sequence()
+
+    assert attempted == list(terminal_ingest.SEQUENCE), "a SystemExit truncated the sequence"
+    assert "edges" in attempted, "the step the original bug skipped must still run"
+    assert any("SystemExit" in r.getMessage() for r in caplog.records)
+
+
+def test_unscheduled_steps_are_announced_once_per_run(monkeypatch, caplog) -> None:
+    """The gap is stated, not inferred from an absence. That inference is what nobody made."""
+    from app.workers import terminal_ingest
+
+    monkeypatch.setattr(cli, "main", lambda argv: 0)
+    with caplog.at_level("WARNING"):
+        terminal_ingest._run_sequence()
+
+    warnings = [r for r in caplog.records if "not scheduled" in r.getMessage()]
+    assert len(warnings) == len(terminal_ingest.UNSCHEDULED_STEPS)
+    assert "CME" in warnings[0].getMessage()

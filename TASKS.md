@@ -1431,6 +1431,15 @@ never reaches `edges`. `settlements` is a required positional (`cli.py:666`), th
 is still stamped with yesterday's manual run. Spec:
 [plans/decision-inputs/00-nightly-abort.md](plans/decision-inputs/00-nightly-abort.md).
 
+**Done 2026-09-21 (code; deploy pending).** 1,118 backend tests green (5 added), ruff clean.
+`policy` is out of `SEQUENCE` and announced at WARNING via a new `UNSCHEDULED_STEPS`; the
+per-step guard is `except (Exception, SystemExit)`; and `cli.main` now returns a code for a
+usage error instead of raising. Tests went into `test_terminal_cli_contract.py`, which exists
+because of the same class of bug. **The acceptance criterion that matters is unverified until
+the homeserver is deployed to** -- a `graph` batch from a scheduled run, and `edge_stats.as_of`
+advancing past `2026-09-20T19:24:32`. Full account under the plan file's *Result* heading,
+including a second, independent failure it turned up (no `fred`/`treasury` batch today).
+
 ## T91 · Sonnet · T90
 
 `eq.rut`, `eq.msci_em` and `cmdty.gold` are declared graph nodes with **zero** observations,

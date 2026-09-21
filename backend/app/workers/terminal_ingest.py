@@ -11,8 +11,18 @@ it stored:
                ingested. A derived value computed before its inputs land would be wrong or
                absent, not late.
 3. `fomc`    — refresh the meeting calendar, which `policy` reads.
-4. `policy`  — the implied path, which needs both the calendar and fresh futures.
-5. `edges`   — the transmission graph's empirical half, which needs the full panel.
+4. `edges`   — the transmission graph's empirical half, which needs the full panel.
+
+**`policy` is deliberately not in that list any more (T90), and its absence is load-bearing.**
+It was step 4 until 2026-09-21, and it could never have worked here: `cli.py`'s `policy`
+subcommand takes a *required positional* settlement file, because CME's Data Terms of Use
+prohibit fetching their settlements automatically. `cli.main(["policy"])` therefore never
+reached its handler -- argparse raised `SystemExit(2)` for the missing argument, which is a
+`BaseException` and slipped straight through `_run_sequence`'s `except Exception`. So the
+sequence died at step 4 every night and `edges` never ran: on 2026-09-21 the scheduled 03:00
+run stopped after `derive`, and `edge_stats` still carried the previous day's *manual* run.
+See `plans/decision-inputs/00-nightly-abort.md`; T96 owns finding a source that would let the
+implied path run unattended.
 
 `board`, `regime`, `factors` and `brief` are **not** here: they compute on read from stored
 observations, so the API serves them live at whatever `as_of` the screen asks for. Precomputing
@@ -59,7 +69,25 @@ SCHEMA_SENTINEL_TABLE = "observations"
 MISFIRE_GRACE_SECONDS = 3600
 
 #: The ordered nightly sequence. A list, not a set, because the order is semantic.
-SEQUENCE: tuple[str, ...] = ("ingest", "derive", "fomc", "policy", "edges")
+SEQUENCE: tuple[str, ...] = ("ingest", "derive", "fomc", "edges")
+
+#: Steps that exist as CLI commands but cannot run unattended, and why. Logged once per run at
+#: WARNING so the gap is stated rather than inferred from an absence -- which is exactly how
+#: T90's bug survived: the implied policy path silently stopped updating and nothing said so.
+#:
+#: Keeping the reason here rather than in a comment means the operator reading `compose logs`
+#: gets it, not just the next person to read this file.
+UNSCHEDULED_STEPS: tuple[tuple[str, str], ...] = (
+    (
+        "policy",
+        (
+            "needs an operator-supplied CME ZQ settlement file (the `settlements` positional "
+            "in `app.modules.terminal.cli`), and CME's Data Terms of Use prohibit fetching it "
+            "automatically -- so the implied policy path does not update on a schedule. Run "
+            "it by hand with a settlement file, or see T96"
+        ),
+    ),
+)
 
 
 def _run_sequence() -> None:
@@ -75,8 +103,23 @@ def _run_sequence() -> None:
     raised. The steps are only loosely coupled -- a FRED outage should not stop the CFTC data
     landing or the edges being recomputed on yesterday's panel -- and a worker that abandoned
     the night on the first bad source would turn one vendor's bad day into a total gap.
+
+    **T90: the guard catches `SystemExit` as well as `Exception`, and that is the difference
+    between the paragraph above being true and merely being intended.** `cli.main` goes through
+    argparse, and argparse's answer to a bad invocation is to raise `SystemExit` -- which
+    inherits from `BaseException`, not `Exception`, so the original guard let it through and
+    ended the night. `cli.main` no longer raises it (it returns the code instead), so this is
+    belt and braces: the next step added with a required argument, or any library that decides
+    to `sys.exit` on a bad input, must not be able to silently truncate the sequence again.
+
+    The width is deliberate and stops there. `except BaseException` would also swallow
+    `KeyboardInterrupt` and `asyncio.CancelledError`, making the worker un-interruptible and
+    un-shutdownable -- trading a silent data gap for a container that ignores SIGTERM.
     """
     from app.modules.terminal import cli
+
+    for step, reason in UNSCHEDULED_STEPS:
+        logger.warning("terminal %s: not scheduled -- %s", step, reason)
 
     for step in SEQUENCE:
         logger.info("terminal %s: starting", step)
@@ -86,8 +129,12 @@ def _run_sequence() -> None:
                 logger.info("terminal %s: finished", step)
             else:
                 logger.error("terminal %s: exited %s", step, code)
-        except Exception:
-            logger.exception("terminal %s: failed; continuing with the rest of the sequence", step)
+        except (Exception, SystemExit) as exc:
+            logger.exception(
+                "terminal %s: failed with %s; continuing with the rest of the sequence",
+                step,
+                type(exc).__name__,
+            )
 
 
 async def terminal_ingest_job() -> None:

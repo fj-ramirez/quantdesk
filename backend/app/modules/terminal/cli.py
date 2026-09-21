@@ -702,7 +702,23 @@ def main(argv: list[str] | None = None) -> int:
     p_board.add_argument("--top", type=int, default=15,
                          help="rows to show, ranked by |z| (default 15)")
 
-    args = parser.parse_args(argv)
+    # T90: argparse's response to a bad invocation -- a missing required positional, an
+    # unknown subcommand, `--help` -- is to write to stderr and raise `SystemExit`, never to
+    # return. That is right for a terminal session and wrong for an in-process caller:
+    # `app.workers.terminal_ingest` calls this function directly, and `SystemExit` inherits
+    # from `BaseException`, so it sailed through the worker's `except Exception` and killed
+    # the whole nightly sequence at whichever step was misinvoked. `main` is documented to
+    # return an exit code, so it returns one here too.
+    #
+    # `--help` and `--version` come through this path with code 0 and are not errors; the
+    # `or 0` covers `SystemExit(None)`, which is what a bare `sys.exit()` raises. The
+    # `__main__` block below still turns whatever comes back into a real process exit status,
+    # so nothing changes for a human at a shell.
+    try:
+        args = parser.parse_args(argv)
+    except SystemExit as exit_signal:
+        return int(exit_signal.code or 0)
+
     settings = load_settings()
     configure(settings.log_level)
 

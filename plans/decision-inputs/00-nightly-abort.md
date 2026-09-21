@@ -123,3 +123,43 @@ Measured 2026-09-21, not assumed:
 ## Out of scope
 
 Making the policy path actually run — that is T96, and it is a data-source question.
+
+---
+
+## Result — T90
+
+**Done 2026-09-21** (code). 1,118 backend tests green (5 added), ruff clean.
+
+Both halves landed, as the design decision required:
+
+* `app/workers/terminal_ingest.py` — `policy` removed from `SEQUENCE`, which is now
+  `("ingest", "derive", "fomc", "edges")`. A new `UNSCHEDULED_STEPS` tuple carries the step and
+  its reason, logged at WARNING once per run so the gap is stated rather than inferred. The
+  per-step guard is `except (Exception, SystemExit)` and names the exception type it caught.
+* `app/modules/terminal/cli.py` — `parse_args` is wrapped, so `main` returns an exit code for a
+  usage error instead of raising. `--help` still returns 0, and the `__main__` block still turns
+  the return into a real process status, so nothing changes for a human at a shell.
+
+Tests went into `tests/test_terminal_cli_contract.py` rather than a new file — that file exists
+because of the *same* class of bug (T79's `db_path` drift, silently failing in this same worker
+at 03:00), and its opening docstring already makes the argument. Five: usage error returns 2,
+`--help` returns 0, `policy` is absent from `SEQUENCE` and present in `UNSCHEDULED_STEPS`, a
+step raising `SystemExit` does not truncate the sequence, and the unscheduled warning fires once
+per run.
+
+The existing `test_worker_sequence_steps_are_real_subcommands` parametrizes over
+`["ingest", "derive", "edges"]` and never named `policy`, so removing the step broke nothing.
+
+**Not verified, and it is the acceptance criterion that matters:** the homeserver has not been
+deployed to, so no scheduled run has yet produced a `graph` batch. Until it does, `edge_stats`
+stays stamped `2026-09-20T19:24:32`. Deploy, then confirm after the next 03:00 ET run:
+
+```sql
+SELECT adapter, started_at FROM terminal.ingest_batches ORDER BY started_at DESC LIMIT 8;
+SELECT max(as_of) FROM terminal.edge_stats;
+```
+
+**Still open, deliberately out of scope:** today's scheduled run also produced no `fred` and no
+`treasury` batch while the manual run did. That is consistent with the abort (both adapters run
+inside `ingest`, before the `policy` step — so it is *not* explained by it, and is more likely a
+second, independent failure). Worth a look once a clean scheduled run exists to compare against.
