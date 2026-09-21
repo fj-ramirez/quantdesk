@@ -1196,8 +1196,8 @@ buckets at read time and typed so it cannot pass as a settled one.
 
 **Next:** the frontend still reads the settled daily series. Wiring `session_bar` into the
 symbol views and charting the 5-minute series is UI work, not data work, and is the obvious
-follow-on. Next free ID is **T90** (T83, T84 and T85 are logged under the quantdesk initiative
-below; T86-T89 under capture-memory after it).
+follow-on. Next free ID is **T97** (T83, T84 and T85 are logged under the quantdesk initiative
+below; T86-T89 under capture-memory, T90-T96 under decision-inputs after it).
 
 ---
 
@@ -1405,3 +1405,69 @@ a no-op fallback for the Windows dev host. Spec:
 Arrow's allocated bytes and a `gc` type histogram to cover tracemalloc's C-extension blind spot.
 Deliverable is a named allocation site, not a fix. Spec:
 [plans/capture-memory/03-tracemalloc.md](plans/capture-memory/03-tracemalloc.md).
+
+---
+
+# decision-inputs — what the trade path reads (T90–T96)
+
+Full specs in [plans/decision-inputs/](plans/decision-inputs/). Opened 2026-09-21 out of
+[docs/market-research-eval.md](docs/market-research-eval.md), the market-research agent's own
+answer to "which sources would polish your choices?"
+
+**The eval's list was verified against the database and the code before any of it was planned,
+and it did not survive intact.** Three items describe things that already exist (RSP breadth,
+index-level RV/VRP, the `intraday_bars` "outage" — that table is writing again as of today).
+Two of its factual claims are wrong: the correlation percentiles are read backwards, and
+`etf_shares_outstanding` is not collapsing. Read
+[plans/decision-inputs/README.md](plans/decision-inputs/README.md) first -- it carries the
+verification table, and where it and the eval disagree, it is right.
+
+## T90 · Sonnet · —
+
+**P0, and not from the eval.** The nightly terminal sequence aborts at the `policy` step and
+never reaches `edges`. `settlements` is a required positional (`cli.py:666`), the worker calls
+`cli.main(["policy"])` with none, argparse raises `SystemExit`, and `_run_sequence`'s
+`except Exception` cannot catch it. Today's scheduled run stopped after `derived`; `edge_stats`
+is still stamped with yesterday's manual run. Spec:
+[plans/decision-inputs/00-nightly-abort.md](plans/decision-inputs/00-nightly-abort.md).
+
+## T91 · Sonnet · T90
+
+`eq.rut`, `eq.msci_em` and `cmdty.gold` are declared graph nodes with **zero** observations,
+blocking three edges -- including `credit.hy.oas -> eq.rut`. IWM, EEM and GLD each hold 1,262
+daily bars in `gex.daily_bars`, current to today. Feed the nodes from data already captured,
+through a named cross-module adapter. Spec:
+[plans/decision-inputs/01-empty-nodes.md](plans/decision-inputs/01-empty-nodes.md).
+
+## T92 · Sonnet · —
+
+Relative volume: `daily_bars.volume` is populated (149,560 rows, 120 symbols) and no scan
+module reads it. A sixth pure indicator beside `atr` and `realized_vol`, null-safe for the five
+index symbols that correctly have no volume. Spec:
+[plans/decision-inputs/02-relative-volume.md](plans/decision-inputs/02-relative-volume.md).
+
+## T93 · Opus · —
+
+Factor cap: measure how correlated the decision set's own candidates are, and stop emitting one
+bet as seventeen tickers. Needs no new data. Spec:
+[plans/decision-inputs/03-factor-cap.md](plans/decision-inputs/03-factor-cap.md).
+
+## T94 · Sonnet · T91
+
+Sector-level transmission edges. The graph's four equity nodes are all index-level; every trade
+the desk makes is in a sector or industry ETF, all of which are already in `daily_bars`. Spec:
+[plans/decision-inputs/04-sector-edges.md](plans/decision-inputs/04-sector-edges.md).
+
+## T95 · Sonnet · —
+
+Crude term structure: `cmdty.wti` is a single series, so contango versus backwardation is
+unanswerable. The source survey is the task, and a negative result closes it. Spec:
+[plans/decision-inputs/05-crude-term-structure.md](plans/decision-inputs/05-crude-term-structure.md).
+
+## T96 · Opus · T90
+
+Event calendar and the implied policy path. `terminal.releases` has 0 rows; `policy.py` is
+finished, tested, and has never produced a row because its input is a hand-supplied CME file
+that their terms forbid fetching. Calendar first (free sources, solved problem), then an OIS
+source survey. Spec:
+[plans/decision-inputs/06-calendar-and-policy-path.md](plans/decision-inputs/06-calendar-and-policy-path.md).

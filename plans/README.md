@@ -42,6 +42,15 @@ plans/
     01-single-materialization.md    T87  stop rebuilding the chain from disk
     02-return-to-os.md              T88  malloc_trim and Arrow's release_unused
     03-tracemalloc.md               T89  conditional: only if the gate says "leak"
+  decision-inputs/                  what the trade path reads (2026-09-21)
+    README.md                       the eval, the verification that overturned parts of it
+    00-nightly-abort.md             T90  P0: the nightly sequence dies before `edges`
+    01-empty-nodes.md               T91  three declared nodes that were never ingested
+    02-relative-volume.md           T92  the volume column nothing reads
+    03-factor-cap.md                T93  stop emitting one trade seventeen times
+    04-sector-edges.md              T94  transmission at the level the trades live at
+    05-crude-term-structure.md      T95  squeeze versus froth; the source survey is the task
+    06-calendar-and-policy-path.md  T96  a source decision, not a wiring job
 ```
 
 ## Conventions
@@ -51,10 +60,10 @@ plans/
   block shape used by `TASKS.md`), *Verified facts* (measured by the supervisor, not assumed),
   *Acceptance*, *Likely first-contact failures*, *Out of scope*.
 - Task IDs are allocated here and reserved in `TASKS.md` before dispatch. Next free ID as of
-  2026-09-21: **T90**. (The continuation initiative ended at T56; T57-T61 were filed directly
+  2026-09-21: **T97**. (The continuation initiative ended at T56; T57-T61 were filed directly
   in `TASKS.md`; T62-T69 went to `ui-ux-refresh/`; T70-T72 to `continuous-feed/`; T73-T74 directly in
   `TASKS.md`; T75-T82 to `quantdesk/`; T83-T85 directly in `TASKS.md`; T86-T89 to
-  `capture-memory/`.)
+  `capture-memory/`; T90-T96 to `decision-inputs/`.)
 - An initiative may adopt an **existing** ID rather than allocate a new one. `continuous-feed/`
   does this for `T18`-`T20`, `T21`-`T23` and `T32`: those were specified in `TASKS.md` in 2026-09-04
   and never built, so the plan file carries the full spec and the `TASKS.md` block stays as the
