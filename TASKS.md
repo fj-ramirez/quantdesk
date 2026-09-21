@@ -1470,6 +1470,15 @@ Factor cap: measure how correlated the decision set's own candidates are, and st
 bet as seventeen tickers. Needs no new data. Spec:
 [plans/decision-inputs/03-factor-cap.md](plans/decision-inputs/03-factor-cap.md).
 
+**Done 2026-09-21.** 1,154 backend / 403 frontend tests green (27 added), both linters clean.
+New pure module `scan/factors.py`; the cap marks and explains, never removes. Three decisions
+beyond the spec: the comparison is on the **side-adjusted** correlation (two correlated names
+traded opposite ways are a hedge, not a duplicate), two opportunities on one symbol never
+duplicate each other, and `rejected` rows are not candidates. Run against the eval's own
+"these eight are one trade": **false -- 6.96 independent bets of 8**, mean pairwise correlation
+0.0214. The real cluster is energy (XLE/XOP 0.926). No UI renders it yet. Full account under
+the plan file's *Result* heading.
+
 ## T94 · Sonnet · T91
 
 Sector-level transmission edges. The graph's four equity nodes are all index-level; every trade

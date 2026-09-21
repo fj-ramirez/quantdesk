@@ -166,3 +166,33 @@ that directory's README; a re-recording will replace them.
 
 **No UI yet.** The data and the types are in place; no component renders the factor summary or
 the suppression mark. Same shape of follow-on as T92's missing column.
+
+### Run against the eval's own claim — 2026-09-21
+
+The acceptance item that needed live data. The eval's sharpest self-criticism was *"these
+eight are one trade"*, offered as an assertion. It never listed the eight, so this uses the
+eight tickers it names across its text — IWM, XOP, USO, XLRE, KRE, XBI, XLE, XLK — over the
+last 62 sessions of `gex.daily_bars`, computed in SQL as an independent implementation of the
+module's arithmetic.
+
+**The assertion does not hold. As a set, those eight are 6.96 independent bets out of 8**
+(mean pairwise return correlation 0.0214 across all 28 pairs). They are very nearly eight
+separate trades.
+
+What is true is narrower, and the tool finds it. Three pairs clear 0.70, and all three are the
+energy cluster:
+
+| Pair | Correlation | Sessions |
+|---|---|---|
+| XLE / XOP | **0.926** | 62 |
+| USO / XOP | 0.764 | 62 |
+| USO / XLE | 0.738 | 62 |
+
+At the default 0.80 threshold, XLE and XOP held the same way would be marked as one trade and
+USO would survive. So the concentration the eval sensed is real but confined to energy, and
+the number is the difference between "cap the book" and "cap these two".
+
+This is the third of the eval's claims that measurement overturned, after the correlation
+percentiles and the `etf_shares_outstanding` coverage. The pattern is worth naming: its
+*directional* instincts were good — there was a concentration, energy was where it lived — and
+every one of its *quantities* needed checking.
