@@ -2,33 +2,48 @@
   "$comment": [
     "T82. Registers the quantdesk MCP connector for the Claude CLI at the project level.",
     "",
-    "This file is AN INSTANCE of the registration, not the interface. The interface is the",
-    "command below: any MCP client that launches a stdio server can be pointed at the same",
-    "process, and context/mcp-connector.md gives the generic invocation. Nothing in the tool",
-    "definitions assumes a Claude-shaped client.",
+    "It points at the HOMESERVER, which is the authoritative store: it runs the captures, and",
+    "its gex.snapshots is ahead of any laptop copy. The laptop database is a lab.",
     "",
-    "DATABASE_URL_RO must authenticate as quantdesk_ro. There is deliberately no fallback to",
-    "DATABASE_URL: the server refuses to start rather than run with write access, because a",
-    "connector that works perfectly and is not read-only is the worst possible outcome.",
+    "Transport is still stdio -- SSH just moves 'local process' onto the other machine. The",
+    "server runs inside the backend container, where postgres:5432 is reachable on the stack's",
+    "`internal` network. Nothing is published, and compose.prod.yaml's deliberate posture (the",
+    "database is on `internal` only, not on `edge`, with no host port) is left exactly as it is.",
+    "Reached over Tailscale; `homeserver` resolves via MagicDNS.",
     "",
-    "The ${VAR} form is expanded by the Claude CLI from the PROCESS ENVIRONMENT ONLY. It does",
-    "not read this repo's .env, and it does not read .claude/settings.local.json's env block --",
-    "both were tried on 2026-09-20 and the CLI still reported the variable missing. Set a real",
-    "environment variable before launching the client:",
+    "No secret lives in this file, on the laptop, or in the environment. DATABASE_URL_RO is",
+    "derived INSIDE the container from two values already there: QUANTDESK_RO_PASSWORD, and the",
+    "host/port/dbname tail of DATABASE_URL (${DATABASE_URL#*@}). The connector still",
+    "authenticates as quantdesk_ro and still fails closed if that role can write.",
     "",
-    "    setx QUANTDESK_RO_PASSWORD \"<value>\"      # Windows, then open a NEW terminal",
-    "    export QUANTDESK_RO_PASSWORD=\"<value>\"    # POSIX",
+    "BatchMode=yes makes a missing key fail fast instead of hanging on a prompt, which over",
+    "stdio would look like a server that never answers. ServerAliveInterval keeps an idle",
+    "session from being dropped mid-conversation.",
     "",
-    "It must match QUANTDESK_RO_PASSWORD in .env, which is what app/core/ro_role.py applies to",
-    "the role at backend boot. POSTGRES_DB needs nothing: the :-gex default covers it."
+    "TO RUN AGAINST THE LOCAL STACK INSTEAD, replace command/args with:",
+    "    \"command\": \"uv\",",
+    "    \"args\": [\"run\", \"--directory\", \"backend\", \"python\", \"-m\", \"app.mcp\"],",
+    "    \"env\": { \"DATABASE_URL_RO\": \"postgresql://quantdesk_ro:${QUANTDESK_RO_PASSWORD}@localhost:5432/${POSTGRES_DB:-gex}\" }",
+    "The ${VAR} form there is expanded by the Claude CLI from the PROCESS ENVIRONMENT ONLY --",
+    "not from this repo's .env, and not from .claude/settings.local.json's env block. Both were",
+    "tried on 2026-09-20 and the CLI still reported the variable missing. Only one server is",
+    "registered at a time on purpose: two would put two sets of nine identically-named tools in",
+    "front of the model and make it guess which desk it is looking at."
   ],
   "mcpServers": {
     "quantdesk": {
-      "command": "uv",
-      "args": ["run", "--directory", "backend", "python", "-m", "app.mcp"],
-      "env": {
-        "DATABASE_URL_RO": "postgresql://quantdesk_ro:${QUANTDESK_RO_PASSWORD}@localhost:5432/${POSTGRES_DB:-gex}"
-      }
+      "command": "ssh",
+      "args": [
+        "-T",
+        "-o",
+        "BatchMode=yes",
+        "-o",
+        "ServerAliveInterval=30",
+        "-o",
+        "ServerAliveCountMax=6",
+        "homeserver",
+        "docker exec -i quantdesk-backend-1 sh -c 'DATABASE_URL_RO=\"postgresql://quantdesk_ro:$QUANTDESK_RO_PASSWORD@${DATABASE_URL#*@}\" exec python -m app.mcp'"
+      ]
     }
   }
 }

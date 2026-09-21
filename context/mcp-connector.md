@@ -6,23 +6,44 @@ three stores became one database, and one database is something a connector can 
 
 ## Running it
 
+**It points at the homeserver**, because that is the authoritative store: the homeserver runs
+the captures, and its `gex.snapshots` is ahead of any laptop copy. The laptop database is a lab.
+
 ```
-uv run --directory backend python -m app.mcp
+ssh -T homeserver "docker exec -i quantdesk-backend-1 sh -c '…exec python -m app.mcp'"
 ```
 
-Registered for the Claude CLI in `.mcp.json` at the repo root. That file is *an instance* of the
-registration — the interface is the command above, and any MCP client that launches a stdio
-server works. For another client (LM Studio, Goose, Cline), give it:
+Registered for the Claude CLI in `.mcp.json` at the repo root, which carries the full command.
+That file is *an instance* of the registration — the interface is the command, and any MCP
+client that launches a stdio server works.
 
-| field | value |
-|---|---|
-| command | `uv` |
-| args | `run --directory backend python -m app.mcp` |
-| env | `DATABASE_URL_RO=postgresql://quantdesk_ro:<password>@localhost:5432/gex` |
-| transport | stdio |
+**SSH is not a second transport.** It is still stdio; SSH only moves "local process" onto the
+other machine. The server runs *inside* the backend container, where `postgres:5432` is
+reachable on the stack's `internal` network, so `compose.prod.yaml`'s posture is untouched: the
+database stays on `internal` only, off Caddy's `edge`, with no published host port. The
+alternative — publishing 5432 on the Tailscale interface and connecting from the laptop — would
+have worked too, and was rejected because it trades a deliberate network property for
+convenience the SSH form already provides. Reached over Tailscale; `homeserver` is MagicDNS.
 
-Nothing is exposed on the network and there is no HTTP surface. Remote/HTTP MCP was explicitly
-not designed here (the user's call, 2026-09-19).
+**No secret lives in the repo, on the laptop, or in the laptop's environment.**
+`DATABASE_URL_RO` is derived inside the container from two values already present there:
+`QUANTDESK_RO_PASSWORD`, and the host/port/dbname tail of `DATABASE_URL` (`${DATABASE_URL#*@}`).
+The prod backend service does not set `DATABASE_URL_RO` itself; if it ever does, the command
+collapses to `python -m app.mcp` and this paragraph can go.
+
+For another client (LM Studio, Goose, Cline), give it that same command with `transport: stdio`.
+To run against the **local** stack instead — offline, or when the homeserver is down — swap the
+command for `uv run --directory backend python -m app.mcp` with
+`DATABASE_URL_RO=postgresql://quantdesk_ro:<password>@localhost:5432/gex` in its env. Register
+one or the other, not both: two servers put two sets of nine identically-named tools in front of
+the model and make it guess which desk it is looking at.
+
+> The Claude CLI expands `${VAR}` in `.mcp.json` from the **process environment only** — not
+> from this repo's `.env`, and not from `.claude/settings.local.json`'s `env` block. Both were
+> tried on 2026-09-20. The SSH form needs no variable at all, which is part of why it won.
+
+Remote/HTTP MCP is still explicitly not designed here (the user's call, 2026-09-19), and the
+SSH form is not a departure from that: there is no HTTP surface and nothing is listening.
 
 ## The safety model, in one line
 
