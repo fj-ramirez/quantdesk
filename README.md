@@ -225,18 +225,36 @@ data sits untouched in its volume.
 
 ### Syncing to the homeserver
 
-Three scripts, all Git Bash / POSIX sh, all driven from the stack directory they live in:
+Four scripts, all Git Bash / POSIX sh, all driven from the stack directory they live in. Both
+halves work the same way: one script here writes a file into the server's `backups/`, and one
+script there installs it.
 
 ```
-scripts/db-dump-push.sh      # here: pg_dump -> backups/quantdesk.dump -> scp to the server
-scripts/db-restore.sh        # there: that dump -> the stack running on this host
-scripts/data-push.sh         # here: data/ -> the server, sending only what differs
+scripts/db-dump-push.sh      # here:  pg_dump          -> backups/quantdesk.dump
+scripts/db-restore.sh        # there: that dump        -> the stack's Postgres
+scripts/data-push.sh         # here:  the data delta   -> backups/quantdesk-data.tar.gz
+scripts/data-load.sh         # there: that archive     -> data/
 ```
 
-A full sync is the first and the third, then the second on the far side. The database and the
-Parquet tree are two halves of one snapshot — `snapshots.parquet_path` is relative to
-`DATA_DIR` (invariant 5) — so a restored index without the chains behind it points at files
-that are not there.
+Nothing here ever writes into `data/` or the database over ssh. `backups/` is writable by an
+ordinary ssh account and `data/` belongs to the deploy user (`10001`), so the privileged step
+is a local `sudo` on the far side rather than a permission grant you would have to remember
+for every new directory the capture creates.
+
+A full sync is the two pushes, then the two installs. The database and the Parquet tree are
+two halves of one snapshot — `snapshots.parquet_path` is relative to `DATA_DIR` (invariant 5)
+— so a restored index without the chains behind it points at files that are not there.
+
+```
+# here
+scripts/db-dump-push.sh
+scripts/data-push.sh
+
+# there
+cd /srv/docker/quantdesk
+scripts/db-restore.sh --prod
+sudo scripts/data-load.sh
+```
 
 The dump always has the same name (`quantdesk.dump`) and the push **replaces** the previous
 one, so there is exactly one current dump and `db-restore.sh` needs no argument. Both ends
@@ -275,31 +293,48 @@ What `db-restore.sh` does beyond `pg_restore`:
   version, and the data type of every `captured_at` / `as_of` (invariant 4 — a dump/restore is
   exactly where tz-awareness degrades quietly).
 
-Neither database script touches `data/`. That is `data-push.sh`:
+Neither database script touches `data/`. That is `data-push.sh` and `data-load.sh`:
 
 ```
-scripts/data-push.sh                  # delta-push data/ -> homeserver:/srv/docker/quantdesk/data
+# here
+scripts/data-push.sh                  # the delta -> homeserver:<stack>/backups/quantdesk-data.tar.gz
 scripts/data-push.sh -n               # list what would be sent, send nothing
 scripts/data-push.sh chains/SPX       # one subtree
-scripts/data-push.sh --sudo           # write through `sudo -n`, then chown to 10001:10001
+
+# there
+sudo scripts/data-load.sh             # that archive -> data/, then chown to 10001:10001
+scripts/data-load.sh -n               # list what it holds, change nothing (no sudo needed)
+sudo scripts/data-load.sh --clear     # ... and delete the archive afterwards
 ```
 
-It sends only what the server is missing or holds differently, and picks its transport:
-`rsync` when both ends have it, otherwise `tar`. The `tar` path is the normal one from
-Windows — Git for Windows ships `ssh` and `tar` but no `rsync` — and works by comparing a
-`find` manifest from each side, then streaming the differing files through
-`tar | ssh | tar -x`. That is a *file*-level delta rather than rsync's block-level one, which
-costs nothing here: a chain parquet is written once by the capture that produced it and never
-edited, so a file that differs at all differs entirely.
+The push compares a `find` manifest of the local tree against one of the **real** `data/` on
+the server — reading it needs no permissions — and packs just the difference. So a loaded
+archive is never resent, and an archive you forget to load is simply rebuilt by the next
+push. Same name every time, replacing the previous one, exactly like the database dump.
 
-Two deliberate refusals. **Removals are never propagated** — this tree is append-only by
-nature and the free Cboe endpoint only ever serves "now", so a local file that has gone
-missing is far likelier to be a local accident than an instruction to delete the only copy.
-And **`postgres/` is always excluded**: on the server that path is the live PGDATA bind mount.
+It is a file-level delta rather than rsync's block-level one, which costs this tree nothing:
+a chain parquet is written once by the capture that produced it and never edited, so a file
+that differs at all differs entirely. (Windows has no `rsync` to fall back on anyway — Git
+for Windows ships `ssh` and `tar` and nothing else of the sort.)
 
-The deploy owns `data/` as `10001:10001` (step 3 above), so an ssh user who is not in that
-group cannot write there. The script checks before transferring anything and says so; `--sudo`
-runs the remote side under `sudo -n` and chowns afterwards.
+Three deliberate refusals:
+
+- **Removals are never propagated.** This tree is append-only by nature and the free Cboe
+  endpoint only ever serves "now", so a local file that has gone missing is far likelier to
+  be a local accident than an instruction to delete the only remaining copy.
+- **`postgres/` is always excluded** — on the server that path is the live PGDATA bind mount.
+  The push skips it, naming it as the subtree argument is an error, and the loader refuses an
+  archive containing `postgres/`, absolute, or `../` paths outright. It arrives over the
+  network; the cost of being wrong about its contents is `tar` writing into a live database.
+- **`data-load.sh` will not chown `postgres/`.** It fixes ownership on everything else under
+  `data/` by name rather than recursing from the top: PGDATA must stay `0700` owned by uid
+  999, and a stray `chown -R` over it stops Postgres from starting with an error that reads
+  like corruption.
+
+The ownership pass is the reason the loader wants root. `tar` creates intermediate
+directories owned by whoever ran it, and a directory the capture worker cannot write into
+breaks the *next capture* rather than this restore — a failure that shows up hours later and
+nowhere near its cause. Run without `sudo` and it says so instead of leaving that behind.
 
 ### Migrating an existing database
 

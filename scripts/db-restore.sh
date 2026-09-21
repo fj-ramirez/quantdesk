@@ -15,7 +15,7 @@
 # writing to them, and an open connection holding a lock makes the drop block instead.
 #
 # Restores the database only. data/chains/ (the Parquet tree the snapshot index points into,
-# invariant 5) is pushed separately, by scripts/data-push.sh.
+# invariant 5) is pushed separately, by scripts/data-push.sh and scripts/data-load.sh.
 
 source "$(dirname -- "${BASH_SOURCE[0]}")/_common.sh"
 
