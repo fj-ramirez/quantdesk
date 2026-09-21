@@ -107,6 +107,12 @@ services:
       # There the bundle ships with no origin at all and resolves against the page it was
       # loaded from, because nothing may assume a hostname.
       VITE_API_BASE_URL: http://localhost:8001
+      # Talk to the real backend, not MSW. `main.tsx` starts the mock worker in any dev build
+      # unless this is the literal string "false" -- which made the dev stack serve fixtures
+      # from `src/mocks` while a fully-populated Postgres sat one port away, and made every
+      # extended (T47) symbol 404 with "unknown underlying", because the handlers only mock
+      # the core five. Mocks remain available on a bare `npm run dev` outside compose.
+      VITE_ENABLE_MOCKS: "false"
     volumes:
       # Same shape as the backend: source live, node_modules kept as the container installed
       # them. esbuild and rollup ship per-platform binaries, so the Windows-built
