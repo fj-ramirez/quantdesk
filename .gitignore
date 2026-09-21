@@ -50,3 +50,6 @@ AGENTS.md
 
 # Ad-hoc screenshots dropped in the repo root while inspecting the UI.
 Captura de pantalla*.png
+
+# Database dumps written by scripts/db-dump-push.sh -- one file, overwritten each time.
+backups/

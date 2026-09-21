@@ -1,0 +1,3 @@
+# Shell scripts run on the Arch homeserver as well as here: a CRLF shebang makes bash fail
+# with "bad interpreter: /usr/bin/env bash^M", so check them out LF regardless of core.autocrlf.
+*.sh text eol=lf

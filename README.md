@@ -223,6 +223,56 @@ The two keep entirely separate databases — dev in the `pgdata` volume, prod in
 `./data/postgres` — so a prod stack on your laptop starts with an empty schema while the dev
 data sits untouched in its volume.
 
+### Syncing the database to the homeserver
+
+Two scripts, both Git Bash / POSIX sh, both driven from the stack directory they live in:
+
+```
+scripts/db-dump-push.sh      # here: pg_dump -> backups/quantdesk.dump -> scp to the server
+scripts/db-restore.sh        # there: that dump -> the stack running on this host
+```
+
+The dump always has the same name (`quantdesk.dump`) and the push **replaces** the previous
+one, so there is exactly one current dump and `db-restore.sh` needs no argument. Both ends
+write to a `.part` file and rename it only on success — an interrupted transfer cannot
+destroy the last good dump.
+
+```
+# laptop (dev stack)
+scripts/db-dump-push.sh                       # --prod to dump a production stack instead
+scripts/db-dump-push.sh --local-only          # just write backups/quantdesk.dump
+
+# homeserver
+cd /srv/docker/gex && scripts/db-restore.sh --prod
+```
+
+Defaults: host `homeserver`, remote directory `/srv/docker/gex/backups` — i.e. `backups/`
+inside the stack directory, which is where `db-restore.sh` looks by default on that side.
+Override with `--host` / `--remote-dir` or `QD_REMOTE_HOST` / `QD_REMOTE_DIR`.
+
+Credentials are never read host-side. Both scripts run `pg_dump`/`pg_restore` inside the
+`postgres` container and use the `POSTGRES_*` variables that container already has, so they
+cannot disagree with the compose file about which database they are touching.
+
+What `db-restore.sh` does beyond `pg_restore`:
+
+- **Stops `backend` and the three workers** for the duration and starts them again afterwards,
+  including on failure. `--clean` drops every table, and a capture writing through that either
+  blocks the drop on a lock or writes into a table that is about to vanish. `--no-stop` opts out.
+- **`--single-transaction`**, so a restore that fails half way leaves the database untouched.
+  It implies `--exit-on-error`; `pg_restore`'s default is to log errors, continue, and exit 0.
+- **Re-applies `quantdesk_ro`'s grants.** Necessary, not defensive: dropping a schema takes its
+  `ALTER DEFAULT PRIVILEGES` entry with it, so the tables the restore then creates would carry
+  no grant at all and the MCP connector (T82) would read an empty database through a role that
+  still logs in fine. Alembic will not repair it — the version row came back with the dump.
+- **Prints the verification the section below asks for**: per-table row counts, the alembic
+  version, and the data type of every `captured_at` / `as_of` (invariant 4 — a dump/restore is
+  exactly where tz-awareness degrades quietly).
+
+Neither script touches `data/chains/`. The Parquet tree is the other half of a snapshot —
+`snapshots.parquet_path` is relative to `DATA_DIR` (invariant 5) — and it is a plain file copy,
+so `rsync` it separately when it has moved on.
+
 ### Migrating an existing database
 
 Production stores Postgres in a bind mount (`./data/postgres`) rather than the `pgdata` named
