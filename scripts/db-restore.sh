@@ -15,7 +15,7 @@
 # writing to them, and an open connection holding a lock makes the drop block instead.
 #
 # Restores the database only. data/chains/ (the Parquet tree the snapshot index points into,
-# invariant 5) is a separate file copy.
+# invariant 5) is pushed separately, by scripts/data-push.sh.
 
 source "$(dirname -- "${BASH_SOURCE[0]}")/_common.sh"
 
@@ -153,4 +153,4 @@ trap - EXIT
 log ""
 log "Restored. Worth a glance before trusting it:"
 log "  * every captured_at / as_of above reads 'timestamp with time zone' (invariant 4)"
-log "  * data/chains/ holds the Parquet this index points at (invariant 5) -- not restored here"
+log "  * data/chains/ holds the Parquet this index points at (invariant 5) -- scripts/data-push.sh"

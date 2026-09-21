@@ -223,14 +223,20 @@ The two keep entirely separate databases — dev in the `pgdata` volume, prod in
 `./data/postgres` — so a prod stack on your laptop starts with an empty schema while the dev
 data sits untouched in its volume.
 
-### Syncing the database to the homeserver
+### Syncing to the homeserver
 
-Two scripts, both Git Bash / POSIX sh, both driven from the stack directory they live in:
+Three scripts, all Git Bash / POSIX sh, all driven from the stack directory they live in:
 
 ```
 scripts/db-dump-push.sh      # here: pg_dump -> backups/quantdesk.dump -> scp to the server
 scripts/db-restore.sh        # there: that dump -> the stack running on this host
+scripts/data-push.sh         # here: data/ -> the server, sending only what differs
 ```
+
+A full sync is the first and the third, then the second on the far side. The database and the
+Parquet tree are two halves of one snapshot — `snapshots.parquet_path` is relative to
+`DATA_DIR` (invariant 5) — so a restored index without the chains behind it points at files
+that are not there.
 
 The dump always has the same name (`quantdesk.dump`) and the push **replaces** the previous
 one, so there is exactly one current dump and `db-restore.sh` needs no argument. Both ends
@@ -269,9 +275,31 @@ What `db-restore.sh` does beyond `pg_restore`:
   version, and the data type of every `captured_at` / `as_of` (invariant 4 — a dump/restore is
   exactly where tz-awareness degrades quietly).
 
-Neither script touches `data/chains/`. The Parquet tree is the other half of a snapshot —
-`snapshots.parquet_path` is relative to `DATA_DIR` (invariant 5) — and it is a plain file copy,
-so `rsync` it separately when it has moved on.
+Neither database script touches `data/`. That is `data-push.sh`:
+
+```
+scripts/data-push.sh                  # delta-push data/ -> homeserver:/srv/docker/gex/data
+scripts/data-push.sh -n               # list what would be sent, send nothing
+scripts/data-push.sh chains/SPX       # one subtree
+scripts/data-push.sh --sudo           # write through `sudo -n`, then chown to 10001:10001
+```
+
+It sends only what the server is missing or holds differently, and picks its transport:
+`rsync` when both ends have it, otherwise `tar`. The `tar` path is the normal one from
+Windows — Git for Windows ships `ssh` and `tar` but no `rsync` — and works by comparing a
+`find` manifest from each side, then streaming the differing files through
+`tar | ssh | tar -x`. That is a *file*-level delta rather than rsync's block-level one, which
+costs nothing here: a chain parquet is written once by the capture that produced it and never
+edited, so a file that differs at all differs entirely.
+
+Two deliberate refusals. **Removals are never propagated** — this tree is append-only by
+nature and the free Cboe endpoint only ever serves "now", so a local file that has gone
+missing is far likelier to be a local accident than an instruction to delete the only copy.
+And **`postgres/` is always excluded**: on the server that path is the live PGDATA bind mount.
+
+The deploy owns `data/` as `10001:10001` (step 3 above), so an ssh user who is not in that
+group cannot write there. The script checks before transferring anything and says so; `--sudo`
+runs the remote side under `sudo -n` and chowns afterwards.
 
 ### Migrating an existing database
 

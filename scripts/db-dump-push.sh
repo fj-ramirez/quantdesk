@@ -14,7 +14,8 @@
 #
 # This moves the *database* only. The Parquet tree under data/chains/ is the other half of a
 # snapshot (invariant 5: snapshots.parquet_path is relative to DATA_DIR) and is a plain file
-# copy -- rsync it separately, or the restored index will point at files the target lacks.
+# copy: send it with scripts/data-push.sh, or the restored index points at files that the
+# target does not have.
 
 source "$(dirname -- "${BASH_SOURCE[0]}")/_common.sh"
 
@@ -89,4 +90,4 @@ log ""
 log "Done. On $REMOTE_HOST:"
 log "    cd /srv/docker/gex && ./scripts/db-restore.sh --prod"
 log ""
-log "The Parquet tree (data/chains/) is not included -- copy it separately if it has moved on."
+log "The Parquet tree is not included -- send it with scripts/data-push.sh."
