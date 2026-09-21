@@ -99,6 +99,22 @@ measured at 15 h uptime held 613 MB and the one measured at 4 h held 626 MB. If 
 per capture, fifteen hours would be far past 626 MB. Two points are not a trend, which is what
 the overnight run is for.
 
+### The gate's answer — 2026-09-21
+
+**Retention. Dispatch T86, T87, T88; skip T89.**
+
+Across the three and a half hours after the 20:00 UTC close, with no captures firing,
+`gex-capture`'s heap went 625.9 -> 599.6 -> 623.6 -> 619.6 MB and settled there: oscillating
+within about 25 MB and **ending below where it started**. A leak does not give memory back, and
+this gave some back and then held. Combined with the 613 MB-at-15 h against 626 MB-at-4 h
+reading above, the shape is a water mark of roughly 600-630 MB that fills during the session
+and holds.
+
+Note that `--report`'s own `anon MB/day` column reads ~1,600 for this container and should be
+ignored here: it is a first-to-last slope across the whole file, so it is still dominated by
+the 125 -> 626 MB climb in the fifteen minutes after boot. The trajectory is the evidence, not
+the slope.
+
 ## Dependency graph and dispatch order
 
 ```
@@ -129,9 +145,16 @@ rather than inside one, and why nothing here proposes restarting the worker on a
 
 ## Out of scope for this initiative
 
-* **The backend's heap.** It sat at 762 MB before the reboot and is flat at 125.7 MB now, so its
-  growth is driven by request volume rather than by the clock. Same likely mechanism, no current
-  signal, no measurement to act on. Revisit with the same sampler after a day of real use.
+* **The backend's heap** -- and the reason it is out of scope is sharper than it first looked.
+  It sat at 762 MB before the reboot, then at *exactly* 125.7 MB with 12 processes for three
+  and a half hours after it, and then jumped to 185.2 MB with 15 processes the moment the MCP
+  connector was reconnected on 2026-09-21. **The connector runs as `docker exec ... python -m
+  app.mcp` inside this container** (see `.mcp.json`), so an MCP session's own process and heap
+  are charged to the backend's cgroup and are indistinguishable from the API's in `docker
+  stats`. A long Claude session doing database work therefore *looks* like an API memory leak.
+  The pre-reboot 762 MB should be read with that in mind. If the backend is ever investigated,
+  separate the uvicorn process from whatever `docker exec` sessions are attached first --
+  `/proc/1/status` versus the cgroup total -- or the measurement is of the wrong thing.
 * **`Registry` never disposing its engine** (`modules/research/registry.py:109` creates an
   `Engine` per cycle; `close()` at `:396` closes only the session, and `dispose()` appears
   nowhere in the codebase), and the **five session factories per process** (`core/db.py` plus
