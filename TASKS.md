@@ -1196,7 +1196,8 @@ buckets at read time and typed so it cannot pass as a settled one.
 
 **Next:** the frontend still reads the settled daily series. Wiring `session_bar` into the
 symbol views and charting the 5-minute series is UI work, not data work, and is the obvious
-follow-on. Next free ID is **T86** (T83, T84 and T85 are logged under the quantdesk initiative below).
+follow-on. Next free ID is **T90** (T83, T84 and T85 are logged under the quantdesk initiative
+below; T86-T89 under capture-memory after it).
 
 ---
 
@@ -1358,3 +1359,49 @@ temp table, which `PUBLIC` may always create -- and now asks Postgres's privileg
 Caveats are payload: the leaderboard tool carries the noise ceiling and reports how many rows
 clear it. Two acceptance items are **not** verified and are named under the plan file's *Result*
 heading: a second non-Claude client, and `claude mcp list`.
+
+---
+
+# capture-memory — the capture worker's heap (T86–T89)
+
+Full specs in [plans/capture-memory/](plans/capture-memory/). Opened 2026-09-21 after "the
+deployed services keep increasing memory usage". Measurement narrowed it to one service:
+`gex-capture`'s heap went 125 MB → 626 MB in four hours while `backend`, `research-search`,
+`terminal-ingest` and `postgres` stayed flat. The growth decelerates, which points at an
+allocator water mark rather than a leak, but that is not yet settled.
+
+Read [plans/capture-memory/README.md](plans/capture-memory/README.md) first -- it carries the
+measurements, the anon-versus-page-cache distinction that made the first reading misleading,
+and **the gate**: an overnight sample across a closed market decides whether this is retention
+(T86, T87, T88) or a real leak (T86, T89, then T87). Do not dispatch past T86 without reading
+it.
+
+## T86 · Sonnet · —
+
+Containment: `mem_limit` on every service in `compose.prod.yaml` (none has one today, so any
+one of them can take the whole 5.7 GB host) and `MALLOC_ARENA_MAX=2` on the shared environment
+anchor. Unconditional -- both branches of the gate need it. Spec:
+[plans/capture-memory/00-containment.md](plans/capture-memory/00-containment.md).
+
+## T87 · Opus · T86
+
+A capture materializes 62,944 Pydantic contract models, writes them to Parquet, then
+immediately re-reads the file to build all 62,944 again while the first set is still alive
+(`gex/store.py:110`, called from `jobs/capture.py:186`). Give `compute_and_store` an optional
+`snapshot=` and pass the object already in hand -- but only on a fresh write, never on the
+duplicate path, so a snapshot's levels stay reproducible from its stored Parquet. Spec:
+[plans/capture-memory/01-single-materialization.md](plans/capture-memory/01-single-materialization.md).
+
+## T88 · Sonnet · T87
+
+Return freed memory to the OS: `malloc_trim` plus Arrow's `release_unused()`, on an
+APScheduler job-executed listener so it fires between cycles and covers every job. Guarded, with
+a no-op fallback for the Windows dev host. Spec:
+[plans/capture-memory/02-return-to-os.md](plans/capture-memory/02-return-to-os.md).
+
+## T89 · Sonnet · gate
+
+**Conditional -- only on the leak branch.** `tracemalloc` diffing consecutive cycles, plus
+Arrow's allocated bytes and a `gc` type histogram to cover tracemalloc's C-extension blind spot.
+Deliverable is a named allocation site, not a fix. Spec:
+[plans/capture-memory/03-tracemalloc.md](plans/capture-memory/03-tracemalloc.md).

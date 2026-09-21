@@ -36,6 +36,12 @@ plans/
     03-terminal-module.md           T79, T80  xactx ports in; the board finally gets built
     04-launcher-shell.md            T81  the page you land on, and the module switcher
     05-mcp-connector.md             T82  read-only MCP over all three schemas
+  capture-memory/                   the capture worker's heap (2026-09-21)
+    README.md                       the measurements, the anon/page-cache distinction, the gate
+    00-containment.md               T86  container limits and MALLOC_ARENA_MAX
+    01-single-materialization.md    T87  stop rebuilding the chain from disk
+    02-return-to-os.md              T88  malloc_trim and Arrow's release_unused
+    03-tracemalloc.md               T89  conditional: only if the gate says "leak"
 ```
 
 ## Conventions
@@ -45,9 +51,10 @@ plans/
   block shape used by `TASKS.md`), *Verified facts* (measured by the supervisor, not assumed),
   *Acceptance*, *Likely first-contact failures*, *Out of scope*.
 - Task IDs are allocated here and reserved in `TASKS.md` before dispatch. Next free ID as of
-  2026-09-19: **T83**. (The continuation initiative ended at T56; T57-T61 were filed directly
+  2026-09-21: **T90**. (The continuation initiative ended at T56; T57-T61 were filed directly
   in `TASKS.md`; T62-T69 went to `ui-ux-refresh/`; T70-T72 to `continuous-feed/`; T73-T74 directly in
-  `TASKS.md`; T75-T82 to `quantdesk/`.)
+  `TASKS.md`; T75-T82 to `quantdesk/`; T83-T85 directly in `TASKS.md`; T86-T89 to
+  `capture-memory/`.)
 - An initiative may adopt an **existing** ID rather than allocate a new one. `continuous-feed/`
   does this for `T18`-`T20`, `T21`-`T23` and `T32`: those were specified in `TASKS.md` in 2026-09-04
   and never built, so the plan file carries the full spec and the `TASKS.md` block stays as the
