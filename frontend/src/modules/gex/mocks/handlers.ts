@@ -462,6 +462,7 @@ export const handlers = [
         rv20: null,
         iv30: null,
         iv_rv_ratio: null,
+        rel_volume: null,
       },
       history: [],
     } satisfies SymbolTrendResponse);

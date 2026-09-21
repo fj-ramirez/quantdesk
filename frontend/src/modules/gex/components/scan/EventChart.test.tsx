@@ -77,6 +77,7 @@ function event(date: string, overrides: Partial<BreakoutEvent> = {}): BreakoutEv
     excursion_atr: 0.5,
     mfe_atr: 0.6,
     mae_atr: -0.1,
+    rel_volume: null,
     ...overrides,
   };
 }

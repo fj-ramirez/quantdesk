@@ -34,6 +34,7 @@ function trendRow(symbol: string, composite: number | null): TrendRow {
     rv20: null,
     iv30: null,
     iv_rv_ratio: null,
+    rel_volume: null,
     adx_pct: null,
     er_pct: null,
     chop_pct: null,

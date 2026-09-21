@@ -235,3 +235,28 @@ the histories do not overlap enough. Inventing a plausible correlation for a set
 were never recorded would put a fabricated number in a file whose whole contract is that its
 numbers are real. A future re-recording against a live backend will replace them with measured
 values; until then the fixture exercises the shape, not the arithmetic.
+
+## T92 addition to the breakout and trend fixtures — hand-edited, not recorded
+
+Same situation, found the hard way. `rel_volume` was added to `BreakoutEventOut` and
+`TrendComponentsOut` in T92, and these recordings predate it, so **`rel_volume: null` was
+added by hand on 2026-09-21** to:
+
+* every `last_event` in `breakouts.json`, `breakouts_excluded.json` and
+  `breakouts_open_empty.json` (47 each), and every event in `breakouts_SPY.json` (11);
+* every row in `trend.json` (47) and `current` in `trend_SPY.json`.
+
+`trend_SPY.json`'s `history` entries were **not** touched: they are `TrendHistoryPoint`, a
+different and smaller model that has never carried the field. The key is placed where the
+server would emit it — last in an event, and after `iv_rv_ratio` in a trend row, because
+`TrendRowOut` inherits `TrendComponentsOut` and Pydantic emits inherited fields first.
+
+`null` means the same thing it does above: not measurable from a recording that never carried
+it. Relative volume needs the bars behind the response, and those are not in the file.
+
+**How this was found is the part worth keeping.** `npm test` and `npm run lint` both passed
+with these fixtures stale — vitest does not type-check and eslint is not running the
+type-aware config. What failed was `npm run build`, whose `tsc -b` refused four sites, and it
+failed **inside the production Docker build on the homeserver**, which is a slow and remote
+place to learn it. A fixture that has fallen behind a required field is a compile error, not a
+test failure, so run `npm run build` after changing a wire type.

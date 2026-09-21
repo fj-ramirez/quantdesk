@@ -22,7 +22,7 @@
         "follow_through_atr": null,
         "excursion_atr": 1.1290355924611515,
         "mfe_atr": 1.1742066636805293,
-        "mae_atr": 0.7225993177824485
+        "mae_atr": 0.7225993177824485, "rel_volume": null
       },
       "status": "pending"
     },
@@ -45,7 +45,7 @@
         "follow_through_atr": null,
         "excursion_atr": -0.07709218713145644,
         "mfe_atr": -0.07709218713145644,
-        "mae_atr": -0.8480140584460207
+        "mae_atr": -0.8480140584460207, "rel_volume": null
       },
       "status": "pending"
     },
@@ -68,7 +68,7 @@
         "follow_through_atr": -0.7694620700098134,
         "excursion_atr": -0.7694620700098134,
         "mfe_atr": 0.29923909973238905,
-        "mae_atr": -0.7694620700098134
+        "mae_atr": -0.7694620700098134, "rel_volume": null
       },
       "status": "failed"
     },
@@ -91,7 +91,7 @@
         "follow_through_atr": -1.2899408093219191,
         "excursion_atr": -1.2899408093219191,
         "mfe_atr": 0.8934922500067717,
-        "mae_atr": -1.2899408093219191
+        "mae_atr": -1.2899408093219191, "rel_volume": null
       },
       "status": "failed"
     },
@@ -114,7 +114,7 @@
         "follow_through_atr": null,
         "excursion_atr": 1.2116019002737222,
         "mfe_atr": 1.2116019002737222,
-        "mae_atr": -0.4327160527418468
+        "mae_atr": -0.4327160527418468, "rel_volume": null
       },
       "status": "pending"
     },
@@ -137,7 +137,7 @@
         "follow_through_atr": -0.4898343506084555,
         "excursion_atr": -0.4898343506084555,
         "mfe_atr": -0.33096925818524214,
-        "mae_atr": -1.0723403207673332
+        "mae_atr": -1.0723403207673332, "rel_volume": null
       },
       "status": "failed"
     },
@@ -160,7 +160,7 @@
         "follow_through_atr": null,
         "excursion_atr": -0.31687464384333663,
         "mfe_atr": -0.17284371178429192,
-        "mae_atr": -1.32510215711238
+        "mae_atr": -1.32510215711238, "rel_volume": null
       },
       "status": "pending"
     },
@@ -183,7 +183,7 @@
         "follow_through_atr": null,
         "excursion_atr": 1.2037362653033576,
         "mfe_atr": 1.2037362653033576,
-        "mae_atr": 0.8897302616098741
+        "mae_atr": 0.8897302616098741, "rel_volume": null
       },
       "status": "pending"
     },
@@ -206,7 +206,7 @@
         "follow_through_atr": 0.07514644502250732,
         "excursion_atr": 0.07514644502250732,
         "mfe_atr": 1.2136348670200567,
-        "mae_atr": -1.2512080895313102
+        "mae_atr": -1.2512080895313102, "rel_volume": null
       },
       "status": "continued"
     },
@@ -229,7 +229,7 @@
         "follow_through_atr": -1.139711140431275,
         "excursion_atr": -1.139711140431275,
         "mfe_atr": 0.2464186315093282,
-        "mae_atr": -1.8481808628857084
+        "mae_atr": -1.8481808628857084, "rel_volume": null
       },
       "status": "failed"
     },
@@ -252,7 +252,7 @@
         "follow_through_atr": null,
         "excursion_atr": 0.8684609972025595,
         "mfe_atr": 0.8684609972025595,
-        "mae_atr": 0.8684609972025595
+        "mae_atr": 0.8684609972025595, "rel_volume": null
       },
       "status": "pending"
     },
@@ -275,7 +275,7 @@
         "follow_through_atr": -1.6138800571793206,
         "excursion_atr": -1.6138800571793206,
         "mfe_atr": 1.2419676917332412,
-        "mae_atr": -1.6138800571793206
+        "mae_atr": -1.6138800571793206, "rel_volume": null
       },
       "status": "failed"
     },
@@ -298,7 +298,7 @@
         "follow_through_atr": 1.167406051935198,
         "excursion_atr": 1.167406051935198,
         "mfe_atr": 2.299172034190923,
-        "mae_atr": 1.167406051935198
+        "mae_atr": 1.167406051935198, "rel_volume": null
       },
       "status": "continued"
     },
@@ -321,7 +321,7 @@
         "follow_through_atr": 1.5262729263168477,
         "excursion_atr": 1.5262729263168477,
         "mfe_atr": 2.2692785708686554,
-        "mae_atr": 1.5262729263168477
+        "mae_atr": 1.5262729263168477, "rel_volume": null
       },
       "status": "continued"
     },
@@ -344,7 +344,7 @@
         "follow_through_atr": 1.4819050688622057,
         "excursion_atr": 1.4819050688622057,
         "mfe_atr": 2.1132115529254074,
-        "mae_atr": 0.6014031598143214
+        "mae_atr": 0.6014031598143214, "rel_volume": null
       },
       "status": "continued"
     },
@@ -367,7 +367,7 @@
         "follow_through_atr": -1.8586637364938532,
         "excursion_atr": -1.8586637364938532,
         "mfe_atr": -0.05743085603989648,
-        "mae_atr": -1.8586637364938532
+        "mae_atr": -1.8586637364938532, "rel_volume": null
       },
       "status": "failed"
     },
@@ -390,7 +390,7 @@
         "follow_through_atr": -0.981131741785032,
         "excursion_atr": -0.981131741785032,
         "mfe_atr": 0.36415253034792927,
-        "mae_atr": -0.981131741785032
+        "mae_atr": -0.981131741785032, "rel_volume": null
       },
       "status": "failed"
     },
@@ -413,7 +413,7 @@
         "follow_through_atr": null,
         "excursion_atr": null,
         "mfe_atr": null,
-        "mae_atr": null
+        "mae_atr": null, "rel_volume": null
       },
       "status": "pending"
     },
@@ -436,7 +436,7 @@
         "follow_through_atr": 0.29785984927906367,
         "excursion_atr": 0.29785984927906367,
         "mfe_atr": 1.4893560609647385,
-        "mae_atr": 0.29785984927906367
+        "mae_atr": 0.29785984927906367, "rel_volume": null
       },
       "status": "continued"
     },
@@ -459,7 +459,7 @@
         "follow_through_atr": 1.9872736172295642,
         "excursion_atr": 1.9872736172295642,
         "mfe_atr": 2.126169201967376,
-        "mae_atr": 0.9544608521855444
+        "mae_atr": 0.9544608521855444, "rel_volume": null
       },
       "status": "continued"
     },
@@ -482,7 +482,7 @@
         "follow_through_atr": 1.4266810589452834,
         "excursion_atr": 1.4266810589452834,
         "mfe_atr": 1.4266810589452834,
-        "mae_atr": 0.7841296195319541
+        "mae_atr": 0.7841296195319541, "rel_volume": null
       },
       "status": "continued"
     },
@@ -505,7 +505,7 @@
         "follow_through_atr": null,
         "excursion_atr": -0.6660276732541258,
         "mfe_atr": -0.4417543183905662,
-        "mae_atr": -1.121366774317798
+        "mae_atr": -1.121366774317798, "rel_volume": null
       },
       "status": "pending"
     },
@@ -528,7 +528,7 @@
         "follow_through_atr": null,
         "excursion_atr": 1.9947554610329221,
         "mfe_atr": 1.9947554610329221,
-        "mae_atr": 1.076923795128194
+        "mae_atr": 1.076923795128194, "rel_volume": null
       },
       "status": "pending"
     },
@@ -551,7 +551,7 @@
         "follow_through_atr": 1.935115818108645,
         "excursion_atr": 1.935115818108645,
         "mfe_atr": 2.349781879302961,
-        "mae_atr": 1.5599353062836407
+        "mae_atr": 1.5599353062836407, "rel_volume": null
       },
       "status": "continued"
     },
@@ -574,7 +574,7 @@
         "follow_through_atr": null,
         "excursion_atr": 4.032257922747989,
         "mfe_atr": 4.032257922747989,
-        "mae_atr": 1.1612799451527418
+        "mae_atr": 1.1612799451527418, "rel_volume": null
       },
       "status": "pending"
     },
@@ -597,7 +597,7 @@
         "follow_through_atr": 2.5908208020004806,
         "excursion_atr": 2.5908208020004806,
         "mfe_atr": 3.413725008278195,
-        "mae_atr": 1.9086064149102115
+        "mae_atr": 1.9086064149102115, "rel_volume": null
       },
       "status": "continued"
     },
@@ -620,7 +620,7 @@
         "follow_through_atr": null,
         "excursion_atr": -0.8240919159922422,
         "mfe_atr": -0.7570150070549556,
-        "mae_atr": -1.7440069432042136
+        "mae_atr": -1.7440069432042136, "rel_volume": null
       },
       "status": "pending"
     },
@@ -643,7 +643,7 @@
         "follow_through_atr": -1.2797961607141726,
         "excursion_atr": -1.2797961607141726,
         "mfe_atr": 0.183868510733753,
-        "mae_atr": -1.2797961607141726
+        "mae_atr": -1.2797961607141726, "rel_volume": null
       },
       "status": "failed"
     },
@@ -666,7 +666,7 @@
         "follow_through_atr": null,
         "excursion_atr": -1.02997003594076,
         "mfe_atr": -0.6484974964120306,
-        "mae_atr": -1.02997003594076
+        "mae_atr": -1.02997003594076, "rel_volume": null
       },
       "status": "pending"
     },
@@ -689,7 +689,7 @@
         "follow_through_atr": null,
         "excursion_atr": 2.635414168358066,
         "mfe_atr": 2.635414168358066,
-        "mae_atr": 1.3645801550117407
+        "mae_atr": 1.3645801550117407, "rel_volume": null
       },
       "status": "pending"
     },
@@ -712,7 +712,7 @@
         "follow_through_atr": null,
         "excursion_atr": 0.06371884932042321,
         "mfe_atr": 0.36411068675972413,
-        "mae_atr": -0.5825743208820732
+        "mae_atr": -0.5825743208820732, "rel_volume": null
       },
       "status": "pending"
     },
@@ -735,7 +735,7 @@
         "follow_through_atr": 0.7057396266879918,
         "excursion_atr": 0.7057396266879918,
         "mfe_atr": 1.5290888933316371,
-        "mae_atr": 0.7057396266879918
+        "mae_atr": 0.7057396266879918, "rel_volume": null
       },
       "status": "continued"
     },
@@ -758,7 +758,7 @@
         "follow_through_atr": null,
         "excursion_atr": null,
         "mfe_atr": null,
-        "mae_atr": null
+        "mae_atr": null, "rel_volume": null
       },
       "status": "pending"
     },
@@ -781,7 +781,7 @@
         "follow_through_atr": 1.4239660629231188,
         "excursion_atr": 1.4239660629231188,
         "mfe_atr": 1.5132588475551385,
-        "mae_atr": 0.24907609873181588
+        "mae_atr": 0.24907609873181588, "rel_volume": null
       },
       "status": "continued"
     },
@@ -804,7 +804,7 @@
         "follow_through_atr": null,
         "excursion_atr": -1.4784226138349166,
         "mfe_atr": -0.5785085058295864,
-        "mae_atr": -2.236911979621319
+        "mae_atr": -2.236911979621319, "rel_volume": null
       },
       "status": "pending"
     },
@@ -827,7 +827,7 @@
         "follow_through_atr": 1.8390336776015686,
         "excursion_atr": 1.8390336776015686,
         "mfe_atr": 2.0081691765213545,
-        "mae_atr": 0.6455690188186525
+        "mae_atr": 0.6455690188186525, "rel_volume": null
       },
       "status": "continued"
     },
@@ -850,7 +850,7 @@
         "follow_through_atr": -1.6811327945588337,
         "excursion_atr": -1.6811327945588337,
         "mfe_atr": -0.060160809426993624,
-        "mae_atr": -1.6811327945588337
+        "mae_atr": -1.6811327945588337, "rel_volume": null
       },
       "status": "failed"
     },
@@ -873,7 +873,7 @@
         "follow_through_atr": 2.9028938166289953,
         "excursion_atr": 2.9028938166289953,
         "mfe_atr": 3.711291166362542,
-        "mae_atr": 1.2493458187215745
+        "mae_atr": 1.2493458187215745, "rel_volume": null
       },
       "status": "continued"
     },
@@ -896,7 +896,7 @@
         "follow_through_atr": 1.437978037446051,
         "excursion_atr": 1.437978037446051,
         "mfe_atr": 1.9806249288442233,
-        "mae_atr": 1.437978037446051
+        "mae_atr": 1.437978037446051, "rel_volume": null
       },
       "status": "continued"
     },
@@ -919,7 +919,7 @@
         "follow_through_atr": -1.8019562088430332,
         "excursion_atr": -1.8019562088430332,
         "mfe_atr": -0.093576123983605,
-        "mae_atr": -1.8019562088430332
+        "mae_atr": -1.8019562088430332, "rel_volume": null
       },
       "status": "failed"
     },
@@ -942,7 +942,7 @@
         "follow_through_atr": 0.141893379178448,
         "excursion_atr": 0.141893379178448,
         "mfe_atr": 0.141893379178448,
-        "mae_atr": -1.7783763303116455
+        "mae_atr": -1.7783763303116455, "rel_volume": null
       },
       "status": "continued"
     },
@@ -965,7 +965,7 @@
         "follow_through_atr": 1.8335708258929018,
         "excursion_atr": 1.8335708258929018,
         "mfe_atr": 2.7201455819369373,
-        "mae_atr": 1.0376240322428718
+        "mae_atr": 1.0376240322428718, "rel_volume": null
       },
       "status": "continued"
     },
@@ -988,7 +988,7 @@
         "follow_through_atr": null,
         "excursion_atr": 0.6640605558871702,
         "mfe_atr": 0.6640605558871702,
-        "mae_atr": -0.13181705069798988
+        "mae_atr": -0.13181705069798988, "rel_volume": null
       },
       "status": "pending"
     },
@@ -1011,7 +1011,7 @@
         "follow_through_atr": 0.4775213139729687,
         "excursion_atr": 0.4775213139729687,
         "mfe_atr": 0.4775213139729687,
-        "mae_atr": -0.8899180560883857
+        "mae_atr": -0.8899180560883857, "rel_volume": null
       },
       "status": "continued"
     },
@@ -1034,7 +1034,7 @@
         "follow_through_atr": -1.5030151764263588,
         "excursion_atr": -1.5030151764263588,
         "mfe_atr": 0,
-        "mae_atr": -1.5030151764263588
+        "mae_atr": -1.5030151764263588, "rel_volume": null
       },
       "status": "failed"
     },
@@ -1057,7 +1057,7 @@
         "follow_through_atr": null,
         "excursion_atr": -1.6444452159057927,
         "mfe_atr": -0.45926125668631607,
-        "mae_atr": -1.6444452159057927
+        "mae_atr": -1.6444452159057927, "rel_volume": null
       },
       "status": "pending"
     },
@@ -1080,7 +1080,7 @@
         "follow_through_atr": -0.18972172297745557,
         "excursion_atr": -0.18972172297745557,
         "mfe_atr": 0.7905142154083689,
-        "mae_atr": -0.48221415389069155
+        "mae_atr": -0.48221415389069155, "rel_volume": null
       },
       "status": "failed"
     }
