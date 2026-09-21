@@ -37,6 +37,11 @@ services:
       # steps. Moving an existing database here is a dump/restore, not a copy -- also in the
       # README.
       - ./data/postgres:/var/lib/postgresql/data
+    # T86. No `mem_limit` here, deliberately, while every other service has one. Postgres
+    # manages its own memory through shared_buffers and work_mem, and most of what its cgroup
+    # is charged is page cache the kernel reclaims under pressure -- its *heap* moved 3 MB in
+    # the four hours its total went 70 -> 166 MB. A cap sized against the total would OOM-kill
+    # the database mid-write to reclaim cache it would have given back for free.
     networks:
       # `internal` only. Not on `edge`, so Caddy -- and anything else sharing that proxy
       # network -- has no route to 5432 at all. Combined with publishing no host port, the
@@ -75,6 +80,15 @@ services:
           # `gex-backend` is what the Caddyfile uses.
           - gex-backend
     restart: unless-stopped
+    # T86. `mem_limit`, not `deploy.resources.limits.memory`: the latter is a swarm-shaped key
+    # that the Compose v2 CLI happens to honour, and this stack is plain compose. The two
+    # `deploy.resources.limits.cpus` entries below are the same key for CPU and stay as they
+    # are; do not read them as a precedent for putting memory there too.
+    #
+    # 1 GB against an observed 126 MB heap. The ceiling exists to stop one service taking the
+    # host, not to fit a number -- and this container also hosts `docker exec ... python -m
+    # app.mcp` sessions (see plans/capture-memory/README.md), which are charged here.
+    mem_limit: 1024m
     healthcheck:
       # Hits GET /health (root level -- the routers are all under /api, this one is not) and
       # requires `db: ok`, so a backend whose Postgres has gone away reports unhealthy instead
@@ -121,6 +135,11 @@ services:
     networks:
       internal: {}
     restart: unless-stopped
+    # T86. 1.5 GB against an observed 626 MB water mark. Generous on purpose: the free Cboe
+    # endpoint serves only "now", so a cap that trips during the 16:20 capture converts a
+    # memory problem into a permanent hole in the one dataset this repo cannot backfill.
+    # If this is ever hit, check `docker inspect -f '{{.State.OOMKilled}}'` and RAISE it.
+    mem_limit: 1500m
     logging:
       driver: json-file
       options:
@@ -152,6 +171,17 @@ services:
           # and a cycle that takes twice as long costs nothing -- it is scheduled nightly with
           # an hour of misfire grace and nothing waits on its result.
           cpus: "2.0"
+          # T86. 1.5 GB against an observed 96 MB steady state. Wide, because a search cycle's
+          # peak is nothing like its idle: it holds panels of OHLCV across thousands of
+          # backtests, and a cycle killed halfway leaves the trial registry short of a night's
+          # work.
+          #
+          # Here rather than as a top-level `mem_limit` -- unlike every other service in this
+          # file -- only because this service already has a `deploy.resources.limits` block for
+          # cpus, and compose refuses a project where the two forms disagree:
+          #   can't set distinct values on 'mem_limit' and 'deploy.resources.limits.memory'
+          # An unset key counts as disagreeing, so the limit has to live wherever cpus does.
+          memory: 1500m
     logging:
       driver: json-file
       options:
@@ -171,6 +201,11 @@ services:
       resources:
         limits:
           cpus: "1.0"
+          # T86. 768 MB against an observed 50 MB. The nightly sequence recomputes the
+          # transmission graph over the full panel, so the peak is well above the idle, but
+          # this is the smallest Python service here by some way. In the deploy block for the
+          # same reason as `research-search` above.
+          memory: 768m
     logging:
       driver: json-file
       options:
@@ -194,6 +229,9 @@ services:
         aliases:
           - gex-frontend
     restart: unless-stopped
+    # T86. 128 MB. nginx serving a static bundle; if this is ever approached, something is
+    # wrong rather than busy.
+    mem_limit: 128m
     healthcheck:
       # busybox wget, present in nginx:alpine; there is no curl.
       test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:80/"]

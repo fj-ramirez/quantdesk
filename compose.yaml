@@ -124,6 +124,17 @@ services:
       # This is NOT the application's own credential -- DATABASE_URL above still connects as
       # POSTGRES_USER, which writes. This role can only SELECT.
       QUANTDESK_RO_PASSWORD: ${QUANTDESK_RO_PASSWORD:-quantdesk_ro}
+      # T86. glibc creates up to 8 malloc arenas per core and each one keeps what it has
+      # freed, so a process with a wide thread pool holds a high-water mark rather than a
+      # working set -- `gex-capture` runs 15 threads and materializes 62,944 contracts a cycle.
+      # Two arenas trades some allocation-time lock contention for memory actually returned;
+      # the cost is visible in `CaptureResult.duration_seconds`, already logged per symbol.
+      #
+      # On the SHARED anchor, not on one service in the prod overlay, so dev reproduces
+      # production's memory behaviour instead of diverging from it. `compose.prod.yaml`
+      # re-declares a subset of this anchor -- a variable added only there reaches production
+      # and not dev, and only here reaches both, which is why it belongs here.
+      MALLOC_ARENA_MAX: "2"
     volumes:
       # DATA_DIR. A bind mount in both environments: the Parquet tree is the one artifact in
       # this stack that is genuinely unbackfillable (the free Cboe endpoint serves only "now"),
