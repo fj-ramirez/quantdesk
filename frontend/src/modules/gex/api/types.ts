@@ -324,6 +324,9 @@ export interface BreakoutEvent {
   excursion_atr: number | null;
   mfe_atr: number | null;
   mae_atr: number | null;
+  /** T92. Volume on the breakout bar itself against its own trailing baseline -- whether the
+   * market participated in the break. `null` where volume is unknown. */
+  rel_volume: number | null;
 }
 
 /** One row of the breakouts summary table. `rate` is `null` below the five-event floor --
@@ -394,6 +397,10 @@ export interface TrendComponents {
   rv20: number | null;
   iv30: number | null;
   iv_rv_ratio: number | null;
+  /** T92. Latest bar's volume against its own trailing 60-session baseline, the current bar
+   * excluded from that baseline. `null` for the five `^`-prefixed index quotes, which report
+   * no volume at all -- render the same `·` as any other unknown, never `0`. */
+  rel_volume: number | null;
 }
 
 /** One row of `GET /api/gex/scan/trend`: every `TrendComponents` field plus each component's

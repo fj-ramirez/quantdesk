@@ -23,12 +23,14 @@ from app.modules.gex.scan.indicators import (
     ADX_PERIOD,
     CHOP_PERIOD,
     ER_PERIOD,
+    REL_VOLUME_PERIOD,
     RV_PERIOD,
     VR_Q,
     adx,
     choppiness,
     efficiency_ratio,
     realized_vol,
+    relative_volume,
     variance_ratio,
 )
 
@@ -39,6 +41,7 @@ def _bars(
     closes: list[float],
     *,
     start: dt.date = dt.date(2024, 1, 2),
+    volumes: list[float] | None = None,
 ) -> pd.DataFrame:
     """Same minimal `read_bars`-shaped frame builder `test_scan_breakouts.py` uses."""
     n = len(closes)
@@ -51,7 +54,7 @@ def _bars(
             "high": highs,
             "low": lows,
             "close": closes,
-            "volume": [1_000] * n,
+            "volume": [1_000] * n if volumes is None else volumes,
             "source": ["test"] * n,
         }
     )
@@ -342,3 +345,97 @@ def test_straight_line_series_has_er_one_minimal_chop_and_large_positive_vr_z():
     assert er.iloc[-1] == pytest.approx(1.0, abs=1e-9)
     assert chop.iloc[-1] < 20.0  # near the choppiness floor, far from the 100 "maximally choppy" end
     assert z > 5.0
+
+
+# --- relative_volume (T92) ---------------------------------------------------------------------
+#
+# The reading exists because `daily_bars.volume` was populated for 120 symbols and read by
+# nothing: 149,560 of 157,152 rows carried a volume and no scan module touched the column. See
+# plans/decision-inputs/02-relative-volume.md.
+
+
+def _volume_bars(volumes: list[float]) -> pd.DataFrame:
+    """Bars whose only interesting column is `volume`; prices are a flat, irrelevant line."""
+    closes = [100.0] * len(volumes)
+    return _bars([100.5] * len(volumes), [99.5] * len(volumes), closes, volumes=volumes)
+
+
+def test_relative_volume_hand_computed_value():
+    # Ten flat sessions at 1,000 then one at 1,500: the trailing mean over the previous 10 is
+    # exactly 1,000, so the last bar reads 1.5x.
+    bars = _volume_bars([1_000.0] * 10 + [1_500.0])
+    result = relative_volume(bars, period=10)
+    assert result.iloc[-1] == pytest.approx(1.5, abs=1e-12)
+
+
+def test_relative_volume_excludes_the_current_bar_from_its_own_baseline():
+    """The design decision, pinned. An inclusive window would damp the very spike this exists
+    to detect -- and it is the whole of the 1.49-vs-1.51 discrepancy recorded in the plan file.
+
+    Ten sessions at 1,000 then one at 3,000. Exclusive: 3000/1000 = 3.0 exactly. Inclusive the
+    denominator would be (10*1000 + 3000)/11 = 1181.8 and the reading 2.54 -- so this assertion
+    fails loudly the moment someone "simplifies" the `closed="left"`.
+    """
+    bars = _volume_bars([1_000.0] * 10 + [3_000.0])
+    result = relative_volume(bars, period=10)
+    assert result.iloc[-1] == pytest.approx(3.0, abs=1e-12)
+    assert result.iloc[-1] != pytest.approx(3_000.0 / (13_000.0 / 11.0), abs=1e-6)
+
+
+def test_relative_volume_is_nan_not_zero_when_volume_is_unknown():
+    """Invariant 3's reasoning one layer up: `^VIX3M` and friends report no volume at all, and
+    "not reported" is not "traded nothing". A 0.0 here would silently exclude every index
+    symbol from anything later built on this reading."""
+    bars = _volume_bars([float("nan")] * 70)
+    result = relative_volume(bars)
+    assert result.isna().all()
+    assert not (result == 0.0).any()
+
+
+def test_relative_volume_warmup_is_nan_for_first_period_bars():
+    bars = _volume_bars([1_000.0 + i for i in range(70)])
+    result = relative_volume(bars, REL_VOLUME_PERIOD)
+    assert result.iloc[:REL_VOLUME_PERIOD].isna().all()
+    assert result.iloc[REL_VOLUME_PERIOD:].notna().all()
+
+
+def test_relative_volume_short_history_is_nan_not_a_partial_average():
+    """Fewer bars than the window yields nothing, rather than a ratio against however many
+    sessions happen to exist -- the same "insufficient history is None" discipline the rest of
+    this module already keeps."""
+    bars = _volume_bars([1_000.0] * 30)
+    assert relative_volume(bars, REL_VOLUME_PERIOD).isna().all()
+
+
+def test_relative_volume_zero_baseline_is_nan_not_infinity():
+    bars = _volume_bars([0.0] * 10 + [500.0])
+    result = relative_volume(bars, period=10)
+    assert pd.isna(result.iloc[-1])
+
+
+def test_relative_volume_reproduces_the_iwm_run_into_2026_09_18():
+    """The motivating case from the eval, reproduced against a constructed baseline.
+
+    Seven consecutive sessions above average into Friday 2026-09-18, the last at 1.51x. The
+    real figures come from `gex.daily_bars`; here the trailing baseline is constructed to the
+    measured 60-day mean of 20,656,953 so the observed volumes reproduce the observed ratios.
+    """
+    baseline = 20_656_953.0
+    observed = [
+        (27_044_700.0, 1.31),
+        (26_353_300.0, 1.28),
+        (26_060_900.0, 1.26),
+        (25_300_500.0, 1.22),
+        (27_599_400.0, 1.34),
+        (22_159_600.0, 1.07),
+        (31_106_300.0, 1.51),
+    ]
+    for volume, expected in observed:
+        bars = _volume_bars([baseline] * 60 + [volume])
+        assert relative_volume(bars).iloc[-1] == pytest.approx(expected, abs=0.01)
+        assert relative_volume(bars).iloc[-1] > 1.0
+
+
+def test_relative_volume_raises_for_period_below_one():
+    with pytest.raises(ValueError, match="period must be >= 1"):
+        relative_volume(_volume_bars([1_000.0]), period=0)

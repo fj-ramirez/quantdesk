@@ -1455,6 +1455,15 @@ module reads it. A sixth pure indicator beside `atr` and `realized_vol`, null-sa
 index symbols that correctly have no volume. Spec:
 [plans/decision-inputs/02-relative-volume.md](plans/decision-inputs/02-relative-volume.md).
 
+**Done 2026-09-21.** 1,127 backend / 403 frontend tests green (9 added), both linters clean.
+`relative_volume` is the sixth pure indicator; the current bar is excluded from its own
+baseline and a test pins that specifically. Surfaced on `TrendComponents` (latest bar) and
+`BreakoutEvent` (the event bar), through both API models and `types.ts`. A reading only -- it
+does not enter the trend composite, so no symbol's score moved, and **no UI column was added
+yet**. Turned up a latent bug worth its own task: `variance_ratio` raises `ZeroDivisionError`
+on a perfectly flat close series, breaking `score_symbol`'s "never raises" contract. Full
+account under the plan file's *Result* heading.
+
 ## T93 · Opus · —
 
 Factor cap: measure how correlated the decision set's own candidates are, and stop emitting one

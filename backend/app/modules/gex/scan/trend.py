@@ -74,12 +74,14 @@ from app.modules.gex.scan.indicators import (
     ADX_PERIOD,
     CHOP_PERIOD,
     ER_PERIOD,
+    REL_VOLUME_PERIOD,
     RV_PERIOD,
     VR_Q,
     adx,
     choppiness,
     efficiency_ratio,
     realized_vol,
+    relative_volume,
     variance_ratio,
 )
 
@@ -123,6 +125,17 @@ class TrendComponents:
     rv20: float | None
     iv30: float | None
     iv_rv_ratio: float | None
+    #: T92. How much volume confirmed the most recent bar, against its own trailing baseline.
+    #: Deliberately *not* a component of the composite and not percentile-ranked: this task
+    #: adds the reading, and changing which symbols score as trending is a change to what the
+    #: desk is told to trade, which deserves its own before/after rather than a ride-along.
+    #: `None` for the five index symbols that report no volume at all -- never `0.0`.
+    #:
+    #: Defaulted so this stayed an additive field: every existing construction site, in this
+    #: module and in the tests, keeps working unchanged. `score_symbol` always sets it, and
+    #: `test_score_symbol_populates_rel_volume` is what stops the default quietly becoming the
+    #: value the API serves.
+    rel_volume: float | None = None
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -134,6 +147,7 @@ class TrendComponents:
             "rv20": self.rv20,
             "iv30": self.iv30,
             "iv_rv_ratio": self.iv_rv_ratio,
+            "rel_volume": self.rel_volume,
         }
 
 
@@ -209,6 +223,7 @@ def score_symbol(bars: pd.DataFrame, iv30: float | None) -> TrendComponents:
     er20 = _last_finite(efficiency_ratio(bars, ER_PERIOD))
     chop14 = _last_finite(choppiness(bars, CHOP_PERIOD))
     rv20 = _last_finite(realized_vol(bars, RV_PERIOD))
+    rel_vol = _last_finite(relative_volume(bars, REL_VOLUME_PERIOD))
 
     vr_window = bars.tail(TREND_LOOKBACK)
     vr, vr_z = variance_ratio(vr_window, VR_Q) if len(vr_window) >= 2 else (None, None)
@@ -226,6 +241,7 @@ def score_symbol(bars: pd.DataFrame, iv30: float | None) -> TrendComponents:
         rv20=rv20,
         iv30=iv30,
         iv_rv_ratio=iv_rv_ratio,
+        rel_volume=rel_vol,
     )
 
 

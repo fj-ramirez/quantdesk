@@ -218,3 +218,35 @@ def test_rank_universe_zero_finite_components_gives_none_composite():
     rows = rank_universe(components_by_symbol)
     assert rows[0].composite is None
     assert rows[0].adx_pct is None
+
+
+def test_score_symbol_populates_rel_volume():
+    """T92. `TrendComponents.rel_volume` defaults to `None` so the field could be added without
+    touching every construction site -- this is what stops that default silently becoming the
+    value the API serves."""
+    import datetime as dt
+
+    import pandas as pd
+
+    from app.modules.gex.scan.indicators import REL_VOLUME_PERIOD
+    from app.modules.gex.scan.trend import score_symbol
+
+    n = REL_VOLUME_PERIOD + 1
+    # Closes must actually vary: `variance_ratio` divides by the 1-period return variance, so
+    # a perfectly flat series raises rather than reporting `None`. Out of scope here, but see
+    # the note filed against `score_symbol`'s "never raises" contract.
+    closes = [100.0 + (i % 3) * 0.5 for i in range(n)]
+    bars = pd.DataFrame(
+        {
+            "date": [dt.date(2024, 1, 2) + dt.timedelta(days=i) for i in range(n)],
+            "open": closes,
+            "high": [c + 0.5 for c in closes],
+            "low": [c - 0.5 for c in closes],
+            "close": closes,
+            "volume": [1_000.0] * REL_VOLUME_PERIOD + [2_000.0],
+            "source": ["test"] * n,
+        }
+    )
+    components = score_symbol(bars, iv30=None)
+    assert components.rel_volume == pytest.approx(2.0, abs=1e-12)
+    assert components.to_dict()["rel_volume"] == pytest.approx(2.0, abs=1e-12)

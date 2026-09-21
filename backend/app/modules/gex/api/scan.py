@@ -241,6 +241,9 @@ class BreakoutEventOut(BaseModel):
     excursion_atr: float | None
     mfe_atr: float | None
     mae_atr: float | None
+    #: T92. Volume on the breakout bar against its own trailing baseline -- whether the market
+    #: participated in the break. `None` where volume is unknown.
+    rel_volume: float | None
 
     @classmethod
     def from_event(cls, event: BreakoutEvent) -> BreakoutEventOut:
@@ -543,6 +546,10 @@ class TrendComponentsOut(BaseModel):
     rv20: float | None
     iv30: float | None
     iv_rv_ratio: float | None
+    #: T92. Volume on the latest bar against its own trailing 60-session baseline. `None`
+    #: where the symbol reports no volume -- the five `^`-prefixed index quotes -- which the
+    #: UI renders as the same `·` every other unknown gets, never as `0`.
+    rel_volume: float | None
 
     @classmethod
     def from_components(cls, components: TrendComponents) -> TrendComponentsOut:

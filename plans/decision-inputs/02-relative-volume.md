@@ -107,3 +107,45 @@ Measured 2026-09-21:
 
 Using the reading to filter or rank signals, intraday relative volume from `gex.intraday_bars`
 (6 symbols, two days of history), and dollar-volume or turnover variants.
+
+---
+
+## Result — T92
+
+**Done 2026-09-21.** 1,127 backend tests green (9 added), 403 frontend tests green, both linters
+clean.
+
+`relative_volume(bars, period=REL_VOLUME_PERIOD)` in `app/modules/gex/scan/indicators.py`, the
+sixth pure indicator, following the established shape exactly. The trailing window excludes the
+current bar via `closed="left"`, and there is a test pinning that specifically — an inclusive
+window reads 2.54 where the exclusive one reads 3.0 on the same fixture, so a later
+"simplification" fails loudly rather than shifting every number by a few percent.
+
+Surfaced on both rows that already carry the bars frame: `TrendComponents.rel_volume` (the
+latest bar) and `BreakoutEvent.rel_volume` (**the event bar**, not the last bar — that is the
+bar the question is about). Both fields default to `None`, which is what kept the change
+additive across ~10 existing construction sites in the tests; `test_score_symbol_populates_
+rel_volume` is what stops that default quietly becoming the value the API serves. Mirrored on
+`TrendComponentsOut` and `BreakoutEventOut`, and in the frontend's `types.ts`.
+
+Null-safety held up under test: an all-null volume series yields all-`NaN` and never `0.0`, and
+a zero trailing baseline yields `NaN` rather than `inf`.
+
+Per the design decision, this is a **reading only** — `rel_volume` does not enter the trend
+composite and is not percentile-ranked, so no symbol's score moved.
+
+**Two things a reader should know:**
+
+* **No UI column was added.** The value reaches the client and is typed, but the trend and
+  breakout tables do not render it yet, so the user sees nothing until a column is added. That
+  was not in this task's scope and is a small follow-on.
+* **The IWM acceptance test reproduces the ratios against a constructed baseline**, not against
+  the live 60-bar history — the suite is offline by design. Six of the seven sessions match the
+  eval's figures to 0.01; Friday reads 1.51 against the eval's 1.49, which is the inclusive-
+  versus-exclusive window difference this file predicted.
+
+**Found in passing, not fixed, and worth its own task:** `variance_ratio` raises
+`ZeroDivisionError` on a perfectly flat close series (`indicators.py:549`, `var_q / var_1` with
+`var_1 == 0`). That breaks `score_symbol`'s documented "Never raises on `bars` alone" contract,
+and every other indicator in the module guards its own `0/0` case by returning `NaN`. Reachable
+for any symbol that does not move across the whole 126-bar window.

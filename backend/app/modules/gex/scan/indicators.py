@@ -119,6 +119,7 @@ __all__ = [
     "ATR_PERIOD",
     "CHOP_PERIOD",
     "ER_PERIOD",
+    "REL_VOLUME_PERIOD",
     "RV_PERIOD",
     "TRADING_DAYS_PER_YEAR",
     "VR_MIN_RETURNS_FACTOR",
@@ -128,6 +129,7 @@ __all__ = [
     "choppiness",
     "efficiency_ratio",
     "realized_vol",
+    "relative_volume",
     "true_range",
     "variance_ratio",
 ]
@@ -157,6 +159,11 @@ TRADING_DAYS_PER_YEAR = 252
 #: short history, which is exactly the case this module's "insufficient history is `None`"
 #: discipline exists for.
 VR_MIN_RETURNS_FACTOR = 2
+
+#: `relative_volume`'s trailing window (T92). Sixty sessions -- a quarter -- is long enough that
+#: a single heavy day does not define the baseline and short enough to track a name whose
+#: liquidity is genuinely changing.
+REL_VOLUME_PERIOD = 60
 
 
 def true_range(bars: pd.DataFrame) -> pd.Series:
@@ -426,6 +433,56 @@ def realized_vol(bars: pd.DataFrame, period: int = RV_PERIOD) -> pd.Series:
         ddof=1
     ) * math.sqrt(TRADING_DAYS_PER_YEAR)
     result.name = f"rv_{period}"
+    return result
+
+
+def relative_volume(bars: pd.DataFrame, period: int = REL_VOLUME_PERIOD) -> pd.Series:
+    """Today's volume as a multiple of the mean of the previous `period` sessions' volume.
+
+    The reading that separates a move the market participated in from one it ignored. T92's
+    motivating case, measured on stored bars: IWM ran seven consecutive sessions above its
+    trailing average into 2026-09-18, closing that Friday at 1.51x.
+
+    **The window excludes the current bar, and that choice is the whole number.** A 60-day mean
+    that includes today is pulled up by today: a genuine 3x session inflates its own
+    denominator by about 3%, damping exactly the spike this exists to detect. Excluding it also
+    fixes the denominator before the session starts, so an intraday reading compares against a
+    constant rather than against a baseline that moves as the day fills in. (This is the
+    difference between the 1.51 above and the 1.49 an inclusive window gives -- if a caller
+    ever reports a figure that disagrees with this module by a percent or two, this is why.)
+
+    Args:
+        bars: Ascending-by-date daily bars for **one symbol**, with a `volume` column. Passing
+            a multi-symbol frame silently averages across the symbol boundary -- group first.
+        period: Sessions in the trailing mean, excluding the current one.
+
+    Returns:
+        `pd.Series` named `f"rel_volume_{period}"`, aligned to `bars.index`. `NaN` for the
+        first `period` bars, and `NaN` -- never `0.0` -- wherever volume is unknown.
+
+    Raises:
+        ValueError: `period < 1`.
+
+    Note:
+        **`NaN` where volume is absent is invariant 3's reasoning one layer up.** Five symbols
+        in the scan universe (`^SKEW`, `^VIX3M`, `^VIX6M`, `^VIX9D`, `^VVIX`) are index quotes
+        that report no volume at all, and "no volume reported" is not "traded nothing". Reading
+        those as `0.0` would give every one of them a permanent 0x relative volume and silently
+        exclude them from anything later built on this reading.
+    """
+    if period < 1:
+        raise ValueError(f"period must be >= 1, got {period}")
+
+    volume = bars["volume"].astype(float)
+    # `closed="left"` is what drops the current bar from its own window; `min_periods=period`
+    # means a short history yields NaN rather than an average over whatever happens to exist.
+    trailing_mean = volume.rolling(window=period, min_periods=period, closed="left").mean()
+    with np.errstate(invalid="ignore", divide="ignore"):
+        result = volume / trailing_mean
+    # A zero trailing mean divides to inf rather than raising. It means the name did not trade
+    # at all in the window, which is an unknown baseline, not a ratio of any size.
+    result = result.replace([np.inf, -np.inf], np.nan)
+    result.name = f"rel_volume_{period}"
     return result
 
 

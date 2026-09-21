@@ -48,7 +48,12 @@ from typing import Any
 import numpy as np
 import pandas as pd
 
-from app.modules.gex.scan.indicators import ATR_PERIOD, atr
+from app.modules.gex.scan.indicators import (
+    ATR_PERIOD,
+    REL_VOLUME_PERIOD,
+    atr,
+    relative_volume,
+)
 
 __all__ = [
     "DEFAULT_K",
@@ -117,6 +122,14 @@ class BreakoutEvent:
     excursion_atr: float | None
     mfe_atr: float | None
     mae_atr: float | None
+    #: T92. Volume on the breakout bar itself, as a multiple of its own trailing baseline --
+    #: the difference between a level the market broke and one that drifted through. Measured
+    #: at the event bar, not at the last bar available, because that is the bar the question
+    #: is about. `None` where volume is unknown; never a fabricated `0.0`.
+    #:
+    #: Defaulted for the same reason as `TrendComponents.rel_volume`: the field is additive and
+    #: every existing construction site keeps working. `detect_events` always sets it.
+    rel_volume: float | None = None
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -131,6 +144,7 @@ class BreakoutEvent:
             "excursion_atr": self.excursion_atr,
             "mfe_atr": self.mfe_atr,
             "mae_atr": self.mae_atr,
+            "rel_volume": self.rel_volume,
         }
 
 
@@ -213,6 +227,8 @@ def detect_events(
     range_low = bars["low"].shift(1).rolling(window=n, min_periods=n).min().to_numpy(dtype=float)
 
     atr_values = atr(bars, ATR_PERIOD).to_numpy(dtype=float)
+    # T92. Computed over the whole frame once, then read at each event's own bar below.
+    rel_volume_values = relative_volume(bars, REL_VOLUME_PERIOD).to_numpy(dtype=float)
 
     n_bars = len(bars)
     events: list[BreakoutEvent] = []
@@ -281,6 +297,9 @@ def detect_events(
                 excursion_atr=current_excursion,
                 mfe_atr=mfe,
                 mae_atr=mae,
+                rel_volume=(
+                    None if np.isnan(rel_volume_values[t]) else float(rel_volume_values[t])
+                ),
             )
         )
 
