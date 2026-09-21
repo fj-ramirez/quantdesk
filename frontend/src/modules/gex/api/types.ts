@@ -1162,6 +1162,29 @@ export interface Opportunity {
 export interface RankedOpportunity extends Opportunity {
   underlying: string;
   spot: number;
+  /** T93. True when a higher-ranked opportunity is the same bet in a correlated name. The row
+   * is still in the list -- render it marked and explained, never hide it. */
+  suppressed: boolean;
+  /** What it duplicates, and the side-adjusted correlation that decided it. All `null` when
+   * `suppressed` is false. */
+  duplicates_symbol: string | null;
+  duplicates_key: string | null;
+  duplicate_correlation: number | null;
+  suppression_reason: string | null;
+}
+
+/** T93. `DecisionsResponse.factors`: the ranked set read as a portfolio rather than a list.
+ * `independent_bets` is the effective number of bets it contains -- `n` names correlated 1.0
+ * is 1.0 bet held `n` times, `n` uncorrelated names is `n`. `null` anywhere means *not
+ * measurable* (fewer than two candidates, or too little overlapping history), never zero. */
+export interface FactorSummary {
+  candidates: number;
+  accepted: number;
+  suppressed: number;
+  mean_correlation: number | null;
+  independent_bets: number | null;
+  window: number;
+  threshold: number;
 }
 
 /** One symbol's full decision: its opportunities (possibly empty) and, exactly when they are
@@ -1191,6 +1214,8 @@ export interface DecisionsResponse {
   symbols: SymbolDecision[];
   /** `Underlying` members with no captured chain at all. */
   no_chain: string[];
+  /** T93. Measured over the non-rejected ranked opportunities. */
+  factors: FactorSummary;
 }
 
 // ---------------------------------------------------------------------------------------

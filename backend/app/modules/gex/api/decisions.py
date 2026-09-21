@@ -26,7 +26,7 @@ from Parquet.
 from __future__ import annotations
 
 import datetime as dt
-from typing import Annotated
+from typing import Annotated, Any
 
 from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel
@@ -36,6 +36,12 @@ from app.modules.gex.api.scan import _validate_regime_filter, build_regime_rows
 from app.modules.gex.gex.engine import ExpiryFilter
 from app.modules.gex.jobs.decisions import DecisionsJobResult, decide_build, record_decisions_job
 from app.modules.gex.scan.decisions import DecisionResult
+from app.modules.gex.scan.factors import (
+    CORR_THRESHOLD,
+    CORR_WINDOW,
+    correlation_matrix,
+    summarize,
+)
 from app.modules.gex.scan.outcomes import summarize_outcomes
 from app.modules.gex.storage import decisions_repository as repo
 
@@ -47,6 +53,11 @@ _FILTER_DESC = "One of ALL, ZERO_DTE, EX_ZERO_DTE (persisted filters only)."
 _MIN_SCORE_DESC = (
     "Drop opportunities scoring below this from the cross-universe `ranked` list. Per-symbol "
     "rows are never filtered."
+)
+_CORR_THRESHOLD_DESC = (
+    "Side-adjusted return correlation above which a ranked opportunity is marked as "
+    "duplicating a higher-ranked one (T93). Marked, never removed. An opinion about "
+    "acceptable concentration, so it is a request parameter rather than a fixed constant."
 )
 
 
@@ -112,6 +123,34 @@ class RankedOpportunityOut(OpportunityOut):
 
     underlying: str
     spot: float
+    #: T93. True when a higher-ranked opportunity is the same bet in a correlated name. The
+    #: row **stays in the list** -- a set that quietly shrank is worse than one that did not,
+    #: because the reason is unrecoverable at the point of reading it.
+    suppressed: bool = False
+    #: The symbol and key this duplicates, and the side-adjusted correlation that decided it.
+    #: All `None` when `suppressed` is False.
+    duplicates_symbol: str | None = None
+    duplicates_key: str | None = None
+    duplicate_correlation: float | None = None
+    suppression_reason: str | None = None
+
+
+class FactorSummaryOut(BaseModel):
+    """T93. What the ranked set looks like as a portfolio rather than as a list.
+
+    `independent_bets` is the effective number of bets the set contains: `n` names at a mean
+    pairwise correlation of 1 is 1.0 bet held `n` times, `n` uncorrelated names is `n`. `None`
+    anywhere means *not measurable* -- fewer than two candidates, or too little overlapping
+    history -- and never zero.
+    """
+
+    candidates: int
+    accepted: int
+    suppressed: int
+    mean_correlation: float | None
+    independent_bets: float | None
+    window: int
+    threshold: float
 
 
 class DecisionsResponse(BaseModel):
@@ -120,6 +159,8 @@ class DecisionsResponse(BaseModel):
     ranked: list[RankedOpportunityOut]
     symbols: list[DecisionOut]
     no_chain: list[str]
+    #: T93. Measured over the non-rejected ranked opportunities -- see `get_decisions`.
+    factors: FactorSummaryOut
 
 
 _DISCLAIMER = (
@@ -135,17 +176,35 @@ _STATUS_RANK = {"active": 0, "watch": 1, "rejected": 2}
 def get_decisions(
     filter_: Annotated[str, Query(alias="filter", description=_FILTER_DESC)] = ExpiryFilter.ALL.value,
     min_score: Annotated[int, Query(ge=0, le=100, description=_MIN_SCORE_DESC)] = 0,
+    corr_threshold: Annotated[
+        float, Query(ge=0.0, le=1.0, description=_CORR_THRESHOLD_DESC)
+    ] = CORR_THRESHOLD,
 ) -> DecisionsResponse:
-    """Every opportunity across the optioned universe, ranked, plus each symbol's own row."""
+    """Every opportunity across the optioned universe, ranked, plus each symbol's own row.
+
+    T93: the ranked set is then measured as a *portfolio*. Walking it in rank order, any
+    opportunity whose side-adjusted return correlation to an already-accepted one exceeds
+    `corr_threshold` is **marked** as duplicating it -- never removed, and always naming what
+    it duplicates. `factors` reports how many genuinely independent bets the set contains.
+
+    **Only `active` and `watch` rows are candidates for the cap.** A `rejected` row is not a
+    trade the desk is being offered; it already carries its own `rejection_reason`, and
+    marking it a duplicate as well would add noise to rows nobody is going to take.
+
+    The correlation is measured from the daily bars `build_regime_rows` already fetched
+    (`RegimeBuild.bars`), so this costs no additional read.
+    """
     parsed_filter = _validate_regime_filter(filter_)
 
     symbols: list[DecisionOut] = []
     no_chain: list[str] = []
     ranked: list[RankedOpportunityOut] = []
+    bars_by_symbol: dict[str, Any] = {}
     for build in build_regime_rows(parsed_filter):
         if build.row is None:
             no_chain.append(build.symbol)
             continue
+        bars_by_symbol[build.symbol] = build.bars
         result = decide_build(build)
         out = DecisionOut.from_result(result)
         symbols.append(out)
@@ -157,12 +216,44 @@ def get_decisions(
             )
 
     ranked.sort(key=lambda o: (_STATUS_RANK[o.status], -o.score, o.underlying, o.key))
+
+    # `key` repeats across symbols (every fade is `FADE_CALL_WALL`), so the cap is run over a
+    # symbol-qualified id and the results mapped back by it.
+    def _uid(row: RankedOpportunityOut) -> str:
+        return f"{row.underlying}:{row.key}"
+
+    capped = [row for row in ranked if row.status != "rejected"]
+    corr = correlation_matrix(bars_by_symbol, window=CORR_WINDOW)
+    _, suppressions, summary = summarize(
+        [(_uid(row), row.underlying, row.side) for row in capped],
+        corr,
+        window=CORR_WINDOW,
+        threshold=corr_threshold,
+    )
+
+    by_uid = {s.key: s for s in suppressions}
+    ranked = [
+        row.model_copy(
+            update={
+                "suppressed": True,
+                "duplicates_symbol": by_uid[_uid(row)].duplicates_symbol,
+                "duplicates_key": by_uid[_uid(row)].duplicates_key.split(":", 1)[-1],
+                "duplicate_correlation": by_uid[_uid(row)].correlation,
+                "suppression_reason": by_uid[_uid(row)].reason,
+            }
+        )
+        if _uid(row) in by_uid
+        else row
+        for row in ranked
+    ]
+
     return DecisionsResponse(
         filter=parsed_filter.value,
         generated_from=_DISCLAIMER,
         ranked=ranked,
         symbols=symbols,
         no_chain=no_chain,
+        factors=FactorSummaryOut(**summary.to_dict()),
     )
 
 

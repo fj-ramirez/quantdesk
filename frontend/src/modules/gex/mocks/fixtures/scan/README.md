@@ -217,3 +217,21 @@ every rate `null` (withheld below five resolved trades) and every R `null`. Noth
 exists on the live database yet, so `Decisions.test.tsx` builds a clearly-labelled synthetic
 variant *in the test* (three rows flipped to target/stop/pending-with-mark) to exercise the
 R and rate columns, rather than committing a fabricated recording as if it were live.
+
+## T93 addition to `decisions.json` — hand-edited, not recorded
+
+`decisions.json` predates the factor cap, so its `ranked` rows and the response envelope were
+missing fields the API now always returns. They were **added by hand on 2026-09-21**, which
+breaks this file's "byte-for-byte live response" property for that one fixture. Recorded here
+rather than left to be discovered:
+
+* every `ranked` row gained `suppressed: false` and the four `duplicates_*` /
+  `suppression_reason` fields at `null`;
+* the envelope gained `factors`, with `mean_correlation` and `independent_bets` at `null`.
+
+**The nulls are deliberate and are not a placeholder.** `null` is a real value in this API —
+"not measurable" — and it is what the server returns when fewer than two candidates survive or
+the histories do not overlap enough. Inventing a plausible correlation for a set whose returns
+were never recorded would put a fabricated number in a file whose whole contract is that its
+numbers are real. A future re-recording against a live backend will replace them with measured
+values; until then the fixture exercises the shape, not the arithmetic.

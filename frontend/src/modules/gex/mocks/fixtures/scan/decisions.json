@@ -73,7 +73,12 @@
       ],
       "rejection_reason": null,
       "underlying": "XLI",
-      "spot": 170.39
+      "spot": 170.39,
+      "suppressed": false,
+      "duplicates_symbol": null,
+      "duplicates_key": null,
+      "duplicate_correlation": null,
+      "suppression_reason": null
     },
     {
       "key": "CONTINUATION_DOWN",
@@ -146,7 +151,12 @@
       ],
       "rejection_reason": null,
       "underlying": "XLP",
-      "spot": 83.115
+      "spot": 83.115,
+      "suppressed": false,
+      "duplicates_symbol": null,
+      "duplicates_key": null,
+      "duplicate_correlation": null,
+      "suppression_reason": null
     },
     {
       "key": "CONTINUATION_DOWN",
@@ -217,7 +227,12 @@
       ],
       "rejection_reason": null,
       "underlying": "HYG",
-      "spot": 78.8
+      "spot": 78.8,
+      "suppressed": false,
+      "duplicates_symbol": null,
+      "duplicates_key": null,
+      "duplicate_correlation": null,
+      "suppression_reason": null
     },
     {
       "key": "CONTINUATION_DOWN",
@@ -288,7 +303,12 @@
       ],
       "rejection_reason": null,
       "underlying": "IWM",
-      "spot": 287.75
+      "spot": 287.75,
+      "suppressed": false,
+      "duplicates_symbol": null,
+      "duplicates_key": null,
+      "duplicate_correlation": null,
+      "suppression_reason": null
     },
     {
       "key": "CONTINUATION_DOWN",
@@ -358,7 +378,12 @@
       ],
       "rejection_reason": null,
       "underlying": "XLU",
-      "spot": 42.65
+      "spot": 42.65,
+      "suppressed": false,
+      "duplicates_symbol": null,
+      "duplicates_key": null,
+      "duplicate_correlation": null,
+      "suppression_reason": null
     },
     {
       "key": "CONTINUATION_DOWN",
@@ -431,7 +456,12 @@
       ],
       "rejection_reason": null,
       "underlying": "XLY",
-      "spot": 111.86
+      "spot": 111.86,
+      "suppressed": false,
+      "duplicates_symbol": null,
+      "duplicates_key": null,
+      "duplicate_correlation": null,
+      "suppression_reason": null
     },
     {
       "key": "CONTINUATION_DOWN",
@@ -502,7 +532,12 @@
       ],
       "rejection_reason": null,
       "underlying": "SPY",
-      "spot": 757.76
+      "spot": 757.76,
+      "suppressed": false,
+      "duplicates_symbol": null,
+      "duplicates_key": null,
+      "duplicate_correlation": null,
+      "suppression_reason": null
     },
     {
       "key": "CONTINUATION_DOWN",
@@ -572,7 +607,12 @@
       ],
       "rejection_reason": null,
       "underlying": "GDX",
-      "spot": 96.05
+      "spot": 96.05,
+      "suppressed": false,
+      "duplicates_symbol": null,
+      "duplicates_key": null,
+      "duplicate_correlation": null,
+      "suppression_reason": null
     },
     {
       "key": "CONTINUATION_UP",
@@ -644,7 +684,12 @@
       ],
       "rejection_reason": null,
       "underlying": "XLK",
-      "spot": 185.485
+      "spot": 185.485,
+      "suppressed": false,
+      "duplicates_symbol": null,
+      "duplicates_key": null,
+      "duplicate_correlation": null,
+      "suppression_reason": null
     },
     {
       "key": "CONTINUATION_DOWN",
@@ -715,7 +760,12 @@
       ],
       "rejection_reason": null,
       "underlying": "DIA",
-      "spot": 520.565
+      "spot": 520.565,
+      "suppressed": false,
+      "duplicates_symbol": null,
+      "duplicates_key": null,
+      "duplicate_correlation": null,
+      "suppression_reason": null
     },
     {
       "key": "FADE_CALL_WALL",
@@ -788,7 +838,12 @@
       ],
       "rejection_reason": null,
       "underlying": "USO",
-      "spot": 158.8
+      "spot": 158.8,
+      "suppressed": false,
+      "duplicates_symbol": null,
+      "duplicates_key": null,
+      "duplicate_correlation": null,
+      "suppression_reason": null
     },
     {
       "key": "FADE_CALL_WALL",
@@ -858,7 +913,12 @@
       ],
       "rejection_reason": null,
       "underlying": "XLE",
-      "spot": 64.78
+      "spot": 64.78,
+      "suppressed": false,
+      "duplicates_symbol": null,
+      "duplicates_key": null,
+      "duplicate_correlation": null,
+      "suppression_reason": null
     },
     {
       "key": "CONTINUATION_DOWN",
@@ -931,7 +991,12 @@
       ],
       "rejection_reason": null,
       "underlying": "XLB",
-      "spot": 50.74
+      "spot": 50.74,
+      "suppressed": false,
+      "duplicates_symbol": null,
+      "duplicates_key": null,
+      "duplicate_correlation": null,
+      "suppression_reason": null
     },
     {
       "key": "CONTINUATION_UP",
@@ -1001,7 +1066,12 @@
       ],
       "rejection_reason": null,
       "underlying": "SMH",
-      "spot": 560.9
+      "spot": 560.9,
+      "suppressed": false,
+      "duplicates_symbol": null,
+      "duplicates_key": null,
+      "duplicate_correlation": null,
+      "suppression_reason": null
     },
     {
       "key": "CONTINUATION_DOWN",
@@ -1074,7 +1144,12 @@
       ],
       "rejection_reason": null,
       "underlying": "XLF",
-      "spot": 56.92
+      "spot": 56.92,
+      "suppressed": false,
+      "duplicates_symbol": null,
+      "duplicates_key": null,
+      "duplicate_correlation": null,
+      "suppression_reason": null
     },
     {
       "key": "CONTINUATION_DOWN",
@@ -1145,7 +1220,12 @@
       ],
       "rejection_reason": null,
       "underlying": "FXI",
-      "spot": 34.35
+      "spot": 34.35,
+      "suppressed": false,
+      "duplicates_symbol": null,
+      "duplicates_key": null,
+      "duplicate_correlation": null,
+      "suppression_reason": null
     },
     {
       "key": "CONTINUATION_DOWN",
@@ -1216,7 +1296,12 @@
       ],
       "rejection_reason": null,
       "underlying": "TLT",
-      "spot": 80.68
+      "spot": 80.68,
+      "suppressed": false,
+      "duplicates_symbol": null,
+      "duplicates_key": null,
+      "duplicate_correlation": null,
+      "suppression_reason": null
     },
     {
       "key": "FADE_PUT_WALL",
@@ -1290,7 +1375,12 @@
       ],
       "rejection_reason": null,
       "underlying": "GLD",
-      "spot": 396.2
+      "spot": 396.2,
+      "suppressed": false,
+      "duplicates_symbol": null,
+      "duplicates_key": null,
+      "duplicate_correlation": null,
+      "suppression_reason": null
     },
     {
       "key": "CONTINUATION_DOWN",
@@ -1360,7 +1450,12 @@
       ],
       "rejection_reason": null,
       "underlying": "QQQ",
-      "spot": 708.5
+      "spot": 708.5,
+      "suppressed": false,
+      "duplicates_symbol": null,
+      "duplicates_key": null,
+      "duplicate_correlation": null,
+      "suppression_reason": null
     },
     {
       "key": "CONTINUATION_DOWN",
@@ -1431,7 +1526,12 @@
       ],
       "rejection_reason": null,
       "underlying": "SPX",
-      "spot": 7591.75
+      "spot": 7591.75,
+      "suppressed": false,
+      "duplicates_symbol": null,
+      "duplicates_key": null,
+      "duplicate_correlation": null,
+      "suppression_reason": null
     },
     {
       "key": "FADE_CALL_WALL",
@@ -1501,7 +1601,12 @@
       ],
       "rejection_reason": null,
       "underlying": "XOP",
-      "spot": 196.27
+      "spot": 196.27,
+      "suppressed": false,
+      "duplicates_symbol": null,
+      "duplicates_key": null,
+      "duplicate_correlation": null,
+      "suppression_reason": null
     },
     {
       "key": "FADE_CALL_WALL",
@@ -1570,7 +1675,12 @@
       ],
       "rejection_reason": null,
       "underlying": "SLV",
-      "spot": 57.44
+      "spot": 57.44,
+      "suppressed": false,
+      "duplicates_symbol": null,
+      "duplicates_key": null,
+      "duplicate_correlation": null,
+      "suppression_reason": null
     },
     {
       "key": "FADE_PUT_WALL",
@@ -1641,7 +1751,12 @@
       ],
       "rejection_reason": null,
       "underlying": "XLE",
-      "spot": 64.78
+      "spot": 64.78,
+      "suppressed": false,
+      "duplicates_symbol": null,
+      "duplicates_key": null,
+      "duplicate_correlation": null,
+      "suppression_reason": null
     },
     {
       "key": "FADE_CALL_WALL",
@@ -1712,7 +1827,12 @@
       ],
       "rejection_reason": null,
       "underlying": "GLD",
-      "spot": 396.2
+      "spot": 396.2,
+      "suppressed": false,
+      "duplicates_symbol": null,
+      "duplicates_key": null,
+      "duplicate_correlation": null,
+      "suppression_reason": null
     },
     {
       "key": "FADE_PUT_WALL",
@@ -1786,7 +1906,12 @@
       ],
       "rejection_reason": null,
       "underlying": "XLV",
-      "spot": 165.85
+      "spot": 165.85,
+      "suppressed": false,
+      "duplicates_symbol": null,
+      "duplicates_key": null,
+      "duplicate_correlation": null,
+      "suppression_reason": null
     }
   ],
   "symbols": [
@@ -3953,5 +4078,14 @@
       "no_trade_reasons": []
     }
   ],
-  "no_chain": []
+  "no_chain": [],
+  "factors": {
+    "candidates": 25,
+    "accepted": 25,
+    "suppressed": 0,
+    "mean_correlation": null,
+    "independent_bets": null,
+    "window": 60,
+    "threshold": 0.8
+  }
 }

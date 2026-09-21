@@ -252,3 +252,94 @@ def test_record_then_history_round_trip(client, session_factory):
     assert body["summary"]["by_setup"]["fade"]["n"] == 2
 
     assert client.post("/api/gex/decisions/record").json()["recorded"] == 0
+
+
+# --- T93: the factor cap ---------------------------------------------------------------------
+
+
+def _seed_correlated_pair(session_factory) -> None:
+    """Two symbols with byte-identical bar histories, so their returns correlate exactly 1.0.
+
+    `_seed_bars` walks a fixed dollar increment, so the percentage returns decline slightly
+    each day -- non-constant, which matters: a perfectly flat return series has zero variance
+    and correlates to `NaN` rather than 1.0.
+    """
+    for symbol in ("SPY", "QQQ"):
+        _seed_bars(session_factory, symbol, 90)
+        _seed_fade_snapshot(session_factory, symbol)
+
+
+def test_identical_symbols_are_marked_as_one_trade_not_two(client, session_factory):
+    """The whole point of T93: two names that move together must not read as two bets.
+
+    Which of the two survives is whichever the existing ranking puts first, and that is
+    deliberately not asserted here -- the cap is a constraint on the emitted set, never a
+    re-ranking, so it has no opinion of its own about the order. What is asserted is the
+    property: one symbol's rows are kept, the other's are marked, and the marks point at the
+    kept one.
+    """
+    _seed_correlated_pair(session_factory)
+
+    body = client.get("/api/gex/decisions").json()
+    ranked = body["ranked"]
+    assert ranked, "fixture should produce fades on both symbols"
+
+    suppressed = [r for r in ranked if r["suppressed"]]
+    accepted = [r for r in ranked if not r["suppressed"] and r["status"] != "rejected"]
+    assert suppressed, "perfectly correlated candidates must be marked"
+
+    kept = {r["underlying"] for r in accepted}
+    marked = {r["underlying"] for r in suppressed}
+    assert len(kept) == 1, "only one of two identical names should survive the cap"
+    assert kept.isdisjoint(marked)
+    assert kept | marked == {"SPY", "QQQ"}
+
+    survivor = kept.pop()
+    for row in suppressed:
+        assert row["duplicates_symbol"] == survivor
+        assert row["duplicate_correlation"] == pytest.approx(1.0, abs=1e-6)
+        assert survivor in row["suppression_reason"]
+
+
+def test_a_suppressed_opportunity_is_never_removed_from_the_list(client, session_factory):
+    """A set that quietly shrank is worse than one that did not: the reason would be
+    unrecoverable at the point of reading it."""
+    _seed_correlated_pair(session_factory)
+
+    body = client.get("/api/gex/decisions").json()
+    underlyings = {r["underlying"] for r in body["ranked"]}
+    assert underlyings == {"SPY", "QQQ"}, "both symbols' rows must survive the cap"
+
+
+def test_factor_summary_reports_one_independent_bet_for_identical_names(
+    client, session_factory
+):
+    _seed_correlated_pair(session_factory)
+
+    factors = client.get("/api/gex/decisions").json()["factors"]
+    assert factors["candidates"] == factors["accepted"] + factors["suppressed"]
+    assert factors["mean_correlation"] == pytest.approx(1.0, abs=1e-6)
+    # Two names at correlation 1.0: n_eff = 2 / (1 + 1*1) = 1.0.
+    assert factors["independent_bets"] == pytest.approx(1.0, abs=1e-6)
+    assert factors["threshold"] == pytest.approx(0.80, abs=1e-9)
+
+
+def test_a_threshold_of_one_suppresses_nothing(client, session_factory):
+    """The threshold is an opinion about concentration, so it is a request parameter. Above
+    every achievable correlation, nothing is a duplicate."""
+    _seed_correlated_pair(session_factory)
+
+    body = client.get("/api/gex/decisions?corr_threshold=1.0").json()
+    assert not any(r["suppressed"] for r in body["ranked"])
+    assert body["factors"]["suppressed"] == 0
+
+
+def test_a_single_symbol_has_no_measurable_factor_structure(client, session_factory):
+    """One name cannot be concentrated against anything: `None`, never zero."""
+    _seed_bars(session_factory, "SPY", 90)
+    _seed_fade_snapshot(session_factory, "SPY")
+
+    body = client.get("/api/gex/decisions").json()
+    assert not any(r["suppressed"] for r in body["ranked"])
+    assert body["factors"]["independent_bets"] is None
+    assert body["factors"]["mean_correlation"] is None

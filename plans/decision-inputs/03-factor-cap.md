@@ -107,3 +107,62 @@ Measured 2026-09-21:
 
 PCA and factor attribution; position sizing and vol targeting (EdgeLab has its own); applying
 the cap to anything other than the decisions path.
+
+---
+
+## Result — T93
+
+**Done 2026-09-21.** 1,154 backend tests green (27 added), 403 frontend green, both linters
+clean.
+
+`app/modules/gex/scan/factors.py`, pure on the same contract as the engine: `return_frame`,
+`correlation_matrix`, `effective_bets`, `mean_correlation`, `cap_candidates` and a `summarize`
+that composes them. `api/decisions.py` calls it with the bars `build_regime_rows` already
+fetched, so the measurement costs no extra read.
+
+Every design decision in this file survived implementation. Three things are worth recording
+because they are *not* in the spec above.
+
+**Side is part of the question.** Two names correlated +0.95 are the same trade only when
+traded the same way; long XLE against short XOP at that correlation is closer to a hedge, and
+suppressing a leg of it would be exactly wrong. So the comparison is on the **side-adjusted**
+correlation, `corr * sign(a) * sign(b)`, and only a positive result above the threshold counts
+as duplication. An unrecognised side yields sign `0`, which can never duplicate anything —
+failing towards keeping a row, because an extra row costs a line on a screen and a wrongly
+removed one costs a trade the desk never sees.
+
+**Two opportunities on one symbol are never duplicates of each other.** A symbol between its
+two walls legitimately carries a short-at-the-call-wall and a long-at-the-put-wall row — the
+same range read from both ends, per `scan/decisions.py`'s own docstring. They self-correlate
+1.0, so the cap compares across symbols only.
+
+**`rejected` rows are not candidates for the cap.** They are not trades being offered and
+already carry a `rejection_reason`; marking them duplicates too would be noise on rows nobody
+will take.
+
+**Structural deviation from the spec, deliberate:** the selection pass lives in the new
+`factors.py`, not in `scan/decisions.py` as this file said. `decisions.py` is per-symbol by
+construction — `decide()` takes one `RegimeRow` — and a cross-candidate cap is a portfolio
+concern. Keeping the correlation maths and the pass that consumes it in one module leaves each
+file one concept; the API composes them.
+
+`effective_bets` uses the equal-weight portfolio identity `n / (1 + (n-1) * rho_bar)` rather
+than an eigendecomposition: all correlations 1 gives exactly 1.0, all 0 gives exactly `n`, and
+it is checkable by hand. PCA stays the named follow-on. The guard against a non-positive
+denominator is real rather than decorative — a genuine PSD correlation matrix cannot produce
+one, but a pairwise-complete estimate over uneven overlaps is not guaranteed PSD.
+
+The three tests this file asked for all pass, plus twenty-four more: the returns-not-prices
+case is pinned by a fixture whose two series have price correlation > 0.9 and return
+correlation < 0.4, and there is an end-to-end API test that seeds two identical symbols and
+asserts one survives, the other is marked, and `independent_bets` reads exactly 1.0.
+
+**One caveat on the frontend fixture.** `mocks/fixtures/scan/decisions.json` is a byte-for-byte
+recording of a live response and predates this field set, so the new fields were added by hand
+with `mean_correlation` and `independent_bets` at `null`. `null` is a real value here ("not
+measurable"), not a placeholder — inventing a correlation for returns that were never recorded
+would put a fabricated number in a file whose contract is that its numbers are real. Noted in
+that directory's README; a re-recording will replace them.
+
+**No UI yet.** The data and the types are in place; no component renders the factor summary or
+the suppression mark. Same shape of follow-on as T92's missing column.
