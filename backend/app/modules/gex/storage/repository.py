@@ -14,6 +14,7 @@ from pathlib import Path
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.modules.gex.jobs.calendar import session_date
 from app.modules.gex.models.chain import ChainSnapshot
 from app.modules.gex.models.db import Snapshot
 from app.modules.gex.storage.parquet import to_data_dir_relative_path
@@ -71,6 +72,8 @@ class SnapshotRepository:
             parquet_path=to_data_dir_relative_path(parquet_path, data_dir),
             is_eod=is_eod,
             content_hash=content_hash,
+            # Derived once, here, rather than by every consumer (T102). See the column.
+            session_date=session_date(snapshot.captured_at),
         )
         self._session.add(row)
         self._session.commit()

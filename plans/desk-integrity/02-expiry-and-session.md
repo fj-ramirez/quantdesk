@@ -248,3 +248,76 @@ pre-T75 revisions do `import app.models.db` and the `sys.modules` alias that res
 in `alembic/env.py`, which `heads` does not load. `upgrade` and `downgrade` both work, so this
 is a papercut in an introspection command rather than a broken migration path -- but the next
 person to run `alembic heads` will think the migrations are broken, as I did.
+
+
+---
+
+## Result — T102, 2026-09-21
+
+**Done. 1,227 backend tests green (8 added), 408 frontend, both linters clean, `tsc` clean,
+migration generates and reverses.**
+
+### The rule, and where it already existed
+
+`calendar.session_date(captured_at)` : a capture at or after a trading day's open belongs to
+that day; a weekend, a holiday, or the small hours before the bell belongs to the previous
+trading day, because that is whose book the vendor is still serving.
+
+The primitives were already there -- `is_trading_day`, `MARKET_OPEN`, `_previous_trading_day`
+-- and `effective_data_time` already does the same walk for a neighbouring question. The two
+are deliberately separate: `effective_data_time` asks *what instant* the data reflects and
+pivots on the **close**; `session_date` asks *which session* it came from and pivots on the
+**open**. Folding them together would have been the tempting mistake.
+
+Verified against the real shapes:
+
+| capture | session |
+|---|---|
+| snapshot 178, Sunday `2026-09-20 15:10:08Z` | **2026-09-18** (Friday) |
+| Saturday `2026-09-19 14:00Z` | 2026-09-18 |
+| first of session, `2026-09-21 13:43Z` (09:43 ET) | 2026-09-21 |
+| EOD, `2026-09-21 20:20Z` (16:20 ET) | 2026-09-21 |
+| `2026-09-22 06:00Z` (02:00 ET, pre-bell) | 2026-09-21 |
+| `2026-01-01 18:00Z` (New Year, closed) | 2025-12-31 |
+
+That last row is why this cannot be a day-of-week expression in SQL: the holiday table lives in
+Python, and a wrong holiday silently mislabels a session.
+
+### This migration backfills, unlike T101's
+
+`session_date` is a pure function of `captured_at` and the trading calendar, so **no Parquet
+file has to be reopened** -- all 346 existing rows are filled in the migration itself rather
+than left null pending a separate pass. It imports `calendar.session_date` to do it, which is a
+deliberate exception to keeping revision scripts self-contained: the alternative is
+transcribing the NYSE holiday table into a file where it would immediately rot.
+
+Guarded for `--sql` offline mode, which cannot read the rows it would need. The generated SQL
+carries a comment saying the backfill was skipped rather than silently producing a migration
+that adds an empty column.
+
+Nullable rather than NOT NULL: a row inserted by something bypassing `SnapshotRepository` is
+plausible, and a null that says "nobody derived this" beats a constraint that turns it into a
+failed capture. Nothing may risk the 16:20 capture.
+
+### `is_eod` untouched
+
+It still means "an end-of-session book" and other code reads it. The two columns answer
+different questions and a consumer usually wants both: `WHERE is_eod GROUP BY session_date`.
+Both docstrings say which to group by.
+
+Exposed on `SnapshotOut` and the frontend `SnapshotSummary`, since a consumer grouping by the
+wrong column is the failure this exists to prevent and it cannot use a column it cannot see.
+
+### One test broke, and it was worth the noise
+
+`test_migration_t71_duplicates` hand-writes a `snapshots` DDL to reproduce a pre-uniqueness
+schema, then inserts through the ORM -- so a column the model has and that DDL lacks fails with
+`table main.snapshots has no column named session_date`. Fixed by adding the column and
+correcting the comment: the *constraint* in that fixture is historical, the column list is not
+and must track the model. Noted in place that if this breaks a third time, the right fix is to
+derive the table from the metadata and strip the constraint.
+
+### Outstanding
+
+The migration has not been applied to the homeserver -- same write seat `T101` is waiting on.
+Once it runs, the backfill is automatic here; no separate pass is needed for this column.

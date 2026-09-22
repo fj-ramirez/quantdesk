@@ -39,11 +39,17 @@ def _load_migration():
     return module
 
 
-#: The `snapshots` table **as it stood before this migration** -- no uniqueness on
+#: The `snapshots` table **without the uniqueness this migration adds** on
 #: `(underlying, captured_at)`. Spelled out as raw DDL rather than built from the ORM metadata
 #: because the model now carries the constraint, so `create_all` would produce a table that
-#: cannot hold the duplicates this test exists to clean up. This is also the more faithful
-#: fixture: it is the schema the migration will actually meet on a real database.
+#: cannot hold the duplicates this test exists to clean up.
+#:
+#: The *constraint* is what is historical here; the column list is not, and must track the
+#: model. The rows below are inserted through the ORM, so a column the model has and this DDL
+#: lacks fails the insert with "table main.snapshots has no column named ...". T102 added
+#: `session_date` and this is where that surfaced. If you add a column to `Snapshot`, add it
+#: here too -- the alternative, deriving this table from the metadata and stripping the
+#: constraint, is the right fix if this breaks a third time.
 _PRE_MIGRATION_SNAPSHOTS_DDL = """
 CREATE TABLE snapshots (
     id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
@@ -54,7 +60,8 @@ CREATE TABLE snapshots (
     contract_count INTEGER NOT NULL,
     parquet_path VARCHAR(512) NOT NULL,
     is_eod BOOLEAN NOT NULL,
-    content_hash VARCHAR(64)
+    content_hash VARCHAR(64),
+    session_date DATE
 )
 """
 

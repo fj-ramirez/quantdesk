@@ -301,6 +301,10 @@ export interface SnapshotSummary {
   spot: number;
   contract_count: number;
   is_eod: boolean;
+  /** T102: the trading session this chain's contents belong to (ISO date). Group by this,
+   * not by `captured_at`'s date -- a weekend or pre-open capture holds the previous session's
+   * book, so the two differ routinely. Null on rows written before T102. */
+  session_date: string | null;
 }
 
 // ---------------------------------------------------------------------------------------

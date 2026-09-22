@@ -372,3 +372,28 @@ def test_t101_recompute_replaces_rather_than_accumulates(tmp_path, session_facto
 
     assert first > 0
     assert second == first
+
+
+def test_t102_session_date_is_derived_at_capture(tmp_path, session_factory):
+    """T102: the snapshot records which *session* its chain came from, not just when it was
+    captured. Snapshot 178 in production is a Sunday capture of Friday's post-opex book; this
+    reproduces that shape and asserts the row says Friday."""
+    sunday = dt.datetime(2026, 9, 20, 15, 10, 8, tzinfo=dt.UTC)  # a Sunday, 11:10 ET
+    chain = ChainSnapshot(
+        underlying=Underlying.SPY,
+        spot=100.0,
+        captured_at=sunday,
+        source="synthetic",
+        delayed_minutes=15,
+        contracts=(),
+    )
+    path = write_snapshot(chain, data_dir=tmp_path)
+    with session_factory() as session:
+        row = SnapshotRepository(session).add(chain, path, is_eod=True)
+        assert row.session_date == dt.date(2026, 9, 18), (
+            "a Sunday capture holds Friday's book; grouping by captured_at::date would invent "
+            "a Sunday session that never traded"
+        )
+        # `is_eod` keeps its own meaning -- the two answer different questions.
+        assert row.is_eod is True
+        assert row.captured_at.date() == dt.date(2026, 9, 20)

@@ -56,6 +56,11 @@ class SnapshotOut(BaseModel):
     spot: float
     contract_count: int
     is_eod: bool
+    #: T102. The trading session this chain's *contents* belong to -- group by this, not by
+    #: `captured_at`'s date. A weekend or pre-open capture holds the previous session's book,
+    #: so the two differ routinely. Null only on rows written before T102 and not yet
+    #: backfilled.
+    session_date: dt.date | None = None
 
 
 @router.post("/capture", response_model=CaptureResponse, status_code=201)

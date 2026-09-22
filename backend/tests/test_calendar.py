@@ -18,6 +18,7 @@ from app.modules.gex.jobs.calendar import (
     is_market_holiday,
     is_regular_session,
     is_trading_day,
+    session_date,
 )
 
 _NY = dt.timezone(dt.timedelta(hours=-4))  # EDT, correct for the September dates used below
@@ -228,3 +229,57 @@ def test_historical_years_are_never_asked_about_without_data(caplog):
             is_trading_day(day)
             day += dt.timedelta(days=1)
     assert caplog.records == []
+
+
+# --------------------------------------------------------------------------------------
+# T102: which session does a captured chain belong to?
+# --------------------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    ("label", "captured_at", "expected"),
+    [
+        (
+            "Sunday capture holds Friday's post-opex book (snapshot 178's real shape)",
+            dt.datetime(2026, 9, 20, 15, 10, 8, tzinfo=dt.UTC),
+            dt.date(2026, 9, 18),
+        ),
+        (
+            "Saturday capture likewise",
+            dt.datetime(2026, 9, 19, 14, 0, tzinfo=dt.UTC),
+            dt.date(2026, 9, 18),
+        ),
+        (
+            "first capture of the session, 09:43 ET, is that session",
+            dt.datetime(2026, 9, 21, 13, 43, 3, tzinfo=dt.UTC),
+            dt.date(2026, 9, 21),
+        ),
+        (
+            "EOD capture at 16:20 ET is still that session",
+            dt.datetime(2026, 9, 21, 20, 20, tzinfo=dt.UTC),
+            dt.date(2026, 9, 21),
+        ),
+        (
+            "before the opening bell belongs to the previous session",
+            dt.datetime(2026, 9, 22, 6, 0, tzinfo=dt.UTC),
+            dt.date(2026, 9, 21),
+        ),
+    ],
+)
+def test_t102_session_date(label, captured_at, expected):
+    assert session_date(captured_at) == expected, label
+
+
+def test_t102_session_date_skips_a_holiday():
+    """The reason this cannot be a day-of-week calculation in SQL: a capture the morning after
+    a holiday belongs to the last day that actually traded, not to the holiday."""
+    # 2026-01-01 is a Thursday and a full market closure; 2025-12-31 is the prior session.
+    after_new_year = dt.datetime(2026, 1, 1, 18, 0, tzinfo=dt.UTC)
+    assert not is_trading_day(dt.date(2026, 1, 1))
+    assert session_date(after_new_year) == dt.date(2025, 12, 31)
+
+
+def test_t102_session_date_is_not_the_capture_date_in_general():
+    """The whole point of the column: these two differ routinely, not exceptionally."""
+    sunday = dt.datetime(2026, 9, 20, 15, 10, 8, tzinfo=dt.UTC)
+    assert session_date(sunday) != sunday.date()

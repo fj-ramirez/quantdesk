@@ -68,6 +68,7 @@ __all__ = [
     "is_market_holiday",
     "is_regular_session",
     "is_trading_day",
+    "session_date",
 ]
 
 logger = logging.getLogger("app.modules.gex.jobs.calendar")
@@ -259,6 +260,40 @@ def is_regular_session(moment: dt.datetime) -> bool:
     """
     local = moment.astimezone(_TZ)
     return is_trading_day(local.date()) and MARKET_OPEN <= local.time() <= MARKET_CLOSE
+
+
+def session_date(captured_at: dt.datetime) -> dt.date:
+    """The trading session a chain captured at ``captured_at`` belongs to (T102).
+
+    Distinct from ``captured_at``'s own calendar date, and that difference is the point.
+    Snapshot 178 is ``2026-09-20 15:10:08Z`` -- a **Sunday** -- with ``is_eod = true`` and
+    10,436 contracts, holding Friday's post-opex book. Cboe serves the last session, so a
+    weekend capture is genuinely useful data; it is simply Friday's. A consumer filtering
+    ``WHERE is_eod`` and grouping by ``captured_at::date`` gets a phantom Sunday session, which
+    is exactly what the first pass at a freshness query in the 2026-09-21 review did.
+
+    Storing this makes the weekend-capture rule enforceable in SQL instead of documented in
+    prose and re-derived, differently, by every consumer.
+
+    The rule: a capture inside or after a trading day's open belongs to that day; anything else
+    -- a weekend, a holiday, or the small hours before the opening bell -- belongs to the
+    previous trading day, because that is whose book the vendor is still serving.
+
+    Related to but not the same question as :func:`effective_data_time`, which asks *what
+    instant* the data reflects rather than *which session* it came from, and which therefore
+    pivots on the close rather than the open.
+
+    Args:
+        captured_at: Tz-aware vendor timestamp, any zone.
+
+    Returns:
+        A naive ``date`` in market-local (New York) terms.
+    """
+    local = captured_at.astimezone(_TZ)
+    day = local.date()
+    if is_trading_day(day) and local.time() >= MARKET_OPEN:
+        return day
+    return _previous_trading_day(day)
 
 
 def effective_data_time(captured_at: dt.datetime, delayed_minutes: int) -> dt.datetime:

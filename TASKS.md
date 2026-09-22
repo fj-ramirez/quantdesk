@@ -1641,8 +1641,13 @@ Migration applied to the homeserver and the backfill run are both still pending 
 
 `gex.snapshots` gains `session_date`: the trading session the chain belongs to, distinct from
 `captured_at`. Makes the weekend-capture rule enforceable in SQL instead of documented in
-prose. Spec:
+prose. Spec and result:
 [plans/desk-integrity/02-expiry-and-session.md](plans/desk-integrity/02-expiry-and-session.md).
+
+**Done 2026-09-21.** 1,227 backend tests green (8 added), 408 frontend, both linters clean.
+Unlike T101's columns this one is a pure function of `captured_at` and the trading calendar, so
+the migration backfills all 346 existing rows itself -- no Parquet reopened, no separate pass.
+Snapshot 178, the Sunday capture, now reads its true session of Friday 09-18.
 
 ## T103 · Sonnet · —
 

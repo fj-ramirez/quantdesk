@@ -146,6 +146,21 @@ class Snapshot(Base):
     parquet_path: Mapped[str] = mapped_column(String(512), nullable=False)
     is_eod: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     content_hash: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    #: The trading session this chain's *contents* belong to (T102), derived once at capture by
+    #: `app.modules.gex.jobs.calendar.session_date` and stored rather than recomputed.
+    #:
+    #: **Group by this, not by `captured_at::date`.** Cboe serves the last session, so a
+    #: weekend or pre-open capture holds the previous session's book: snapshot 178 is a Sunday
+    #: capture of Friday's post-opex chain, and grouping by the capture date invents a Sunday
+    #: session that never traded.
+    #:
+    #: `is_eod` is unchanged and still means "an end-of-session book". The two answer different
+    #: questions and a consumer usually wants both: `WHERE is_eod GROUP BY session_date`.
+    #:
+    #: Nullable only because rows written before T102 predate it; the migration backfills every
+    #: one, and the capture path always sets it, so a null in practice means a row inserted by
+    #: something that bypassed `SnapshotRepository`.
+    session_date: Mapped[dt.date | None] = mapped_column(Date, nullable=True, index=True)
     """SHA-256 of everything in the chain that can move GEX -- see
     `app.modules.gex.storage.fingerprint.chain_fingerprint` (T71). Nullable because every row written
     before that task predates it; readers must treat `None` as "unknown", never as "empty
