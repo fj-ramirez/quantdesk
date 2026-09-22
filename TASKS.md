@@ -1706,4 +1706,13 @@ qualify. The call-count measurement still needs a working connector.
 Three documented facts the data contradicts: `cmdty.gold` has 1,262 observations and the docs
 say it has never had data; the `ust_cc.*` lag is inverted; `vol.vix` and `vol.skew` stall
 together. Plus the hardcoded track record -- deleted, not updated, because updating it re-arms
-the same trap. Spec: [plans/desk-integrity/06-doc-drift.md](plans/desk-integrity/06-doc-drift.md).
+the same trap. Spec and result:
+[plans/desk-integrity/06-doc-drift.md](plans/desk-integrity/06-doc-drift.md).
+
+**Done 2026-09-22.** All four claims re-verified live at edit time. `cmdty.gold` has 1,262
+observations back to 2021 and was already fixed in `universe.py` -- only the skill still lied.
+`ust_cc` is a documentation error only: the board's staleness is per-series with no hardcoded
+assumption, checked. `vol.vix`/`vol.skew` were one row behind and are now filled; the cause is
+neither "one series" nor "a shared source" but upstream files that update later than their
+siblings. The track record block is deleted in favour of `gex_track_record` -- and every SQL
+fence is gone from the skill, which is the deeper half of F7d.

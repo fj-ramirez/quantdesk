@@ -33,7 +33,14 @@ dist-ssr/
 npm-debug.log*
 
 # Agent worktrees
-.claude/
+# `.claude/*`, not `.claude/`, because git cannot re-include a file whose parent directory is
+# excluded -- the directory itself has to stay visible for the negation below to work.
+.claude/*
+# Skills are versioned. T107 exists because `market-research/SKILL.md` drifted out of step with
+# the database and was then quoted with full confidence for weeks. It is the most load-bearing
+# prose on the desk -- what an agent reads before answering a question about real money -- and a
+# file that rots silently is worse when its history is unrecoverable too.
+!.claude/skills/
 .ruff_cache/
 
 # AGENTS.md is a *hardlink* to CLAUDE.md (same inode, so the two cannot drift), created

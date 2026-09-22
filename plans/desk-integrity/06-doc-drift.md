@@ -143,3 +143,95 @@ Measured 2026-09-21 against live Postgres.
 - Restructuring the skill. Correct what is false; leave the shape.
 - A general "regenerate the docs from the data" job. Tempting and much larger; the
   track-record tool already removes the worst instance.
+
+
+---
+
+## Result — T107, 2026-09-22
+
+**Done.** Every claim re-verified against the live database at edit time, as acceptance 1
+requires; the queries are in this section rather than only in a commit message.
+
+### a. `cmdty.gold` — the docs were wrong, and so was the review
+
+Verified: **1,262 observations spanning 2021-09-10 to 2026-09-21.** Not a recent arrival — five
+years of history.
+
+The review said `universe.py` marks it `_pending`. **It does not**, and had already stopped
+doing so before this task: it is defined as `_prices("cmdty.gold", "GLD", "Gold (GLD proxy)",
+…)`, landed with the prices adapter. `CLAUDE.md` turned out not to claim anything about gold
+data either. The only place the false claim survived was the `market-research` skill, which is
+the one that matters — it is what an agent reads before answering.
+
+Rewritten rather than deleted, per decision 2. The caveat that motivated the original entry is
+still true and is now the point of it: **say "GLD proxy", not "gold"** — an ETF's price history
+carries expense-ratio drift and US-session hours, and is not a bullion fix.
+
+### b. `ust_cc.*` — documentation error only, and the code was checked
+
+Verified: **every** `ust_cc.*` prints 2026-09-21 while **every** `ust.*` prints 2026-09-18. The
+documented lag is inverted for the whole family, not just the 10y the review sampled.
+
+Decision 3 asked whether this was a code bug hiding behind a documentation bug. **It is not.**
+Staleness is computed per series from `stale_days` against `stale_warn_days`, with no
+per-series assumption anywhere in `modules/terminal/`. The board flags whatever is actually
+stale. The ingest is healthy too — today's batch wrote `ust.10y.nominal`; its upstream simply
+publishes later. Recorded in the skill so nobody has to check again.
+
+### c. `vol.vix` / `vol.skew` — fixed, and the mechanism is better than either guess
+
+The review said "one series' ingest path". The verification document said two series sharing a
+source. **Both were wrong.** All five vol series come from the same `_cboe` definition and the
+same adapter, and three of the five were fresh — so a shared-source failure cannot explain it.
+
+What the evidence actually showed:
+
+1. Upstream has 09-21 for **all five**, with the expected columns. Source and column mapping
+   are fine.
+2. `observations.source_batch` says batch `20260922T000921` wrote `vix9d`/`vix3m`/`vix6m` at
+   value_date 09-21 and inserted **nothing** for VIX or SKEW. Same adapter, same run.
+3. A manual `ingest --source cboe` hours later inserted **exactly one row each** for VIX and
+   SKEW, and zero for the other three.
+
+So the upstream history files for VIX and SKEW appear to update *later* than the term-structure
+ones, and an ingest running soon after midnight ET catches some and misses those two. The gap
+is closed — `vol.vix` and `vol.skew` now print 09-21 — and the pattern is written into the
+skill with the instruction to re-run the ingest before drawing a vol-regime conclusion from a
+VIX that looks a day behind.
+
+The publication-timing explanation is **inferred, not proven**: confirming it needs observation
+across several days. Stated as inference, which is the discipline this initiative exists to
+enforce.
+
+### d. The hardcoded track record — deleted, not updated
+
+As decision 1 requires. Updating the numbers would have re-armed the same trap. The section now
+calls `gex_track_record` and carries the two readings the tool encodes — resolved means
+`result_r IS NOT NULL`, and `untriggered` is not a loss — plus the contamination caveat for
+fade history spanning 2026-09-22, which `T99` created and this is the right place to record.
+
+Acceptance 2 is met: **`SKILL.md` contains no number that can rot.** The one date-stamped figure
+left is inside the explanation of what the old block got wrong, which is a historical fact
+rather than a live claim.
+
+### Beyond the brief: the skill no longer teaches SQL
+
+Every `sql` code fence is gone. Freshness points at `desk_status`, levels at `gex_levels`, the
+track record at `gex_track_record`. This was the deeper half of `F7d`: the skill taught
+hand-written SQL *because* the domain tools were once too awkward for the common case, and
+reaching for `query_sql` skips the caveats those tools carry. `T105`/`T106` removed the reason;
+this removes the habit.
+
+The levels section also gained what `T101` and `T102` made possible — say what fraction of a
+wall survives the week, and group by `session_date` rather than `captured_at`.
+
+### Found while working, not fixed here
+
+- **The 03:00 nightly terminal ingest did not run on 2026-09-22.** Batches exist at 00:09-00:34
+  (the boot-time run after the deploy) and nothing at 03:00; the host appears to have been down
+  between roughly 00:40 and 08:38. Nothing reported it. This is the `F4` pattern in the
+  terminal module, and `T104` watches GEX captures only — worth its own task.
+- **Workers still cannot write their version stamps.** `terminal-ingest` logs
+  `PermissionError: /data/run` at every boot, which is why `GET /health` lists only the
+  backend. `T98` handles it gracefully — a warning, not a crash — and names the one-command
+  fix: `sudo install -d -o 10001 -g 10001 /data/run/versions`. It has not been run.
