@@ -35,6 +35,7 @@ from sqlalchemy import inspect
 
 from app.core.db import get_engine
 from app.core.schemas import SCHEMA_GEX
+from app.core.version import record_service_version
 from app.modules.gex.jobs.catchup import startup_catchup_job
 from app.modules.gex.jobs.scheduler import build_scheduler
 
@@ -167,6 +168,12 @@ async def run(*, stop: asyncio.Event | None = None, wait_for_schema: bool = True
     """
     if wait_for_schema:
         await _wait_for_schema()
+
+    # Which build this container is running, written where the API can read it: the worker
+    # serves no HTTP, so `GET /health` has no other way to report it. Never raises -- see
+    # `app.core.version.record_service_version`; a version file is not worth a capture.
+    record_service_version("gex-capture")
+
 
     stop = stop if stop is not None else asyncio.Event()
 

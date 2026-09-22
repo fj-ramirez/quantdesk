@@ -39,6 +39,7 @@ from sqlalchemy import inspect
 from app.core.config import settings
 from app.core.db import get_engine
 from app.core.schemas import SCHEMA_RESEARCH
+from app.core.version import record_service_version
 from app.modules.research.jobs.scheduler import build_research_scheduler
 
 logger = logging.getLogger("app.workers.research_search")
@@ -119,6 +120,12 @@ async def run(*, stop: asyncio.Event | None = None, wait_for_schema: bool = True
     """
     if wait_for_schema:
         await _wait_for_schema()
+
+    # Which build this container is running, written where the API can read it: the worker
+    # serves no HTTP, so `GET /health` has no other way to report it. Never raises -- see
+    # `app.core.version.record_service_version`; a version file is not worth a capture.
+    record_service_version("research-search")
+
 
     stop = stop if stop is not None else asyncio.Event()
 

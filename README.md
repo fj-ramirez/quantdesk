@@ -190,10 +190,29 @@ automatic HTTPS.
 
 ```
 cd /srv/docker/quantdesk
-docker compose -f compose.yaml -f compose.prod.yaml up -d --build
-docker compose -f compose.yaml -f compose.prod.yaml ps      # all three should read healthy
-curl -s localhost/health                                    # via Caddy: {"status":"ok",...,"db":"ok"}
+scripts/deploy.sh                                           # pull, build, start, report
 ```
+
+That is `docker compose -f compose.yaml -f compose.prod.yaml up -d --build` with the commit
+stamped into every image, which is the only reason the script exists: a container has no git
+repository to ask what it is, and compose cannot run `git` -- it only interpolates the
+environment. The bare command still works and is still correct; its images just report
+`unknown` when asked which build they are.
+
+```
+docker compose -f compose.yaml -f compose.prod.yaml up -d --build   # the unstamped equivalent
+docker compose -f compose.yaml -f compose.prod.yaml ps              # every service healthy
+curl -s localhost/health                                            # {"status":"ok",...,"db":"ok"}
+```
+
+**`GET /health` reports each service separately, and that is the point.** Its `services` array
+carries one entry per container -- the API from its own environment, the three workers from
+files they write at boot -- each with a `label` in the form
+`backend: 2026-09-21T20:14:03-04:00 (cf59b11)`. The launcher at `/` shows the same list, with
+the frontend's own stamp compiled into the bundle. On 2026-09-21 a single `up -d --build`
+rebuilt four containers and **failed on the frontend**, leaving the stack half-updated with
+nothing anywhere saying so; a stack-wide version number would have looked perfectly healthy
+that day. Two different shas in that list is the answer, not a glitch.
 
 The backend runs `alembic upgrade head` before uvicorn binds, so a schema migration needs no
 separate step.

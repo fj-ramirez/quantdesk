@@ -54,6 +54,7 @@ from sqlalchemy import inspect
 from app.core.config import settings
 from app.core.db import get_engine
 from app.core.schemas import SCHEMA_TERMINAL
+from app.core.version import record_service_version
 
 logger = logging.getLogger("app.workers.terminal_ingest")
 
@@ -210,6 +211,12 @@ def _install_signal_handlers(stop: asyncio.Event) -> None:
 async def run(*, stop: asyncio.Event | None = None, wait_for_schema: bool = True) -> None:
     if wait_for_schema:
         await _wait_for_schema()
+
+    # Which build this container is running, written where the API can read it: the worker
+    # serves no HTTP, so `GET /health` has no other way to report it. Never raises -- see
+    # `app.core.version.record_service_version`; a version file is not worth a capture.
+    record_service_version("terminal-ingest")
+
 
     stop = stop if stop is not None else asyncio.Event()
     scheduler = build_terminal_scheduler()

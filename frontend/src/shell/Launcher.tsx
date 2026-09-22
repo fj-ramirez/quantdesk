@@ -37,6 +37,7 @@ import { Link } from 'react-router-dom';
 import { IconArrowRight, IconGexMark, IconMoon, IconSearch, IconSun } from './icons';
 import { CommandPalette } from './CommandPalette';
 import { openCommandPalette } from './commandPaletteBus';
+import { BuildStamp } from './BuildStamp';
 import { LauncherBackdrop } from './LauncherBackdrop';
 import { LauncherTape } from './LauncherTape';
 import { MODULES, type ModuleEntry } from './modules';
@@ -149,6 +150,10 @@ export function Launcher() {
           </ul>
 
           <p className="lx-footnote">Better data. Deeper analysis. Smarter decisions.</p>
+
+          {/* Which build each container is running. Here rather than inside a module,
+              because it is a fact about the deployment and not about GEX. */}
+          <BuildStamp />
         </main>
       </div>
 

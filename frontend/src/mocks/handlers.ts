@@ -11,7 +11,13 @@
  * handlers are missing is a visible omission in this file.
  */
 import { handlers as gexHandlers } from '../modules/gex/mocks/handlers';
+import { shellHandlers } from './shellHandlers';
 import { researchHandlers } from '../modules/research/mocks/handlers';
 import { terminalHandlers } from '../modules/terminal/mocks/handlers';
 
-export const handlers = [...gexHandlers, ...researchHandlers, ...terminalHandlers];
+export const handlers = [
+  ...shellHandlers,
+  ...gexHandlers,
+  ...researchHandlers,
+  ...terminalHandlers,
+];

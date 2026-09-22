@@ -76,6 +76,14 @@ services:
       # no reloader) so that a plain `docker compose build` and CI both exercise the artifact
       # that actually ships.
       target: runtime
+      # Which commit each image is, reported per service by `GET /health` -- see
+      # `app/core/version.py`. Empty unless the build was started by `scripts/deploy.sh`,
+      # which computes both; an image built by a bare `docker compose build` honestly reports
+      # "unknown" rather than claiming a commit it cannot know. Shared by all four Python
+      # services through the anchor, since they are one image built four times.
+      args: &build_stamp
+        BUILD_SHA: ${BUILD_SHA:-}
+        BUILD_TIME: ${BUILD_TIME:-}
     environment: &backend_environment
       # Assembled from the same three variables postgres itself uses, so the credentials have
       # exactly one source. Note for whoever sets these: this is a URL, so a password
@@ -162,6 +170,7 @@ services:
     build:
       context: ./backend
       target: runtime
+      args: *build_stamp
     # No `alembic upgrade head` here, deliberately -- the `backend` service runs it, and two
     # containers racing `upgrade head` against one Postgres is a worse failure than the one it
     # would prevent. The worker waits for the schema instead; see `_wait_for_schema` in
@@ -190,6 +199,7 @@ services:
     build:
       context: ./backend
       target: runtime
+      args: *build_stamp
     # Registers a scheduled job and nothing else. Never `nightly.py --loop` -- that mode still
     # exists for hand use on a machine without Docker, and running both would give this
     # container two independent cycle clocks and double every night's work.
@@ -217,6 +227,7 @@ services:
     build:
       context: ./backend
       target: runtime
+      args: *build_stamp
     command: ["python", "-m", "app.workers.terminal_ingest"]
     environment: *backend_environment
     volumes:
@@ -232,6 +243,12 @@ services:
     build:
       context: ./frontend
       target: runtime
+      # The same stamp, under Vite's VITE_ prefix so it is inlined into the bundle. The
+      # frontend has to carry its own: it is static files behind nginx with no database and no
+      # shared volume, so nothing else can report what build it is.
+      args:
+        VITE_BUILD_SHA: ${BUILD_SHA:-}
+        VITE_BUILD_TIME: ${BUILD_TIME:-}
     depends_on:
       # `service_started`, not `service_healthy`. The production frontend is nginx serving a
       # static bundle -- it does not talk to the backend at all (the browser does, via the

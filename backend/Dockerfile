@@ -64,6 +64,18 @@ ENV PATH="/app/.venv/bin:$PATH"
 
 COPY . .
 
+# Which commit this image is. A container has no git repository to ask, so the answer has to
+# be handed in at build time; `scripts/deploy.sh` computes both and passes them. A build that
+# did not receive them reports "unknown" rather than guessing, because a wrong sha is worse
+# than an absent one when the question is "is this container running my fix?".
+#
+# Last, and after `COPY . .`, on purpose: these change on every commit, and an ARG consumed
+# earlier would invalidate the dependency layers below it and turn every deploy into a full
+# rebuild.
+ARG BUILD_SHA=""
+ARG BUILD_TIME=""
+ENV BUILD_SHA=$BUILD_SHA     BUILD_TIME=$BUILD_TIME
+
 # Non-root. Fixed uid/gid rather than whatever the base image hands out, because /data is a
 # bind mount from the host and the host directory's ownership has to match something known:
 #     sudo chown -R 10001:10001 /srv/docker/gex/data

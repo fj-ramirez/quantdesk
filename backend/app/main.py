@@ -6,6 +6,7 @@ from sqlalchemy import text
 
 from app.core.config import settings
 from app.core.db import get_session_factory
+from app.core.version import all_service_versions
 from app.modules.gex.router import router as gex_module_router
 from app.modules.research.router import router as research_module_router
 from app.modules.terminal.router import router as terminal_module_router
@@ -78,6 +79,18 @@ async def health() -> dict:
     whenever the process is serving -- a failed probe is reported in `db`, not by flipping
     `status`, so "the API is up but Postgres is not" stays distinguishable from "the API is
     down" (which is a connection error, not a response at all).
+
+    `services` is additive in the same way, and answers "which build is each container
+    running" -- **per service, never one number for the stack**. On 2026-09-21 a
+    `docker compose up -d --build` updated four containers and failed on the fifth, and
+    nothing running said so. Each entry carries a `label` in the `service: time (sha)` form
+    plus the same facts as fields; the API reports itself from its environment and the
+    workers from the files they write at boot (`app.core.version`). A worker that has not
+    booted since the feature landed is simply absent, which is the honest rendering of "it
+    has not said".
+
+    Reading four small files per probe is deliberate and cheap -- and it is why this stays
+    on the 30-second healthcheck route rather than becoming a query.
     """
     db = "ok"
     try:
@@ -94,4 +107,5 @@ async def health() -> dict:
         "provider": settings.PROVIDER,
         "symbols": settings.symbols,
         "db": db,
+        "services": [v.to_dict() for v in all_service_versions()],
     }

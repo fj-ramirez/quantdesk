@@ -1543,3 +1543,32 @@ finished, tested, and has never produced a row because its input is a hand-suppl
 that their terms forbid fetching. Calendar first (free sources, solved problem), then an OIS
 source survey. Spec:
 [plans/decision-inputs/06-calendar-and-policy-path.md](plans/decision-inputs/06-calendar-and-policy-path.md).
+
+---
+
+# T98 — which build is each container running
+
+Not part of an initiative; asked for directly on 2026-09-21, the same day a
+`docker compose up -d --build` updated four containers and failed on the fifth with nothing
+in the running system saying so.
+
+## T98 · Opus · —
+
+`GET /health` gains a `services` array — one entry per container, each with a `label` in the
+form `backend: 2026-09-21T20:14:03-04:00 (cf59b11)` and the same facts as fields. The
+launcher at `/` renders it under a quiet "Build" heading.
+
+**Per service, never one number for the stack**, because a stack-wide version is exactly what
+would have hidden that day's failure. `BUILD_SHA`/`BUILD_TIME` are build args (a container has
+no git repository to ask), the API reports itself from its environment, each worker writes a
+small JSON file into `DATA_DIR/run/versions/` at boot because it serves no HTTP, and the
+frontend's stamp is compiled into its bundle because nothing else can know it. An image built
+without the args says `unknown` rather than guessing: a wrong sha is worse than an absent one
+when the question is "is this container running my fix?".
+
+`scripts/deploy.sh` is what computes and passes them — compose can only interpolate the
+environment, so something has to run `git`. The bare compose command still works and produces
+honestly-unstamped images.
+
+**Done and deployed 2026-09-21.** 1,188 backend tests green (9 added), 407 frontend (4 added),
+both linters clean, `npm run build` clean.

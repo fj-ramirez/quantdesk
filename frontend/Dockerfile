@@ -56,6 +56,14 @@ COPY . .
 ARG VITE_API_BASE_URL=""
 ENV VITE_API_BASE_URL=$VITE_API_BASE_URL
 
+# The bundle's own build stamp, inlined by Vite exactly like the base URL above. The frontend
+# reports itself because nothing else can: it is a static bundle behind nginx with no database
+# and no shared volume, and on 2026-09-21 a deploy updated four containers and failed on this
+# one -- which a single stack-wide version number would have hidden.
+ARG VITE_BUILD_SHA=""
+ARG VITE_BUILD_TIME=""
+ENV VITE_BUILD_SHA=$VITE_BUILD_SHA     VITE_BUILD_TIME=$VITE_BUILD_TIME
+
 # `npm run build` is `tsc -b && vite build`, so a type error fails the image build rather than
 # shipping. MSW is not a concern here: src/main.tsx gates its import on `import.meta.env.DEV`,
 # which is false for a production build, so the mock worker and its fixtures are tree-shaken
