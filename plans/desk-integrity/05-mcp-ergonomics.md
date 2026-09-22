@@ -255,9 +255,41 @@ smaller model on the other end still reports the noise ceiling.
 `query_sql`'s schema-on-error idea (design decision 6) is left alone: it was optional, and the
 row-shape work is where the measured waste was.
 
-### Outstanding
+### Measured, 2026-09-22 09:50 ET
 
-**The measurement.** Acceptance 1 and 6 ask for the new token count on a QQQ levels call and a
-replayed `/market-research` session's MCP call count, against the old ~9,000 and ~12. Both need
-a working connector; the homeserver's SSH path -- which is how this connector is reached -- was
-blocked while this was written. The numbers belong in this section once taken.
+Taken against the live desk, running the new code in a throwaway container off the same image
+so nothing in the open-session stack was restarted.
+
+| call | chars | ~tokens | was |
+|---|---|---|---|
+| `gex_levels("QQQ")` | 1,139 | **284** | **~9,000** |
+| `gex_levels()` -- whole board, one call | 11,040 | 2,760 | 28 calls, or a `query_sql` |
+| `gex_levels("QQQ,SPY,SPX")` | 1,843 | 460 | 3 calls |
+| `gex_levels("QQQ", history=True)` | 14,034 | 3,508 | the old default |
+| `desk_status()` | 1,536 | 384 | a hand-written `query_sql` |
+| `gex_track_record()` | 1,494 | 373 | a hand-written `query_sql` + stale prose |
+
+**A 97% cut on the everyday call**, and the old behaviour is still one parameter away for when
+history is genuinely the question. The board -- 28 symbols across three filters -- now costs
+2,760 tokens in a single call; the same answer previously meant 28 calls at ~9,000 each, which
+is why the skill had learned to bypass the tool entirely.
+
+`gex_track_record` reproduces the four per-key figures in *Verified facts* exactly --
+`FADE_CALL_WALL` +1.162 (n=7, 4 wins), `FADE_PUT_WALL` +0.133 (n=4, 1), `CONTINUATION_DOWN`
++0.094 (n=26, 7), `CONTINUATION_UP` -1.212 (n=3, 0), overall +0.187 with SE 0.180 over n=40 --
+so acceptance 4 is met on the real table rather than a fixture.
+
+`GAMMA_PIN` does not appear in that table yet, and should not: the last decision was emitted
+2026-09-21, before `T99` deployed. It will appear on its own the first time the decisions job
+emits one, which is the property `test_t106_track_record_derives_its_keys_from_the_data` exists
+to guarantee.
+
+### Still outstanding
+
+- **Acceptance 6, the end-to-end session replay.** Per-call sizes and the one-call board are
+  measured; an actual `/market-research` run counting real calls is not. The per-call numbers
+  are the load-bearing half, but the claim "twelve calls to four or five" is still a projection.
+- **Not deployed.** These commits are on `main`; the running image is `a089977`, so the
+  connector the user reaches still serves the old tools. Deploying restarts the backend and the
+  capture worker, and this was measured during an open session -- it belongs after the 16:15
+  close. Nothing may risk a capture.
