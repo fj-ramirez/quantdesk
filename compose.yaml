@@ -260,8 +260,12 @@ services:
   # down. It does not fix the case where *this* container dies -- see the module docstring,
   # which says so rather than pretending otherwise.
   #
-  # No volumes: it reads Postgres and writes nothing but logs and, if configured, one HTTPS
-  # POST. It does not need the Parquet tree.
+  # It does not need the Parquet tree -- it reads Postgres and writes nothing but logs and, if
+  # configured, one HTTPS POST. It *does* need `./data` mounted, and the first deploy proved
+  # it: `record_service_version` writes to `DATA_DIR/run/versions/`, so without the mount the
+  # stamp goes somewhere nothing reads and `GET /health` cannot say which build is watching.
+  # For a watchdog that matters more than for anything else here -- a stale one, silently not
+  # watching, is the precise failure it exists to catch.
   capture-watch:
     build:
       context: ./backend
@@ -269,6 +273,8 @@ services:
       args: *build_stamp
     command: ["python", "-m", "app.workers.capture_watch"]
     environment: *backend_environment
+    volumes:
+      - ./data:/data
     depends_on:
       postgres:
         condition: service_healthy
