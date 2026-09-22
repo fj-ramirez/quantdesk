@@ -1473,9 +1473,11 @@ records a source failure and continues, still exiting non-zero, with each batch'
 scoped to what that source did. Spec and result:
 [plans/decision-inputs/00-nightly-abort.md](plans/decision-inputs/00-nightly-abort.md).
 
-**Done 2026-09-21.** 1,167 backend tests green (3 added), ruff clean. **Needs the user:** there
-is still no FRED key, and `fred` backs 29 series -- the rate, breakeven and credit spine, all
-stamped 2026-09-18. Free key, then `XA_FRED_API_KEY=` in the homeserver's `.env`.
+**Done and deployed 2026-09-21.** 1,167 backend tests green (3 added), ruff clean. Verified on
+the homeserver: `treasury` ran again and advanced 2026-09-18 -> 2026-09-21 while `fred` was
+still keyless, and `fred` appeared as a named failure rather than an absence. The user then set
+`XA_FRED_API_KEY` on the server; the next run filled all 44 fetchable series with zero
+failures.
 
 ## T91 · Sonnet · T90
 

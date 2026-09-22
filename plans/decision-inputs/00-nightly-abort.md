@@ -226,3 +226,29 @@ They are stamped `2026-09-18` and will simply stop moving. A free key takes a mi
 `/srv/docker/quantdesk/.env` as `XA_FRED_API_KEY=...` followed by a redeploy. Until then this
 change buys the *other* sources back — `treasury` most of all, which publishes the par yield
 curve daily and needs no credential at all.
+
+### Verified on the homeserver, and the key arrived — 2026-09-21
+
+Deployed, then `ingest` run by hand. Before the key was set:
+
+```
+filled       15
+fetch_failed 1
+  FAIL fred: adapter unavailable: FRED adapter requires an API key ...
+```
+
+**`treasury` ran, which it had not done since the key went missing**, and its latest
+observation moved 2026-09-18 -> 2026-09-21: three sessions of the par yield curve recovered
+by letting the loop continue past a source it could not build. `fred` is named in the output
+instead of being an absence, which is the other half of the point.
+
+The user then set `XA_FRED_API_KEY` on the server. After a redeploy:
+
+```
+filled       44
+fetch_failed 0
+```
+
+All 44 fetchable series, FRED included. `derive` wrote 2 new observations and `edges` recomputed
+the graph on the fresh panel. The five uncomputable edges are unchanged and unrelated -- they
+want `policy.ff.meeting_1`, `eq.msci_em`, `cmdty.gold` and `eq.rut`, which are T91 and T96.
