@@ -422,12 +422,23 @@ class KeyLevels:
     Every level is ``None`` when the filter admitted no contracts at all (a legitimate case:
     ``ZERO_DTE`` on a day with no expiry). ``flip_point`` is ``None`` when the profile has no
     sign change inside the grid — see :func:`flip_point`.
+
+    **The four aggregates are nullable for the same reason, and this was got wrong once**
+    (T100). They used to return ``0.0`` from the empty branch, which is a different claim
+    entirely: ``net_gex = 0`` says the book was measured and found flat, and a reader acts on
+    it. Two live snapshots on 2026-09-21 -- QQQ and SPX, both the session's first capture,
+    both with full chains of 10,560 and 29,518 contracts -- recorded exactly that, because at
+    09:43 ET the provider had not yet published prior-session open interest, every contract
+    was correctly excluded per the ``None``-means-unknown rule, and the aggregate then summed
+    an empty set to zero. The exclusion was right; summing nothing to zero was not. An empty
+    aggregate is ``None``, and a consumer must decide what to do about it rather than being
+    handed a fabricated flat book.
     """
 
-    net_gex: float
-    call_gex: float
-    put_gex: float
-    abs_gex: float
+    net_gex: float | None
+    call_gex: float | None
+    put_gex: float | None
+    abs_gex: float | None
     call_wall: float | None
     call_wall_gex: float | None
     put_wall: float | None
@@ -511,7 +522,7 @@ class GexDiagnostics:
     extreme_iv: int
     extreme_iv_open_interest: int
     extreme_iv_gex_excluded: float
-    net_gex_iv_unfiltered: float
+    net_gex_iv_unfiltered: float | None
     iv_min_observed: float | None
     iv_max_observed: float | None
     iv_policy_mode: IvPolicyMode = IvPolicyMode.EXCLUDE
@@ -620,8 +631,8 @@ class GexResult:
     expiries: tuple[dt.date, ...] = field(default=())
 
     @property
-    def net_gex(self) -> float:
-        """Convenience alias for ``levels.net_gex``."""
+    def net_gex(self) -> float | None:
+        """Convenience alias for ``levels.net_gex``. ``None`` when nothing was measurable."""
         return self.levels.net_gex
 
     @property
@@ -1338,10 +1349,12 @@ def key_levels(
     """
     if strike_gex.empty:
         return KeyLevels(
-            net_gex=0.0,
-            call_gex=0.0,
-            put_gex=0.0,
-            abs_gex=0.0,
+            # Not 0.0: nothing was measurable here, which is not the same as flat. See the
+            # class docstring for the two snapshots this rule exists because of.
+            net_gex=None,
+            call_gex=None,
+            put_gex=None,
+            abs_gex=None,
             call_wall=None,
             call_wall_gex=None,
             put_wall=None,
@@ -1415,7 +1428,7 @@ def _diagnostics(
     *,
     iv_policy: IvPolicy,
     use_vendor_gamma: bool,
-    net_gex: float,
+    net_gex: float | None,
     r: float | None,
     q: float | None,
     examples: int = 8,
@@ -1485,7 +1498,9 @@ def _diagnostics(
         extreme_iv=int(extreme_alive.sum()),
         extreme_iv_open_interest=int(np.nan_to_num(oi[extreme_alive], nan=0.0).sum()),
         extreme_iv_gex_excluded=removed,
-        net_gex_iv_unfiltered=net_gex + removed,
+        # `net_gex` is only `None` when no strike was admitted, and this branch runs only
+        # when `selected` is non-empty -- but stating it beats relying on that coupling.
+        net_gex_iv_unfiltered=None if net_gex is None else net_gex + removed,
         iv_min_observed=None if not has_iv.any() else float(np.nanmin(iv)),
         iv_max_observed=None if not has_iv.any() else float(np.nanmax(iv)),
         iv_policy_mode=iv_policy.mode,

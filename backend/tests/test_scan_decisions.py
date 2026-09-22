@@ -628,3 +628,23 @@ def test_t99_gamma_pin_reaches_the_track_record():
     assert row["entry"] == 740.0
     assert row["stop"] is not None and row["stop"] < row["entry"]
     json.dumps(row)  # the decisions job persists this verbatim
+
+
+def test_t100_null_aggregate_yields_no_positioning_and_no_verdict():
+    """The consumer that mattered: `compute_regime_row` passes the aggregates straight into
+    `dealer_positioning`. With a null net it must report NO DATA and decline a verdict, rather
+    than deriving "flat" from a zero that was never measured (T100)."""
+    levels = _levels(
+        net_gex=None, call_gex=None, put_gex=None, abs_gex=None,
+        call_wall=None, call_wall_gex=None, put_wall=None, put_wall_gex=None,
+        max_abs_strike=None, max_net_strike=None, min_net_strike=None, flip_point=None,
+    )
+    row = _regime(levels=levels, by_strike=[])
+    assert row.positioning.label == "NO DATA"
+    assert row.positioning.direction is None
+    assert row.positioning.ratio is None
+    assert row.positioning.net_gex is None
+    assert row.verdict is None
+    result = decide(row)
+    assert result.opportunities == ()
+    assert result.no_trade_reasons  # says why, rather than silently emitting nothing

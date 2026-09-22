@@ -615,7 +615,11 @@ def test_key_levels_on_an_empty_selection_are_all_none():
     chain = synthetic_chain(tuple(s for s in SPECS if s["expiry"] != TODAY))
     result = E.compute_all(chain, E.ExpiryFilter.ZERO_DTE)
     levels = result.levels
-    assert levels.net_gex == 0.0
+    # T100: the aggregates are null for the same reason the levels are -- nothing was in scope.
+    assert levels.net_gex is None
+    assert levels.call_gex is None
+    assert levels.put_gex is None
+    assert levels.abs_gex is None
     assert levels.call_wall is None
     assert levels.put_wall is None
     assert levels.max_abs_strike is None
@@ -751,7 +755,8 @@ def test_empty_snapshot_produces_an_empty_result():
         source="synthetic", delayed_minutes=0, contracts=(),
     )
     result = E.compute_all(empty)
-    assert result.net_gex == 0.0
+    # T100: a snapshot with no contracts measured nothing. `0.0` here would assert a flat book.
+    assert result.net_gex is None
     assert result.by_strike == ()
     assert result.by_expiry == ()
     assert result.levels.flip_point is None
@@ -933,3 +938,53 @@ def test_t99_all_negative_book_has_no_call_wall():
     levels = _levels_from([(95.0, 0.0, -8.0e9), (105.0, 0.0, -1.0e6)])
     assert levels.call_wall is None
     assert levels.put_wall == 95.0
+
+
+# --------------------------------------------------------------------------------------
+# T100: an empty aggregate is null, not zero.
+# --------------------------------------------------------------------------------------
+
+
+def test_t100_unmeasurable_chain_reports_null_not_flat():
+    """Snapshots 204 (SPX) and 206 (QQQ) on 2026-09-21: first capture of the session, full
+    chains of 29,518 and 10,560 contracts, and **zero** admitted strikes -- at 09:43 ET the
+    provider had not yet published prior-session open interest, so every contract was
+    correctly excluded. The old code summed that empty set to 0.0 and a reader saw
+    "dealers are gamma-flat", which is a strong claim about a book nobody measured.
+    """
+    levels = _levels_from([])
+    assert levels.net_gex is None
+    assert levels.call_gex is None
+    assert levels.put_gex is None
+    assert levels.abs_gex is None
+    # The pre-existing rule -- levels are null when nothing is in scope -- is unchanged.
+    assert levels.call_wall is None
+    assert levels.put_wall is None
+    assert levels.max_abs_strike is None
+
+
+def test_t100_exclusion_logic_is_untouched():
+    """The open-interest rule is right and is not what was broken. Summing the *result* of a
+    correct exclusion was the defect, never the filter itself."""
+    levels = _levels_from([(95.0, 0.0, -6.0e9), (105.0, 8.0e9, 0.0)])
+    assert levels.net_gex == pytest.approx(2.0e9)
+    assert levels.abs_gex == pytest.approx(14.0e9)
+
+
+def test_t100_a_genuinely_flat_book_still_reports_zero():
+    """The distinction the whole change exists to preserve: a book that *was* measured and
+    nets to zero must still say zero. Null and zero are different facts and both are real."""
+    levels = _levels_from([(95.0, 5.0e9, -5.0e9)])
+    assert levels.net_gex is not None
+    assert levels.net_gex == pytest.approx(0.0)
+    assert levels.abs_gex == pytest.approx(10.0e9)
+
+
+def test_t100_empty_zero_dte_and_unmeasurable_chain_are_the_same_shape():
+    """Deliberate, and worth pinning: `ZERO_DTE` legitimately admitting nothing after the
+    close, and a full chain none of whose contracts were usable, both resolve to null. That is
+    strictly better than both resolving to 0, and it is still not a *distinction*. Separating
+    "no contracts in this bucket" from "contracts existed but none were usable" needs a reason
+    field the capture path does not record yet -- see plans/desk-integrity/02-expiry-and-session.md.
+    """
+    assert _levels_from([]).net_gex is None

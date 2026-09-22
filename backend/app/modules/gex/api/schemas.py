@@ -79,16 +79,20 @@ class ProfilePointOut(BaseModel):
 class KeyLevelsOut(BaseModel):
     """Mirrors `app.modules.gex.gex.engine.KeyLevels.to_dict()` exactly.
 
-    `call_wall` / `put_wall` / `max_abs_strike` / `flip_point` (and everything else here
-    besides the four `*_gex` sums) are `None` whenever the filter admitted no contracts --
-    the everyday `ZERO_DTE`-after-16:00-ET case -- or, for `flip_point` alone, whenever the
-    ±10% gamma profile never changes sign. That is a real answer, not a missing one.
+    `call_wall` / `put_wall` / `max_abs_strike` / `flip_point` are `None` whenever the filter
+    admitted no contracts -- the everyday `ZERO_DTE`-after-16:00-ET case -- or, for
+    `flip_point` alone, whenever the ±10% gamma profile never changes sign. That is a real
+    answer, not a missing one.
+
+    **The four `*_gex` sums are nullable too, and used not to be** (T100). They previously
+    arrived as `0.0` from an empty scope, which tells a client the book was measured and found
+    flat rather than never measured at all -- two live snapshots shipped exactly that claim.
     """
 
-    net_gex: float
-    call_gex: float
-    put_gex: float
-    abs_gex: float
+    net_gex: float | None
+    call_gex: float | None
+    put_gex: float | None
+    abs_gex: float | None
     call_wall: float | None
     call_wall_gex: float | None
     put_wall: float | None
@@ -125,7 +129,7 @@ class GexDiagnosticsOut(BaseModel):
     extreme_iv: int
     extreme_iv_open_interest: int
     extreme_iv_gex_excluded: float
-    net_gex_iv_unfiltered: float
+    net_gex_iv_unfiltered: float | None
     iv_min_observed: float | None
     iv_max_observed: float | None
     iv_policy_mode: str

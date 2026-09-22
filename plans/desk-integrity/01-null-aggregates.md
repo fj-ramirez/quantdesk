@@ -119,3 +119,56 @@ Paths: `backend/app/modules/gex/gex/engine.py`,
   the designed answer and a rejection policy is a separate decision with retention
   consequences.
 - The "empty bucket versus nothing usable" distinction — deferred to `T101`, see decision 3.
+
+
+---
+
+## Result — T100, 2026-09-21
+
+**Done. 1,212 backend tests green (5 added, 5 rewritten), 408 frontend, both linters clean,
+`tsc` clean.**
+
+### The blast radius was wider than the spec predicted, in one direction
+
+This file warned that `KeyLevels.net_gex` being typed `float` made it a type widening plus a
+consumer audit rather than a value swap. That was right, and the audit found one consumer the
+spec named (`regime.py:499` into `dealer_positioning`) and four it did not:
+
+- **`engine._diagnostics`** does `net_gex + removed`. Only reachable when `selected` is
+  non-empty -- so never with a null -- but it now states that rather than relying on the
+  coupling.
+- **`report.render_text`** formatted `Net GEX: {:+,.0f}` unconditionally and raised
+  `TypeError` on the first null. It now prints `_DASH`, the convention already used two lines
+  below for a null ratio.
+- **`api/schemas.KeyLevelsOut`** declared all four as non-null `float`, so Pydantic rejected
+  the response outright. The wire contract was enforcing the bug.
+- **`frontend/api/types.ts`** typed them `number`, and its comment asserted as documented
+  behaviour that *"the `ZERO_DTE` result of every EOD snapshot carries `net_gex: 0`"*. Both
+  corrected. `tsc` is clean afterwards, so nothing was doing unguarded arithmetic on them.
+
+### What was already right
+
+`dealer_positioning` needed almost nothing. It already had a `NO DATA` branch for a falsy
+`abs_gex` -- "No contracts in scope, so there is no dealer position to report" -- so a null
+flows into the correct semantic on arrival. Only the signature and the guard needed widening,
+plus a comment recording that `None` and `0.0` both land there for genuinely different
+reasons.
+
+Verified end to end: a `KeyLevels` with null aggregates produces a regime row with
+`verdict = None`, `label = "NO DATA"`, no direction, no ratio -- and `decide()` returns no
+opportunities with an explicit reason rather than silently emitting nothing.
+
+### Five existing tests encoded the bug
+
+They asserted `net_gex == 0.0` for an empty scope, and two of them were *named*
+`..._nulls_not_zeros`. The level columns had been protected; the aggregate was the gap sitting
+right beside them. One docstring had already hedged -- "net_gex either None or the engine's own
+explicit 0.0" -- which is the shape of a rule nobody had decided.
+
+### Still not distinguished, deliberately
+
+`ZERO_DTE` legitimately empty after the close and a full chain none of whose contracts were
+usable both resolve to null. That is strictly better than both resolving to `0` and it is
+still not a distinction; separating them needs a "why was this empty" field that `T101`'s
+capture-time work is the right home for. Pinned by a test so the ambiguity is recorded rather
+than rediscovered.

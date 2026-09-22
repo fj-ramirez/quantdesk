@@ -353,8 +353,8 @@ class DealerPositioning:
     (negative — hedging amplifies them), and only ever set when the floor is cleared.
     """
 
-    net_gex: float
-    abs_gex: float
+    net_gex: float | None
+    abs_gex: float | None
     ratio: float | None
     ratio_floor: float
     noise_dominated: bool
@@ -1085,8 +1085,8 @@ def _iv_label(atm: float | None, history: Sequence[float] | None) -> tuple[str |
 
 
 def dealer_positioning(
-    net_gex: float,
-    abs_gex: float,
+    net_gex: float | None,
+    abs_gex: float | None,
     *,
     ratio_floor: float = POSITIONING_RATIO_FLOOR,
 ) -> DealerPositioning:
@@ -1097,7 +1097,11 @@ def dealer_positioning(
     flips under a plausible carry correction, so a report calling DIA "short gamma" would be
     asserting something the validation document explicitly says we cannot support).
     """
-    ratio = (abs(net_gex) / abs_gex) if abs_gex else None
+    # `None` and `0.0` both land in the NO DATA branch below, and they arrive for different
+    # reasons: `None` means the filter admitted no contracts (T100), `0.0` means it admitted
+    # some whose gross gamma cancelled exactly. Neither supports a direction, so both decline
+    # to report one -- but they are not the same fact, and `net_gex` carries which it was.
+    ratio = (abs(net_gex) / abs_gex) if (abs_gex and net_gex is not None) else None
 
     if ratio is None:
         return DealerPositioning(
@@ -1878,8 +1882,12 @@ def render_text(result: ReportResult) -> str:
 
     out += _banner("DEALER POSITIONING")
     out.append(f"Status: {r.positioning.label}")
-    out.append(f"Net GEX:   {r.positioning.net_gex:+,.0f}")
-    out.append(f"Gross GEX: {r.positioning.abs_gex:,.0f}")
+    # `_DASH`, not `0`, when the filter admitted nothing (T100): this block is read as a
+    # statement about the book, and "Net GEX: +0" is a claim that it was measured and flat.
+    net = r.positioning.net_gex
+    gross = r.positioning.abs_gex
+    out.append(f"Net GEX:   {_DASH if net is None else f'{net:+,.0f}'}")
+    out.append(f"Gross GEX: {_DASH if gross is None else f'{gross:,.0f}'}")
     ratio = r.positioning.ratio
     out.append(
         f"|Net| / gross: {_DASH if ratio is None else f'{ratio:.1%}'} "

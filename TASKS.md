@@ -1615,8 +1615,13 @@ historic `gex.gex_levels` recompute still needs a write seat on the homeserver.
 
 An empty aggregate is null, not zero. Two 09-21 snapshots with full chains recorded
 `net_gex = 0` where nothing was measurable. The column is already nullable; `KeyLevels.net_gex`
-is typed `float`, so this is a type widening and a consumer audit. Spec:
+is typed `float`, so this is a type widening and a consumer audit. Spec and result:
 [plans/desk-integrity/01-null-aggregates.md](plans/desk-integrity/01-null-aggregates.md).
+
+**Done 2026-09-21.** 1,212 backend tests green (5 added, 5 rewritten), 408 frontend, both
+linters clean. The audit found four consumers beyond the one the spec named -- including the
+Pydantic wire schema and the frontend type, both of which were enforcing the bug, and a text
+renderer that raised `TypeError` on the first null.
 
 ## T101 · Opus · T100
 

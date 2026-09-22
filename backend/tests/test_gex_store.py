@@ -98,8 +98,9 @@ def test_compute_and_store_writes_one_level_row_per_default_filter(
 
 def test_zero_dte_after_close_persists_nulls_not_zeros(tmp_path, session_factory, snapshot_row):
     """The exact scenario the T09 brief verified live: every 0DTE contract has expired by the
-    16:20 ET EOD capture, so ZERO_DTE must read back with None walls/flip and net_gex either
-    None or the engine's own explicit 0.0 -- never a fabricated wall at strike zero.
+    16:20 ET EOD capture, so ZERO_DTE must read back with None walls/flip and a None
+    net_gex -- never a fabricated wall at strike zero, and never a zero that reads as a
+    measured flat book (T100).
     """
     compute_and_store(snapshot_row, session_factory=session_factory, data_dir=tmp_path)
 
@@ -125,7 +126,7 @@ def test_zero_dte_after_close_persists_nulls_not_zeros(tmp_path, session_factory
     assert zero_dte.put_wall_gex is None
     assert zero_dte.max_abs_strike is None
     assert zero_dte.flip_point is None
-    assert zero_dte.net_gex == pytest.approx(0.0)
+    assert zero_dte.net_gex is None
     assert by_strike_zero_dte == 0
 
     # The live contracts (EX_ZERO_DTE) still show up under ALL -- levels genuinely exist here.

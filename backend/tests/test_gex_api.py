@@ -253,8 +253,9 @@ def test_zero_dte_after_close_nulls_not_zeros_over_the_wire(
     client, monkeypatch, session_factory, after_close_row
 ):
     """The everyday EOD case (T09 brief, T11 brief): every same-day contract has expired by
-    16:20 ET, so ZERO_DTE's walls/flip must arrive as JSON `null`, and `net_gex` as `0.0` --
-    never a fabricated wall at strike zero.
+    16:20 ET, so ZERO_DTE's walls/flip *and* `net_gex` must arrive as JSON `null` -- never a
+    fabricated wall at strike zero, and never a zero a client would read as "dealers are
+    flat" (T100).
     """
     _patched_client(monkeypatch, client, session_factory)
     response = client.get("/api/gex/gex/SPY/latest", params={"filter": "ZERO_DTE"})
@@ -265,7 +266,7 @@ def test_zero_dte_after_close_nulls_not_zeros_over_the_wire(
     assert levels["put_wall"] is None
     assert levels["max_abs_strike"] is None
     assert levels["flip_point"] is None
-    assert levels["net_gex"] == 0.0
+    assert levels["net_gex"] is None
     assert body["by_strike"] == []
 
     # EX_ZERO_DTE on the same snapshot has real, non-null levels.

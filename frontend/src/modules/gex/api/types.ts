@@ -121,19 +121,25 @@ export interface SnapshotInfo {
  *
  * Every strike-valued level is nullable, and this is the daily case, not an edge case: the
  * EOD capture runs at 16:20 ET, after every same-day contract has expired, so the
- * `ZERO_DTE` result of *every* EOD snapshot carries `net_gex: 0` with null walls. Reading
- * these as plain numbers is how you get "wall at strike 0" on the dashboard.
+ * `ZERO_DTE` result of *every* EOD snapshot has null walls. Reading these as plain numbers
+ * is how you get "wall at strike 0" on the dashboard.
  * `flip_point` is additionally null whenever the profile has no sign change in the grid.
+ *
+ * **The four `*_gex` sums are nullable as of T100**, where this comment previously said they
+ * arrive as `net_gex: 0`. They now arrive as `null` when the filter admitted nothing, because
+ * `0` says the book was measured and found flat -- a claim two live snapshots shipped on
+ * 2026-09-21 with full chains behind them. Render them the way every other null renders; do
+ * not coalesce to zero.
  *
  * Walls are net-based (argmax/argmin of net strike GEX), which `docs/validation.md`
  * confirmed matches a real vendor exactly on all four values. `max_call_gex_strike` /
  * `max_put_gex_strike` are the per-side reading, which collapses onto one dominant strike
  * and is not a tradeable level — label it clearly if it is ever shown. */
 export interface KeyLevels {
-  net_gex: number;
-  call_gex: number;
-  put_gex: number;
-  abs_gex: number;
+  net_gex: number | null;
+  call_gex: number | null;
+  put_gex: number | null;
+  abs_gex: number | null;
   call_wall: number | null;
   call_wall_gex: number | null;
   put_wall: number | null;
