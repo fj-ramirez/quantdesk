@@ -6,15 +6,18 @@ from .cboe import CboeAdapter
 from .cftc import CftcAdapter
 from .cme import CmeFileAdapter
 from .fred import FredAdapter
+from .prices import PricesAdapter
 from .treasury import TreasuryAdapter
 
-# Network adapters, driven by `xactx ingest`. CmeFileAdapter is deliberately
-# absent: it reads a local file rather than fetching (see adapters/cme.py).
+# Adapters driven by `xactx ingest`. CmeFileAdapter is deliberately absent: it reads a local
+# file rather than fetching (see adapters/cme.py). PricesAdapter is present despite reading
+# Postgres rather than HTTP -- `ingest` treats it identically, which is the point of T91.
 ADAPTERS = {
     "fred": FredAdapter,
     "treasury": TreasuryAdapter,
     "cboe": CboeAdapter,
     "cftc": CftcAdapter,
+    "prices": PricesAdapter,
 }
 
 __all__ = [
@@ -25,5 +28,6 @@ __all__ = [
     "CftcAdapter",
     "CmeFileAdapter",
     "FredAdapter",
+    "PricesAdapter",
     "TreasuryAdapter",
 ]

@@ -25,7 +25,13 @@ from pathlib import Path
 from zoneinfo import ZoneInfo
 
 from . import universe
-from .adapters import CboeAdapter, CftcAdapter, FredAdapter, TreasuryAdapter
+from .adapters import (
+    CboeAdapter,
+    CftcAdapter,
+    FredAdapter,
+    PricesAdapter,
+    TreasuryAdapter,
+)
 from .config import Settings, load_settings
 from .errors import EmptyFetchError, UnknownSeriesError, XactxError
 from .logging import configure, get_logger
@@ -45,6 +51,10 @@ def build_adapter(source: str, settings: Settings):
         return CboeAdapter(smap, **kw)
     if source == "cftc":
         return CftcAdapter(smap, **kw)
+    if source == "prices":
+        # T91. Reads gex.daily_bars rather than a vendor; constructed identically so the
+        # ingest loop, the batch bookkeeping and the failure reporting treat it the same.
+        return PricesAdapter(smap, **kw)
     raise UnknownSeriesError(f"no network adapter for source {source!r}")
 
 
@@ -103,7 +113,10 @@ def cmd_ingest(args: argparse.Namespace, settings: Settings) -> int:
         filled = 0
 
         for source in sources:
-            metas = universe.by_source(source)
+            # `fetchable_by_source`, not `by_source`: a registered series with no source code
+            # is one nothing can fetch, and handing the prices adapter the symbol `""` would
+            # fail the whole source's batch for two series that were never going to fill.
+            metas = universe.fetchable_by_source(source)
 
             # T97. Building the adapter is where a missing credential surfaces --
             # `FredAdapter` raises `UnknownSeriesError` with no `XA_FRED_API_KEY` -- and
@@ -165,8 +178,14 @@ def cmd_ingest(args: argparse.Namespace, settings: Settings) -> int:
             finally:
                 adapter.close()
 
+        # Anything no adapter will fill: a source with no adapter, or a series with no code
+        # for the adapter its source has. Both are gaps worth counting, and reporting only
+        # the first would have quietly dropped `eq.sx5e` and `fx.usdcnh` from the tally the
+        # moment `prices` became fetchable.
         pending = [
-            s for s in universe.UNIVERSE if s.source not in universe.FETCHABLE_SOURCES
+            s
+            for s in universe.UNIVERSE
+            if s.source not in universe.FETCHABLE_SOURCES or not s.source_code
         ]
         print(f"\nfilled       {filled}")
         print(f"no_adapter   {len(pending)}  (registered, awaiting a later phase)")

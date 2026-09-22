@@ -25,8 +25,13 @@ RETIRED_CODES = {
                 "prices adapter (phase 4).",
 }
 
-# Sources with a Phase 1 adapter. Anything else is registered but not fetched.
-FETCHABLE_SOURCES = frozenset({"fred", "treasury", "cboe", "cftc"})
+# Sources with a working adapter. Anything else is registered but not fetched.
+#
+# T91 added "prices", which is unlike the other four: it reads `gex.daily_bars` in the sibling
+# schema rather than a vendor over HTTP. It is a source in every sense that matters here --
+# codes resolve, batches are recorded, failures are reported -- and making it one is what let
+# three series that had been pending since phase 1 fill without a new vendor.
+FETCHABLE_SOURCES = frozenset({"fred", "treasury", "cboe", "cftc", "prices"})
 
 # Series computed from other stored series rather than fetched. Filled by
 # `xactx derive`; see derive.DERIVATIONS for the recipes.
@@ -204,6 +209,48 @@ def _pending(
     )
 
 
+def _prices(
+    series_id: str,
+    symbol: str,
+    name: str,
+    tracks: str,
+    asset_class: str,
+    category: str,
+    unit: str,
+    transform: str,
+) -> SeriesMeta:
+    """A series filled from an ETF proxy in `gex.daily_bars` (T91).
+
+    `display_name` and `notes` both name the proxy, and neither is decoration: the value
+    stored is the ETF's close, not the index level, and a reader who takes it for the index
+    will be wrong by the tracking error, the expense ratio and every distribution ever paid.
+    Correlations and betas do not care; a level does.
+
+    `vintage_source="derived_lag"` because the bars table carries no revision history -- the
+    `as_of` is the value date at the bars job's 17:30 ET run, per `adapters/prices.py`.
+    """
+    return SeriesMeta(
+        series_id=series_id,
+        display_name=name,
+        source="prices",
+        source_code=symbol,
+        asset_class=asset_class,
+        category=category,
+        unit=unit,
+        frequency="d",
+        default_transform=transform,
+        revisable=False,
+        vintage_source="derived_lag",
+        snapshot_tz="America/New_York",
+        snapshot_local_time="17:30",
+        notes=(
+            f"ETF proxy: {symbol} close from gex.daily_bars, not {tracks} itself. "
+            f"Carries {symbol}'s tracking error, expense ratio and distributions; use for "
+            f"returns and correlation, not as a level of {tracks}."
+        ),
+    )
+
+
 # --- Rates (spec 1.3) --------------------------------------------------------
 RATES = [
     _fred("ust.3m.nominal", "DGS3MO", "UST 3m nominal yield", "rates", "level", "pct", "diff"),
@@ -339,21 +386,15 @@ VOL = [
 PENDING = [
     # Policy path, derived from CME ZQ/SR3 in phase 3 (spec 2.1).
     # Needs a paid or non-FRED price source.
-    _pending("eq.rut", "Russell 2000", "prices", "equity", "level", "index", "log_return",
-             "Not available on FRED (RU2000PR is retired). Needs the prices adapter, "
-             "phase 4."),
-    _pending("eq.msci_em", "MSCI EM", "prices", "equity", "level", "index", "log_return",
-             "Not on FRED. Needs the prices adapter, phase 4."),
     _pending("eq.sx5e", "Euro Stoxx 50", "prices", "equity", "level", "index", "log_return",
-             "Not on FRED. Needs the prices adapter, phase 4. European close, not the "
-             "16:00 ET snapshot."),
-    _pending("cmdty.gold", "Gold spot", "prices", "commodity", "level", "usd", "log_return",
-             "Both FRED LBMA fix series are retired (see RETIRED_CODES). Needs the "
-             "prices adapter, phase 4. Required for the real-yield/gold edge (spec 4)."),
+             "Not on FRED. T91's prices adapter reads gex.daily_bars and the desk captures "
+             "no Euro Stoxx proxy, so this still needs a vendor. Note the European close is "
+             "not the 16:00 ET snapshot either -- a proxy would need a lag convention."),
     _pending("fx.usdcnh", "USDCNH spot (offshore)", "prices", "fx", "level", "index",
              "log_return",
-             "FRED carries onshore CNY only (fx.usdcny). Offshore CNH needs the prices "
-             "adapter, phase 4."),
+             "FRED carries onshore CNY only (fx.usdcny). T91's prices adapter reads "
+             "gex.daily_bars and the desk captures no CNH proxy, so this still needs a "
+             "vendor."),
     _pending("vol.move", "MOVE index", "vendor", "vol", "implied", "index", "diff",
              "ICE proprietary, not free at any tier the spec contemplates. Spec 1.3 "
              "already hedges this with 'if available'. Unfilled unless licensed."),
@@ -438,25 +479,54 @@ POLICY_PATH = [
     )
 ]
 
+# --- ETF proxies, read from gex.daily_bars (T91) -----------------------------
+# These three were in PENDING from phase 1, blocking five of the fifteen declared graph edges
+# between them, for want of a source that does not exist for free: RU2000PR is retired, MSCI
+# EM is licensed, and both LBMA gold fixes were withdrawn. The desk holds five years of daily
+# bars for their liquid ETF proxies, so that is what fills them. See adapters/prices.py.
+PRICES = [
+    _prices("eq.rut", "IWM", "Russell 2000 (IWM proxy)", "the Russell 2000",
+            "equity", "level", "index", "log_return"),
+    _prices("eq.msci_em", "EEM", "MSCI EM (EEM proxy)", "MSCI EM",
+            "equity", "level", "index", "log_return"),
+    _prices("cmdty.gold", "GLD", "Gold (GLD proxy)", "gold spot",
+            "commodity", "level", "usd", "log_return"),
+]
+
 UNIVERSE: list[SeriesMeta] = [
     *RATES, *INFLATION, *CREDIT, *FX, *EQUITY, *COMMODITIES, *MACRO,
     *TREASURY_CURVE, *VOL, *POSITIONING, *DERIVED, *POSITIONING_PERCENTILES,
-    *POLICY_PATH, *PENDING,
+    *POLICY_PATH, *PRICES, *PENDING,
 ]
 
 
 def fetchable() -> list[SeriesMeta]:
-    """Series a Phase 1 adapter can actually fill."""
-    return [s for s in UNIVERSE if s.source in FETCHABLE_SOURCES]
+    """Series an adapter can actually fill.
+
+    A registered series with no `source_code` is not one of them, however fetchable its
+    eventual source is. `_pending` sets the code to `""` precisely to say "no code for this
+    exists yet", and until T91 that never mattered because no pending series named a source
+    that had an adapter. `eq.sx5e` and `fx.usdcnh` have always named "prices" as their
+    eventual home; the moment that source gained an adapter they would otherwise have been
+    handed to it as the symbol `""`, which reads `gex.daily_bars` for nothing and fails the
+    whole source's batch.
+    """
+    return [s for s in UNIVERSE if s.source in FETCHABLE_SOURCES and s.source_code]
 
 
 def by_source(source: str) -> list[SeriesMeta]:
+    """Every series naming this source, fillable or not -- including codeless ones."""
     return [s for s in UNIVERSE if s.source == source]
+
+
+def fetchable_by_source(source: str) -> list[SeriesMeta]:
+    """The subset of `by_source` an adapter can be asked for. See `fetchable`."""
+    return [s for s in by_source(source) if s.source_code]
 
 
 def series_map(source: str) -> dict[str, str]:
     """source_code -> series_id, the mapping an adapter is constructed with."""
-    return {s.source_code: s.series_id for s in by_source(source)}
+    return {s.source_code: s.series_id for s in fetchable_by_source(source)}
 
 
 def check_duplicates() -> None:

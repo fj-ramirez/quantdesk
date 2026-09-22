@@ -18,7 +18,7 @@ import datetime as dt
 
 import pytest
 
-from app.modules.terminal import cli
+from app.modules.terminal import cli, universe
 from app.modules.terminal.errors import UnknownSeriesError
 
 
@@ -138,5 +138,7 @@ def test_a_clean_run_marks_every_batch_ok(run_ingest):
     code, loader = run_ingest(lambda source, settings: _FakeAdapter(source))
 
     assert code == 0
-    assert sorted(loader.started) == ["cboe", "cftc", "fred", "treasury"]
+    # Every fetchable source, from the real universe -- `prices` (T91) included, which is
+    # what keeps this list honest when a source is added.
+    assert sorted(loader.started) == sorted(universe.FETCHABLE_SOURCES)
     assert all(status == "ok" for _, status in loader.finished)
