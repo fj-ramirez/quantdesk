@@ -163,3 +163,66 @@ SELECT max(as_of) FROM terminal.edge_stats;
 `treasury` batch while the manual run did. That is consistent with the abort (both adapters run
 inside `ingest`, before the `policy` step — so it is *not* explained by it, and is more likely a
 second, independent failure). Worth a look once a clean scheduled run exists to compare against.
+
+### Verified on the homeserver — 2026-09-21
+
+Deployed, then the sequence was run by hand inside `terminal-ingest` rather than waiting for
+03:00 ET. **It reached `edges`**, which it had not done since the bug was introduced:
+
+```
+terminal fomc: finished
+terminal edges: starting
+  ... 15 edges defined, 10 estimated, 5 not computable
+terminal edges: finished
+```
+
+`terminal.edge_stats` now carries `as_of = 2026-09-22 00:10:04+00` across 50 rows, advanced
+from the `2026-09-20T19:24:32` left by the last *manual* run, and `terminal.ingest_batches`
+records a `graph` batch (`20260922T001005-1439d9e4`, status `ok`). The acceptance criterion
+that mattered is met.
+
+The five uncomputable edges are all missing an input series — `policy.ff.meeting_1`,
+`eq.msci_em`, `cmdty.gold`, `eq.rut` — which is precisely what T91 and T96 exist for.
+
+## T97 · Opus · T90
+
+**The "still open" note above, explained and fixed.** The missing `fred` and `treasury`
+batches were not a second mystery: `XA_FRED_API_KEY` is **empty on the homeserver**, so
+`build_adapter("fred", ...)` raises `UnknownSeriesError` before any fetch — and that raise
+left `cmd_ingest` entirely. `sources` is `sorted(FETCHABLE_SOURCES)`, so `treasury` sits
+behind `fred` and never ran. A missing free API key for one vendor silently stopped a
+different, keyless vendor's data.
+
+It is T90's bug one level down: a step that dies at the first bad source instead of carrying
+on to the independent ones. Same reasoning, same fix.
+
+In `app/modules/terminal/cli.py`'s `cmd_ingest`, build the adapter inside a guard, record a
+failure and continue to the next source; and on a mid-fetch exception, mark the batch failed
+as today but continue rather than re-raise. Keep the non-zero exit code — a source that did
+not run must still fail the run. Scope each batch's `ok`/`failed` to what *that* source did,
+which the accumulating `failures` list no longer does once a run can get past a failure.
+
+### Result — T97
+
+**Done 2026-09-21.** 1,167 backend tests green (3 added), ruff clean.
+
+`tests/test_terminal_ingest_isolation.py` drives `cmd_ingest` over the **real** universe with
+a fake store, loader and adapters. Real on purpose: `sorted(FETCHABLE_SOURCES)` putting
+`treasury` after `fred` is the thing that turned one missing key into two missing sources, and
+an invented two-source universe would not reproduce it. Three tests — an adapter that cannot
+be built, an adapter that fails mid-fetch, and a clean run — asserting in each case that the
+*later* sources still ran and that the batch statuses say what actually happened.
+
+**The per-source batch status is a real fix, not tidying.** `finish_batch(batch, "failed" if
+failures else "ok")` read a list that accumulates across sources, so with the loop now
+surviving a failure, every source after the first bad one would have been recorded as failed.
+The batch table would have reported a total outage on a night when three of four sources were
+fine.
+
+**What this does not fix: there is still no FRED key.** The adapter cannot work without one,
+and `fred` backs 29 of the registered series — the entire rate, breakeven and credit spine.
+They are stamped `2026-09-18` and will simply stop moving. A free key takes a minute at
+<https://fred.stlouisfed.org/docs/api/api_key.html>; it goes in the homeserver's
+`/srv/docker/quantdesk/.env` as `XA_FRED_API_KEY=...` followed by a redeploy. Until then this
+change buys the *other* sources back — `treasury` most of all, which publishes the par yield
+curve daily and needs no credential at all.

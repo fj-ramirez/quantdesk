@@ -104,8 +104,31 @@ def cmd_ingest(args: argparse.Namespace, settings: Settings) -> int:
 
         for source in sources:
             metas = universe.by_source(source)
-            adapter = build_adapter(source, settings)
+
+            # T97. Building the adapter is where a missing credential surfaces --
+            # `FredAdapter` raises `UnknownSeriesError` with no `XA_FRED_API_KEY` -- and
+            # before this guard that exception left `cmd_ingest` entirely, so every source
+            # *after* the failing one never ran. Sources are iterated in sorted order, which
+            # put `treasury` behind `fred`: one absent free API key silently cost the par
+            # yield curve too, and the only visible symptom was a missing batch row.
+            #
+            # Same reasoning as `app.workers.terminal_ingest._run_sequence` applies one level
+            # down: the sources are independent, so one vendor's bad day must not become a
+            # total gap. Recorded as a failure, so the run still exits non-zero and says why.
+            try:
+                adapter = build_adapter(source, settings)
+            except Exception as e:
+                log.exception("%s: adapter unavailable; continuing with the other sources", source)
+                failures.append((source, f"adapter unavailable: {e}"))
+                continue
+
             batch = loader.start_batch(source, f"{start}..{end}")
+            # T97. `failures` accumulates across every source, so asking "were there any"
+            # here would mark each later source's batch failed on the strength of an earlier
+            # source's problem -- and now that one bad source no longer ends the run, that is
+            # the difference between a batch table that records what happened and one that
+            # reads as a total outage. Count only what this source added.
+            failed_before = len(failures)
             try:
                 if source == "treasury":
                     # One document per year serves every tenor, so fetch once.
@@ -130,10 +153,15 @@ def cmd_ingest(args: argparse.Namespace, settings: Settings) -> int:
                             # exits non-zero. Never swallowed.
                             log.error("%s: %s", meta.series_id, e)
                             failures.append((meta.series_id, str(e)))
-                loader.finish_batch(batch, "failed" if failures else "ok")
-            except Exception as e:  # batch must be marked failed before re-raising
+                loader.finish_batch(batch, "failed" if len(failures) > failed_before else "ok")
+            except Exception as e:
+                # T97. Was `raise`, which abandoned every remaining source. The batch is
+                # still marked failed first -- that has always been the invariant here and a
+                # batch left `started` forever is worse than a failed one -- but the loop
+                # continues, and the recorded failure keeps the exit code non-zero.
+                log.exception("%s: source failed with %s; continuing", source, type(e).__name__)
                 loader.finish_batch(batch, "failed", str(e)[:500])
-                raise
+                failures.append((source, str(e)))
             finally:
                 adapter.close()
 

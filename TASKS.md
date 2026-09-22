@@ -1459,6 +1459,24 @@ the homeserver is deployed to** -- a `graph` batch from a scheduled run, and `ed
 advancing past `2026-09-20T19:24:32`. Full account under the plan file's *Result* heading,
 including a second, independent failure it turned up (no `fred`/`treasury` batch today).
 
+**Verified on the homeserver 2026-09-21.** Deployed, and the sequence run by hand reached
+`edges`: `terminal.edge_stats` advanced to `2026-09-22 00:10:04+00` across 50 rows and a
+`graph` batch landed. Five edges remain uncomputable for want of an input series -- T91 and
+T96.
+
+## T97 · Opus · T90
+
+The same abort one level down, found while verifying T90. `XA_FRED_API_KEY` is empty on the
+homeserver, so building the FRED adapter raised out of `cmd_ingest` entirely -- and `treasury`
+sorts after `fred`, so a missing key for one vendor stopped a keyless one. `cmd_ingest` now
+records a source failure and continues, still exiting non-zero, with each batch's status
+scoped to what that source did. Spec and result:
+[plans/decision-inputs/00-nightly-abort.md](plans/decision-inputs/00-nightly-abort.md).
+
+**Done 2026-09-21.** 1,167 backend tests green (3 added), ruff clean. **Needs the user:** there
+is still no FRED key, and `fred` backs 29 series -- the rate, breakeven and credit spine, all
+stamped 2026-09-18. Free key, then `XA_FRED_API_KEY=` in the homeserver's `.env`.
+
 ## T91 · Sonnet · T90
 
 `eq.rut`, `eq.msci_em` and `cmdty.gold` are declared graph nodes with **zero** observations,
