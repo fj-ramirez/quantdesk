@@ -39,31 +39,33 @@ def _load_migration():
     return module
 
 
-#: The `snapshots` table **without the uniqueness this migration adds** on
-#: `(underlying, captured_at)`. Spelled out as raw DDL rather than built from the ORM metadata
-#: because the model now carries the constraint, so `create_all` would produce a table that
-#: cannot hold the duplicates this test exists to clean up.
-#:
-#: The *constraint* is what is historical here; the column list is not, and must track the
-#: model. The rows below are inserted through the ORM, so a column the model has and this DDL
-#: lacks fails the insert with "table main.snapshots has no column named ...". T102 added
-#: `session_date` and this is where that surfaced. If you add a column to `Snapshot`, add it
-#: here too -- the alternative, deriving this table from the metadata and stripping the
-#: constraint, is the right fix if this breaks a third time.
-_PRE_MIGRATION_SNAPSHOTS_DDL = """
-CREATE TABLE snapshots (
-    id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
-    underlying VARCHAR(16) NOT NULL,
-    captured_at DATETIME NOT NULL,
-    source VARCHAR(64) NOT NULL,
-    spot FLOAT NOT NULL,
-    contract_count INTEGER NOT NULL,
-    parquet_path VARCHAR(512) NOT NULL,
-    is_eod BOOLEAN NOT NULL,
-    content_hash VARCHAR(64),
-    session_date DATE
-)
-"""
+def _pre_migration_snapshots_ddl() -> str:
+    """`CREATE TABLE snapshots` **without** the uniqueness this migration adds.
+
+    Derived from the live model rather than written out by hand. The hand-written version broke
+    twice in one day -- T102 added `session_date`, T103 added six `atm_iv*` columns -- because
+    the rows below are inserted through the ORM, so any column the model has and the DDL lacks
+    fails the insert with "table main.snapshots has no column named ...". The comment here
+    promised the real fix if it broke a third time; this is it.
+
+    What is historical is the **constraint**, not the column list. So: copy the table into a
+    throwaway `MetaData` with no schema, discard the unique constraint the migration exists to
+    add, and compile the rest for SQLite. The fixture tracks the model automatically and still
+    cannot hold the uniqueness that would stop it holding the duplicates this test is about.
+    """
+    from sqlalchemy import MetaData, UniqueConstraint
+    from sqlalchemy.dialects import sqlite
+    from sqlalchemy.schema import CreateTable
+
+    scratch = MetaData()
+    table = Snapshot.__table__.to_metadata(scratch, schema=None)
+    for constraint in list(table.constraints):
+        if isinstance(constraint, UniqueConstraint):
+            table.constraints.discard(constraint)
+    for index in list(table.indexes):
+        if index.unique:
+            table.indexes.discard(index)
+    return str(CreateTable(table).compile(dialect=sqlite.dialect()))
 
 
 @pytest.fixture
@@ -72,7 +74,7 @@ def seeded(tmp_path):
     with level and strike children hanging off the rows that will be deleted."""
     engine = get_engine(f"sqlite:///{tmp_path / 'dupes.db'}")
     with engine.begin() as connection:
-        connection.execute(text(_PRE_MIGRATION_SNAPSHOTS_DDL))
+        connection.execute(text(_pre_migration_snapshots_ddl()))
     # `checkfirst` leaves the hand-built `snapshots` alone and creates only the child tables.
     Base.metadata.create_all(engine, checkfirst=True)
     factory = get_sessionmaker(engine)

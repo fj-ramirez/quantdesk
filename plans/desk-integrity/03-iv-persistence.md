@@ -106,3 +106,86 @@ Independent of everything else here; wants `T101`'s capture-time pattern but doe
 - An IV *surface*, skew, or term structure beyond the single 30-day point.
 - Using IV/RV in the decision engine's scoring. This makes the input exist; changing how
   decisions are scored is a separate, deliberate change to a system with a live track record.
+
+
+---
+
+## Result — T103, 2026-09-22
+
+**Done. Linters clean, migration generates and reverses.** Not deployed; goes out with
+`T104`-`T107` after a close.
+
+### F6's premise was wrong, and that is the main finding
+
+This file, following the review, opens with the decision engine's own words as evidence:
+
+> "…no implied-versus-realized view is available."
+
+**The desk had implied vol the whole time and was using it.** Decision 50 (QQQ, 2026-09-18)
+carries `IV/RV 1.27` in its structure hint. Verified live on 2026-09-22 against the current
+snapshots: ATM 30-day IV computes cleanly for **QQQ 0.1704, SPX 0.1154, SPY 0.1164**, each
+interpolated between real bracketing expiries over thousands of contracts.
+
+That sentence was a **fallback that fired whenever the ratio sat between `IV_CHEAP_RATIO`
+(0.90) and `IV_RICH_RATIO` (1.10)** — so a real, neutral measurement was reported as a missing
+one. Decision 78's `warnings` array is empty, which proves it: `_fade` appends "IV/RV
+unavailable" only when the ratio is genuinely `None`, and it did not.
+
+This is exactly the distinction `T100` enforces on a null aggregate, one layer out: **unmeasured
+is not neutral.** A `_vol_clause` helper now says "IV/RV 1.00: implied is in line with realized"
+for a neutral reading and keeps the "unavailable" wording only for a real null. Both the fade
+and continuation fallbacks share it, plus `T99`'s pin branch, so the three cannot drift apart.
+
+### The rest of `F6` was already built
+
+`gex/report.iv_regime` has existed since T37 and does precisely what this file specified:
+
+- ATM vol interpolated **across strike to spot** within `ATM_MONEYNESS_WINDOW`;
+- a constant ~30-day maturity interpolated **in total variance** (`σ²·T` linear in `T`) between
+  the bracketing expiries — which is the answer to this file's own "likely first-contact
+  failure" about interpolating in price space;
+- returned as a **decimal fraction**, so the "do not divide by 100" trap is already handled;
+- with `interpolated` False and the two DTEs equal when only one expiry was usable, rather than
+  extrapolating past the end of the term structure.
+
+So design decision 1 — "define ATM precisely and write the definition down" — was already
+answered, in a docstring, correctly. The task was never to build this. It was to stop throwing
+it away.
+
+### What actually needed doing: persistence
+
+Nothing stored it, so every consumer reopened the snapshot's Parquet file and recomputed.
+`api/scan._lookup_iv30` is documented in its own module as **the dominant cost of the trend
+endpoint, ~3s across the universe** — that is this, paid per symbol per request.
+
+Six columns on `gex.snapshots`, written by `compute_and_store`, which already has the frame and
+the spot in hand: `atm_iv` plus the provenance needed to judge it without reopening anything
+(`target_dte`, `lower_dte`, `upper_dte`, `interpolated`, `contracts`). `_lookup_iv30` reads the
+column and keeps the Parquet path as a fallback for pre-T103 rows.
+
+On the snapshot row, not per `(snapshot, filter)`: IV is a property of the chain, and repeating
+it three times per capture would invite the three copies to disagree.
+
+Null means not computable — never zero, and explicitly **never carried forward** from an
+earlier capture, because a stale vol looks exactly like a fresh one. A failure to compute it is
+logged and stored as null rather than failing the capture: a chain with no usable IV still has
+perfectly good gamma.
+
+### Acceptance
+
+1. ✅ ATM 30-day IV computes; QQQ reads **0.1704** on the 2026-09-22 snapshot. Whether QQQ
+   premium is rich or cheap is now a subtraction the desk can do.
+2. ✅ Null where not computable, tested, and asserted not to be `0`.
+3. ✅ Stored value is asserted equal to a direct recompute, so the fast path cannot silently
+   change what the desk reports.
+4. ✅ The "IV/RV unavailable" string now appears only for a genuine null — tested across the
+   fade, continuation and pin branches.
+5. ✅ Linters clean; migration applies and reverses.
+
+### Outstanding
+
+- **Not deployed**, and existing rows carry null until `backfill --recompute` runs. Unlike a
+  missed capture, this is genuinely recoverable: the Parquet files are on disk.
+- **The measured speedup is unmeasured.** The ~3s figure for `_lookup_iv30` is the existing
+  documented number; re-timing the trend endpoint after the backfill is the honest way to
+  claim the improvement, and it has not been done.

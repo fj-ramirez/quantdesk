@@ -1662,8 +1662,16 @@ its true session of Friday 09-18, and `session_date` is on the wire.
 
 ATM and 30-day constant-maturity IV persisted per snapshot, from inputs already in memory at
 capture. Unlocks every rich/cheap question the desk currently cannot answer, and fills
-`RegimeRow.iv_rv_ratio`, which has always been null. Spec:
+`RegimeRow.iv_rv_ratio`, which has always been null. Spec and result:
 [plans/desk-integrity/03-iv-persistence.md](plans/desk-integrity/03-iv-persistence.md).
+
+**Done 2026-09-22, not yet deployed.** F6's premise was wrong: the desk had implied vol all
+along and was using it (decision 50 carries IV/RV 1.27; QQQ reads 0.1704 today). The engine's
+"no implied-versus-realized view is available" was a fallback that fired on a *neutral* ratio,
+reporting a real measurement as a missing one -- the T100 distinction one layer out. `iv_regime`
+already computed the constant-maturity number correctly since T37; nothing stored it, so every
+read reopened Parquet, which is the documented ~3s dominant cost of the trend endpoint. Six
+columns on `gex.snapshots` and a fast path in `_lookup_iv30`.
 
 ## T104 · Sonnet · —
 

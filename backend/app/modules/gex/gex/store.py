@@ -37,6 +37,7 @@ from sqlalchemy.orm import Session, sessionmaker
 
 from app.core.db import get_engine, get_sessionmaker
 from app.modules.gex.gex.engine import ExpiryFilter, compute_all, to_frame
+from app.modules.gex.gex.report import IvRegime, iv_regime
 from app.modules.gex.models.chain import ChainSnapshot
 from app.modules.gex.models.db import GexByExpiry, GexByStrike, GexLevel, Snapshot
 from app.modules.gex.storage.parquet import read_snapshot, resolve_snapshot_path
@@ -126,6 +127,29 @@ def compute_and_store(
             path = resolve_snapshot_path(row, data_dir)  # invariant 5
             snapshot = read_snapshot(path)
         frame = to_frame(snapshot)
+
+        # T103. The frame is already built and the spot is already known, so the constant-
+        # maturity ATM vol costs nothing here -- and everything, later, to anyone who has to
+        # reopen this Parquet file to get it. Never fatal: a snapshot whose chain carries no
+        # usable IV still has perfectly good gamma, and losing the whole capture over a
+        # missing vol would be the wrong trade.
+        iv: IvRegime | None
+        try:
+            iv = iv_regime(frame, snapshot.spot)
+        except Exception:
+            logger.exception(
+                "compute_and_store: ATM IV failed for snapshot_id=%d; storing null", snapshot_id
+            )
+            iv = None
+
+        # Written on the snapshot row itself: IV is a property of the chain, not of an expiry
+        # filter, so it has no business being repeated per (snapshot, filter).
+        row.atm_iv = None if iv is None else iv.atm_iv
+        row.atm_iv_target_dte = None if iv is None else iv.target_dte
+        row.atm_iv_lower_dte = None if iv is None else iv.lower_dte
+        row.atm_iv_upper_dte = None if iv is None else iv.upper_dte
+        row.atm_iv_interpolated = None if iv is None else iv.interpolated
+        row.atm_iv_contracts = None if iv is None else iv.contracts
 
         stored: list[GexLevel] = []
         for f in filters:

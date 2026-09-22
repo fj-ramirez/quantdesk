@@ -517,6 +517,15 @@ def _lookup_iv30(
     if row is None:
         return None  # a covered underlying, but never captured yet
 
+    # T103: the fast path. `compute_and_store` now computes this once at capture, so the
+    # common case is a column read and the Parquet reopen below is the fallback for rows
+    # written before T103 (or whose IV was not computable, which stores null and therefore
+    # *does* pay the fallback -- acceptable: those rows are rare and the recompute returns
+    # None quickly). This is what made `_lookup_iv30` the dominant cost of the trend
+    # endpoint, ~3s across the universe; see this module's docstring.
+    if row.atm_iv is not None:
+        return row.atm_iv
+
     try:
         path = resolve_snapshot_path(row, data_dir=data_dir)
         snapshot = read_snapshot(path)

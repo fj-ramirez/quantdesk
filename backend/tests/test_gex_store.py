@@ -397,3 +397,40 @@ def test_t102_session_date_is_derived_at_capture(tmp_path, session_factory):
         # `is_eod` keeps its own meaning -- the two answer different questions.
         assert row.is_eod is True
         assert row.captured_at.date() == dt.date(2026, 9, 20)
+
+
+def test_t103_atm_iv_is_persisted_at_capture(tmp_path, session_factory, snapshot_row):
+    """T103: `iv_regime` has computed this since T37 and nothing stored it, so every consumer
+    reopened Parquet to recompute -- the documented dominant cost of the trend endpoint."""
+    from app.modules.gex.models.db import Snapshot
+
+    compute_and_store(snapshot_row, session_factory=session_factory, data_dir=tmp_path)
+    with session_factory() as session:
+        row = session.get(Snapshot, snapshot_row)
+
+    assert row.atm_iv is not None, "the synthetic chain has usable IV; this should compute"
+    # A decimal fraction, not a percentage. SPX ATM quotes around 0.1061 and dividing by 100
+    # here has caught an agent on this codebase before.
+    assert 0.0 < row.atm_iv < 3.0
+    assert row.atm_iv_target_dte == 30
+    assert row.atm_iv_contracts and row.atm_iv_contracts > 0
+    assert row.atm_iv_interpolated in (True, False)
+    assert row.atm_iv_lower_dte is not None and row.atm_iv_upper_dte is not None
+
+
+def test_t103_atm_iv_matches_a_direct_recompute(tmp_path, session_factory, snapshot_row):
+    """The stored value must be the same number the read path used to compute, or the fast
+    path in `_lookup_iv30` silently changes what the desk reports."""
+    from app.modules.gex.gex.engine import to_frame
+    from app.modules.gex.gex.report import iv_regime
+    from app.modules.gex.models.db import Snapshot
+    from app.modules.gex.storage.parquet import read_snapshot, resolve_snapshot_path
+
+    compute_and_store(snapshot_row, session_factory=session_factory, data_dir=tmp_path)
+    with session_factory() as session:
+        row = session.get(Snapshot, snapshot_row)
+        stored = row.atm_iv
+        snapshot = read_snapshot(resolve_snapshot_path(row, tmp_path))
+
+    direct = iv_regime(to_frame(snapshot), snapshot.spot)
+    assert stored == pytest.approx(direct.atm_iv)

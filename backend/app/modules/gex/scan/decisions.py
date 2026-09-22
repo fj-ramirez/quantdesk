@@ -468,9 +468,30 @@ def _score(
     return total, tuple(components)
 
 
+def _vol_clause(iv_rv_ratio: float | None) -> str:
+    """How to describe a vol reading that expresses no directional view (T103).
+
+    **"Unavailable" and "in line" are different facts and this said the first when it meant
+    the second.** Between `IV_CHEAP_RATIO` and `IV_RICH_RATIO` the ratio is a real measurement
+    that happens to be neutral; the fallback text called that "no implied-versus-realized view
+    is available", which reads as "this desk cannot see implied vol at all". It can, and does
+    -- decision 78 on 2026-09-21 carried a perfectly good IV/RV and still said that, which is
+    what the 2026-09-21 review read as evidence that no IV existed anywhere.
+
+    The same distinction T100 enforces on a null aggregate: unmeasured is not flat.
+    """
+    if iv_rv_ratio is None:
+        return "no implied-versus-realized view is available"
+    return (
+        f"IV/RV {iv_rv_ratio:.2f}: implied is in line with realized, so neither selling nor "
+        "buying premium is favoured"
+    )
+
+
 def _structure(setup: str, side: str, iv_rv_ratio: float | None) -> str:
-    """A one-line options-structure hint. Reads the IV/RV ratio when there is one; expresses
-    no vol view when there is not, rather than assuming one."""
+    """A one-line options-structure hint. Reads the IV/RV ratio when there is one; says so
+    plainly when there is not -- and, between the thresholds, says the reading is neutral
+    rather than missing. See :func:`_vol_clause`."""
     if setup == "pin":
         # Same legs as a fade -- a credit spread with its short strike at the level is the
         # structure either way -- but the reasoning differs enough to be worth saying: a pin
@@ -484,7 +505,7 @@ def _structure(setup: str, side: str, iv_rv_ratio: float | None) -> str:
         return (
             "Buy the pinned strike in the underlying with a stop below it, or sell a put "
             "credit spread whose short strike sits on it; the edge is dealer hedging holding "
-            "price near the strike, not a directional view."
+            f"price near the strike, not a directional view ({_vol_clause(iv_rv_ratio)})."
         )
     if setup == "fade":
         if iv_rv_ratio is not None and iv_rv_ratio >= IV_RICH_RATIO:
@@ -501,7 +522,7 @@ def _structure(setup: str, side: str, iv_rv_ratio: float | None) -> str:
             )
         return (
             "Fade the level in the underlying or CFD, or with a credit spread whose short "
-            "strike sits at the wall; no implied-versus-realized view is available."
+            f"strike sits at the wall; {_vol_clause(iv_rv_ratio)}."
         )
     # continuation
     if iv_rv_ratio is not None and iv_rv_ratio >= IV_RICH_RATIO:
@@ -516,7 +537,7 @@ def _structure(setup: str, side: str, iv_rv_ratio: float | None) -> str:
             f"Buy outright {leg} or the underlying (IV/RV {iv_rv_ratio:.2f}: implied is "
             "cheap versus realized, so long convexity is paid for)."
         )
-    return f"Buy outright {leg} or trade the underlying; no implied-versus-realized view is available."
+    return f"Buy outright {leg} or trade the underlying; {_vol_clause(iv_rv_ratio)}."
 
 
 def _breakout_lines(breakouts: BreakoutSummary | None, setup: str) -> list[str]:

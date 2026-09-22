@@ -161,6 +161,28 @@ class Snapshot(Base):
     #: one, and the capture path always sets it, so a null in practice means a row inserted by
     #: something that bypassed `SnapshotRepository`.
     session_date: Mapped[dt.date | None] = mapped_column(Date, nullable=True, index=True)
+    #: ATM implied vol at a constant ~30-day maturity, as a **decimal fraction** (0.1704 =
+    #: 17.04 %), computed once at capture by `app.modules.gex.gex.report.iv_regime` (T103).
+    #:
+    #: `iv_regime` has produced this number since T37 and nothing stored it, so every consumer
+    #: that wanted it reopened the snapshot's Parquet file and recomputed -- which is why
+    #: `api/scan._lookup_iv30` is documented as the dominant cost of the trend endpoint, ~3s
+    #: across the universe. The inputs are in memory at capture; this is cheap there and
+    #: expensive everywhere else.
+    #:
+    #: Null means not computable for that snapshot -- no usable IV in the ATM window, or an
+    #: empty chain -- never zero, and never a carried-forward value from an earlier capture. A
+    #: stale IV looks exactly like a fresh one, which is why carrying forward is not an option.
+    atm_iv: Mapped[float | None] = mapped_column(Float, nullable=True)
+    #: Provenance for `atm_iv`, so a consumer can tell a real constant-maturity point from a
+    #: single-expiry fallback without reopening Parquet. `atm_iv_interpolated` is False when
+    #: only one usable expiry existed or when 30 days lies outside the term structure -- in
+    #: which case the two DTE columns are equal and name the expiry actually used.
+    atm_iv_target_dte: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    atm_iv_lower_dte: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    atm_iv_upper_dte: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    atm_iv_interpolated: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
+    atm_iv_contracts: Mapped[int | None] = mapped_column(Integer, nullable=True)
     """SHA-256 of everything in the chain that can move GEX -- see
     `app.modules.gex.storage.fingerprint.chain_fingerprint` (T71). Nullable because every row written
     before that task predates it; readers must treat `None` as "unknown", never as "empty

@@ -648,3 +648,36 @@ def test_t100_null_aggregate_yields_no_positioning_and_no_verdict():
     result = decide(row)
     assert result.opportunities == ()
     assert result.no_trade_reasons  # says why, rather than silently emitting nothing
+
+
+def test_t103_neutral_vol_is_not_reported_as_missing():
+    """T103: "no implied-versus-realized view is available" used to fire whenever the ratio sat
+    *between* the rich and cheap thresholds -- reporting a real, neutral measurement as a
+    missing one. The 2026-09-21 review read that string as evidence the desk had no implied
+    vol at all; it had it and was using it (decision 50 carried IV/RV 1.27).
+
+    The same distinction T100 enforces on a null aggregate: unmeasured is not flat."""
+    from app.modules.gex.scan.decisions import _structure
+
+    missing = _structure("fade", "SHORT", None)
+    neutral = _structure("fade", "SHORT", 1.00)
+
+    assert "no implied-versus-realized view is available" in missing
+    assert "no implied-versus-realized view is available" not in neutral
+    assert "1.00" in neutral and "in line with realized" in neutral
+
+    # Both continuation and pin fallbacks share the clause, so they cannot drift apart.
+    for setup, side in (("continuation", "LONG"), ("pin", "LONG")):
+        assert "in line with realized" in _structure(setup, side, 1.00)
+        assert "no implied-versus-realized view is available" in _structure(setup, side, None)
+
+
+def test_t103_rich_and_cheap_readings_are_unchanged():
+    """The two branches that already worked must not move: they are what the structure hint is
+    for, and decision 50's IV/RV 1.27 read is the evidence they work."""
+    from app.modules.gex.scan.decisions import _structure
+
+    rich = _structure("fade", "SHORT", 1.27)
+    cheap = _structure("fade", "SHORT", 0.80)
+    assert "rich versus realized" in rich and "credit spread" in rich
+    assert "cheap versus realized" in cheap and "debit spread" in cheap
