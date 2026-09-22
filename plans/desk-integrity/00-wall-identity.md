@@ -319,12 +319,17 @@ modules was widening `OpportunitySetup` in `types.ts` to admit `'pin'`. Tests we
 both ends to keep it that way -- a setup that needs a frontend edit before it renders is a
 setup that vanishes from the desk on the day it starts emitting.
 
-### Outstanding
+### Deployed and verified, 2026-09-22 00:0x
 
-**Acceptance 7, the historic `gex.gex_levels` recompute, has not been run.** It rewrites
-stored data on the homeserver and the connector available here is read-only by design. The
-fixture is locked as literals first, exactly as decision 4 requires, so the backfill can now
-run safely whenever there is a write seat and a window outside capture hours.
+**Acceptance 7 is done.** `backfill --recompute` (added by `T101`) ran against the homeserver
+in the 00:00 window, after the fixture was locked as literals exactly as decision 4 requires.
+Confirmed live through the read API:
+
+- QQQ `ZERO_DTE` now has **zero** level rows with `|put_wall_gex| < 1000`. Before the recompute
+  that set included walls carrying **-1.87**, **-5.48e-37** and **-2.17e-20** dollars.
+- **13** QQQ `ZERO_DTE` rows now report `put_wall = None` -- the honest answer where `argmin`
+  used to name the least-positive strike.
+- No full-chain wall was lost, as the 1e-4 floor was measured to guarantee.
 
 Unchanged and deliberately so: the six wrong rows in `gex.decisions`. The table is append-only
 and the track record depends on that. `FADE_PUT_WALL` (n=4) and `FADE_CALL_WALL` (n=7) remain

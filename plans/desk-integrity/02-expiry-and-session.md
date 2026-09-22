@@ -231,17 +231,29 @@ be answered at any price short of reopening the chain.
 written before this migration have no split and cannot get one without reopening Parquet. Null
 means "not computed for this row", never zero.
 
-### Outstanding
+### Deployed and verified, 2026-09-22 00:0x
 
-1. **The migration has not been applied.** It generates and reverses correctly offline; it has
-   not run against the homeserver.
-2. **The backfill has not run.** `--recompute` exists and is tested, but reprocessing every
-   stored snapshot needs a write seat, the Parquet directory, and a window outside capture
-   hours.
-3. **Acceptance 1 is demonstrated, not measured on the real row.** The capability is proven
-   against the SPX fixture and the partition is tested; quoting the actual QQQ 740 split for
-   2026-09-21 requires that snapshot's Parquet file, which is on the homeserver. Once the
-   backfill runs, the number is one query away -- and it belongs in this section.
+All three outstanding items are closed. Migration `f1a2b3c4d5e6` applied (alembic head is now
+`a7b8c9d0e1f2`), `backfill --recompute` swept every stored snapshot, and the sweep reached the
+oldest row in the database -- snapshot id 3, captured 2026-09-05, which now carries 31 expiry
+rows.
+
+**Acceptance 1, measured on the real production row** rather than demonstrated on a fixture.
+QQQ 2026-09-21 EOD, spot 741.05, call wall 740 carrying **+661.9mn**:
+
+| horizon | net gamma | share |
+|---|---|---|
+| 0DTE | 0.0mn | 0.0 % |
+| this week | **187.0mn** | **28.2 %** |
+| next 30d | 320.1mn | 48.4 % |
+| beyond 30d | 154.9mn | 23.4 % |
+| | partition exact | |
+
+**28.2 % of that wall expired that Friday; 71.8 % survived it.** That is the sentence `F5` says
+the desk could not produce at any price, and it now costs one request.
+
+Per-expiry rollup live too: 57 expiries for SPX, 31 for SPY, 30 for QQQ on the latest snapshot,
+served by `GET /api/gex/gex/{underlying}/expiry/history` without opening Parquet.
 
 Also noted while working, not fixed here: `alembic heads` fails standalone, because two frozen
 pre-T75 revisions do `import app.models.db` and the `sys.modules` alias that rescues them lives
@@ -317,7 +329,13 @@ correcting the comment: the *constraint* in that fixture is historical, the colu
 and must track the model. Noted in place that if this breaks a third time, the right fix is to
 derive the table from the metadata and strip the constraint.
 
-### Outstanding
+### Deployed and verified, 2026-09-22 00:0x
 
-The migration has not been applied to the homeserver -- same write seat `T101` is waiting on.
-Once it runs, the backfill is automatic here; no separate pass is needed for this column.
+Migration `a7b8c9d0e1f2` applied. The in-migration backfill filled **all 346 of 346** rows --
+no separate pass, as designed.
+
+Snapshot 178 now reads `captured_at = 2026-09-20` (Sunday) with `session_date = 2026-09-18`
+(Friday). The phantom weekend session is gone from the data rather than only from the prose.
+Confirmed on the wire: `GET /api/gex/snapshots` returns `session_date` per row, and the oldest
+QQQ snapshot (id 3, captured 2026-09-05 before the bell) correctly reports the 2026-09-04
+session.
