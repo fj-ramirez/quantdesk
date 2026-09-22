@@ -1196,8 +1196,9 @@ buckets at read time and typed so it cannot pass as a settled one.
 
 **Next:** the frontend still reads the settled daily series. Wiring `session_bar` into the
 symbol views and charting the 5-minute series is UI work, not data work, and is the obvious
-follow-on. Next free ID is **T97** (T83, T84 and T85 are logged under the quantdesk initiative
-below; T86-T89 under capture-memory, T90-T96 under decision-inputs after it).
+follow-on. Next free ID is **T108** (T83, T84 and T85 are logged under the quantdesk initiative
+below; T86-T89 under capture-memory, T90-T97 under decision-inputs, T98 on its own, and
+T99-T107 under desk-integrity after it).
 
 ---
 
@@ -1572,3 +1573,94 @@ honestly-unstamped images.
 
 **Done and deployed 2026-09-21.** 1,188 backend tests green (9 added), 407 frontend (4 added),
 both linters clean, `npm run build` clean.
+
+---
+
+# desk-integrity — what the desk asserts versus what it measured (T99–T107)
+
+Full specs in [plans/desk-integrity/](plans/desk-integrity/). Opened 2026-09-21 out of
+[docs/state-review-2026-09-21.md](docs/state-review-2026-09-21.md) and its source-confirmed
+companion
+[docs/state-review-2026-09-21-verification.md](docs/state-review-2026-09-21-verification.md).
+
+Every item is the same failure in a different surface: **the desk states something it did not
+measure, in a voice that sounds measured.** A wall named from its position rather than its
+gamma; an empty aggregate written as `0`; a five-session outage nothing watched; a track
+record hardcoded into a prompt file; an MCP note asserting a column is null when it never is.
+None of these is a crash — all of them produce output that looks like the good kind.
+
+**Read the verification document before dispatching anything.** The original review's inferred
+causes for `F1` and `F3` are both wrong in ways that change the fix, and its `F1` fix would
+reintroduce a bug the code already handles deliberately. The rule it produced: a data-only
+review is a list of symptoms, not a list of fixes.
+
+`T99`, `T100` and `T101`/`T102` share `engine.py` and `regime.py` and are three separate Opus
+dispatches -- sequential, never parallel.
+
+## T99 · Opus · —
+
+**The P0.** A wall is named by its gamma, never by its position relative to spot. Six emitted
+decisions carry the wrong wall name, with confident prose asserting it; one of the six is a
+genuine trade error, not just a mislabel, and the resolved pair has contaminated the track
+record. Adds a fifth decision key, **`GAMMA_PIN`** -- spot resting on the largest
+positive-gamma strike is a magnet, not a wall -- scored in its own right. Spec:
+[plans/desk-integrity/00-wall-identity.md](plans/desk-integrity/00-wall-identity.md).
+
+## T100 · Opus · T99
+
+An empty aggregate is null, not zero. Two 09-21 snapshots with full chains recorded
+`net_gex = 0` where nothing was measurable. The column is already nullable; `KeyLevels.net_gex`
+is typed `float`, so this is a type widening and a consumer audit. Spec:
+[plans/desk-integrity/01-null-aggregates.md](plans/desk-integrity/01-null-aggregates.md).
+
+## T101 · Opus · T100
+
+The expiry dimension, written at capture time. On 09-21 the QQQ 740 wall was +662mn and the
+desk could not say what fraction survived that Friday -- the first thing anyone asks about a
+wall. A rollup, not a per-contract table: invariant 5 holds. Spec:
+[plans/desk-integrity/02-expiry-and-session.md](plans/desk-integrity/02-expiry-and-session.md).
+
+## T102 · Sonnet · T101
+
+`gex.snapshots` gains `session_date`: the trading session the chain belongs to, distinct from
+`captured_at`. Makes the weekend-capture rule enforceable in SQL instead of documented in
+prose. Spec:
+[plans/desk-integrity/02-expiry-and-session.md](plans/desk-integrity/02-expiry-and-session.md).
+
+## T103 · Sonnet · —
+
+ATM and 30-day constant-maturity IV persisted per snapshot, from inputs already in memory at
+capture. Unlocks every rich/cheap question the desk currently cannot answer, and fills
+`RegimeRow.iv_rv_ratio`, which has always been null. Spec:
+[plans/desk-integrity/03-iv-persistence.md](plans/desk-integrity/03-iv-persistence.md).
+
+## T104 · Sonnet · —
+
+Something has to watch `/api/gex/health/capture`, and tell **Telegram** when it goes quiet.
+September quarterly opex week is missing entirely -- five open sessions, the whole 28-symbol
+universe -- and the endpoint built to catch exactly that was never polled. Alert on the
+universe-wide gap, never on ordinary per-symbol staleness. Spec:
+[plans/desk-integrity/04-capture-alerting.md](plans/desk-integrity/04-capture-alerting.md).
+
+## T105 · Sonnet · —
+
+MCP row shape. `gex_levels("QQQ")` returns ~9,000 tokens, truncated at 100 rows, to answer a
+question whose answer is three rows. Latest-per-symbol by default, multi-symbol, and
+`gex_decisions` widened to be terminal for the common question. The notes stay -- they cost
+~60 tokens and they are the point. Spec:
+[plans/desk-integrity/05-mcp-ergonomics.md](plans/desk-integrity/05-mcp-ergonomics.md).
+
+## T106 · Sonnet · T105
+
+Two MCP tools: desk status (the freshness check the skill mandates and hand-writes every
+session) and track record (per key, with the standard error beside the mean, and the key list
+derived from the data -- `T99` adds `GAMMA_PIN` in parallel). Retires the hardcoded block that
+`T107` deletes. Spec:
+[plans/desk-integrity/05-mcp-ergonomics.md](plans/desk-integrity/05-mcp-ergonomics.md).
+
+## T107 · Sonnet · T106
+
+Three documented facts the data contradicts: `cmdty.gold` has 1,262 observations and the docs
+say it has never had data; the `ust_cc.*` lag is inverted; `vol.vix` and `vol.skew` stall
+together. Plus the hardcoded track record -- deleted, not updated, because updating it re-arms
+the same trap. Spec: [plans/desk-integrity/06-doc-drift.md](plans/desk-integrity/06-doc-drift.md).
