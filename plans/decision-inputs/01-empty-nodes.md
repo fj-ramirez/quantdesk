@@ -111,3 +111,59 @@ Measured 2026-09-21:
 
 Any other missing series, ingesting the real index levels from a paid source, and the two
 `policy.ff.meeting_1` edges (T96).
+
+---
+
+## Result — T91
+
+**Done and deployed 2026-09-21.** 1,179 backend tests green (12 added), ruff clean.
+
+`app/modules/terminal/adapters/prices.py` — a fifth source, `prices`, shaped exactly like the
+other four and reading `SELECT date, close FROM gex.daily_bars` instead of HTTP. It runs in
+the same `ingest` loop, writes its own `ingest_batches` row, and reports its failures the same
+way. The three `_pending` entries became a `PRICES` list whose `display_name` and `notes` both
+name the proxy instrument.
+
+On the homeserver: **1,262 observations each for `eq.rut`, `eq.msci_em` and `cmdty.gold`**,
+2021-09-10 to 2026-09-21, every row `as_of_basis = derived_lag`. A second run inserted 0 and
+found 1,262 already present, so the nightly adds a day rather than a copy.
+
+**The graph went from 10 edges estimated to 13.** All three previously-empty edges compute,
+with `significant` and `sign_conflict` populated:
+
+| Edge | beta | t | corr | pct | corr_history_n | significant |
+|---|---|---|---|---|---|---|
+| `credit.hy.oas → eq.rut` | −0.1210 | −10.4 | −0.552 | 74 | 508 | **yes** |
+| `ust.10y.real → cmdty.gold` | −0.1196 | −3.5 | −0.215 | 54 | 756 | **yes** |
+| `cmdty.wti → eq.msci_em` | 0.0617 | 1.9 | 0.119 | 92 | 756 | no |
+
+`credit.hy.oas → eq.rut` is the edge the eval said Trade C needed and could not get. It is
+significant, its sign matches the prior, and it is the strongest of the three. The remaining
+two uncomputable edges both want `policy.ff.meeting_1`, which is T96.
+
+**`cmdty.wti → eq.msci_em` is not significant, and that is the answer, not a shortfall.** t
+1.9 on 250 observations with r² 0.01: crude does not currently move EM in any way this beta
+can distinguish from noise. The 92nd-percentile correlation flag says the relationship is
+nonetheless unusually strong *by its own standards*, which is exactly the pair of facts the
+graph exists to show side by side.
+
+**This file's warning about a short percentile history was half wrong, and worth correcting.**
+It predicted `corr_history_n` well below 756 on all three. Two came back at the full 756,
+because 1,262 bars of proxy history is more than three years; the one that did not,
+`credit.hy.oas → eq.rut` at 508, is limited by `credit.hy.oas`'s own 792-observation history,
+not by the new series at all. Reading a short percentile history as evidence about the new
+data would have been backwards.
+
+### Two things found on the way, both fixed here
+
+**Two pending series also named `prices` as their eventual source, with no code.** `eq.sx5e`
+and `fx.usdcnh` would have been handed to the new adapter as the symbol `""` the moment it
+existed, failing the whole source's batch for series that were never going to load. A
+registered series with no `source_code` is now excluded from `fetchable()` and from the map an
+adapter is built with, and is still counted in the `no_adapter` tally — the notes on both now
+say the prices adapter reads the desk's bars and the desk captures no proxy for them.
+
+**`--source` restated the source list instead of deriving it.** `--source prices` was rejected
+by argparse while the same source ran perfectly well under `--source all`. Derived from
+`FETCHABLE_SOURCES` now, with a test parametrized over the real set so it fails the day a
+sixth source is added rather than the day someone tries to name it.

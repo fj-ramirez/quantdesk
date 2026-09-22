@@ -1487,6 +1487,12 @@ daily bars in `gex.daily_bars`, current to today. Feed the nodes from data alrea
 through a named cross-module adapter. Spec:
 [plans/decision-inputs/01-empty-nodes.md](plans/decision-inputs/01-empty-nodes.md).
 
+**Done and deployed 2026-09-21.** 1,179 backend tests green (12 added), ruff clean. A fifth
+ingest source, `prices`, reading `gex.daily_bars` -- 1,262 observations each for `eq.rut`,
+`eq.msci_em` and `cmdty.gold`, and the graph went from 10 edges estimated to 13.
+`credit.hy.oas -> eq.rut` (the edge the eval's Trade C needed) is significant at t -10.4.
+Only the two `policy.ff.meeting_1` edges remain, which is T96. See the plan file's *Result*.
+
 ## T92 · Sonnet · —
 
 Relative volume: `daily_bars.volume` is populated (149,560 rows, 120 symbols) and no scan
