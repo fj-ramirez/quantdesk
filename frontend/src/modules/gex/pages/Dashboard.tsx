@@ -98,12 +98,16 @@ function keyLevelMetrics(data: NonNullable<ReturnType<typeof useGexResult>['data
       metricKey: 'net-gex',
       label: 'Net GEX',
       value: formatGex(levels.net_gex),
+      // T100: null is "nothing was measurable", which is not "flat". `formatGex` already
+      // renders it as the null marker; the hint must agree rather than assert a flat book.
       hint:
-        levels.net_gex > 0
-          ? 'Dealers net long gamma — dampening'
-          : levels.net_gex < 0
-            ? 'Dealers net short gamma — amplifying'
-            : 'Net gamma flat',
+        levels.net_gex == null
+          ? 'No contracts in scope — unmeasured, not flat'
+          : levels.net_gex > 0
+            ? 'Dealers net long gamma — dampening'
+            : levels.net_gex < 0
+              ? 'Dealers net short gamma — amplifying'
+              : 'Net gamma flat',
     },
     nearestWallMetric(levels, spot),
     {

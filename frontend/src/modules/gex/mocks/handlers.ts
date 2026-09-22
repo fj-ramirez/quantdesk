@@ -131,7 +131,12 @@ function scaled(base: GexResult, filter: ExpiryFilter): GexResult {
   return {
     ...base,
     filter,
-    levels: { ...base.levels, net_gex: Math.round(base.levels.net_gex * scale) },
+    // A scaled null is still null (T100) -- `Math.round(null * scale)` is 0, which would make
+    // the mock the one place on the desk where unmeasured silently becomes flat.
+    levels: {
+      ...base.levels,
+      net_gex: base.levels.net_gex == null ? null : Math.round(base.levels.net_gex * scale),
+    },
     by_strike: base.by_strike.map((row) => ({
       ...row,
       call_gex: Math.round(row.call_gex * scale),

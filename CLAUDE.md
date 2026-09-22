@@ -14,6 +14,12 @@ frontend, Postgres for computed results, Parquet on disk for raw chains and OHLC
 | Run | `uv run uvicorn app.main:app --reload --port 8001` | `npm run dev` (5173) |
 | Test | `uv run pytest` | `npm test` |
 | Lint | `uv run ruff check .` | `npm run lint` |
+| Build | — | `npm run build` |
+
+`npm run build` is `tsc -b && vite build` and is **not** covered by `npm run lint` or
+`npm test`: it type-checks test files and every project reference, so it catches type errors
+the other two pass over. CI runs a Docker build of both images, so a green lint and a green
+test suite still fail the deploy. Run it before pushing anything that changes a shared type.
 
 Run one research cycle by hand (needs a reachable Postgres — there is no SQLite fallback):
 `uv run python -m app.modules.research.nightly --trials 50 --no-update`.

@@ -48,7 +48,18 @@ export function KeyLevels({ levels, snapshot }: KeyLevelsProps) {
     { label: 'Max |gamma| strike', value: levels.max_abs_strike },
   ];
 
-  const netSign = levels.net_gex > 0 ? 'positive' : levels.net_gex < 0 ? 'negative' : 'flat';
+  // T100: `net_gex` is null when the filter admitted no contracts -- the everyday ZERO_DTE
+  // -after-the-close case, and the 09:43 ET case where open interest has not been published
+  // yet. Reporting that as "flat" is the exact fabrication T100 removed from the backend, so
+  // it must not be reintroduced here on the way to the screen.
+  const netSign =
+    levels.net_gex == null
+      ? 'unknown'
+      : levels.net_gex > 0
+        ? 'positive'
+        : levels.net_gex < 0
+          ? 'negative'
+          : 'flat';
   const netDotColor =
     netSign === 'positive' ? palette.divergingPositive : netSign === 'negative' ? palette.divergingNegative : palette.textMuted;
   const netLabel =
@@ -56,7 +67,9 @@ export function KeyLevels({ levels, snapshot }: KeyLevelsProps) {
       ? 'Dealers net long gamma — hedging tends to dampen moves'
       : netSign === 'negative'
         ? 'Dealers net short gamma — hedging tends to amplify moves'
-        : 'Net gamma flat';
+        : netSign === 'flat'
+          ? 'Net gamma flat'
+          : 'No contracts in scope — dealer positioning is unmeasured, not flat';
 
   return (
     <Surface as="section" aria-label="Key levels" className="key-levels" level="raised">

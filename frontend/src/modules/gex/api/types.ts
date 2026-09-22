@@ -170,11 +170,15 @@ export interface StrikeGex {
   open_interest: number;
   /** T101: `net_gex` split by time to expiry. The four sum back to `net_gex` exactly, so a
    * wall can be shown as "how much expires Friday vs later" without a second request.
-   * `null` on rows computed before T101 -- which is not zero. */
-  net_gex_0dte: number | null;
-  net_gex_this_week: number | null;
-  net_gex_next_30d: number | null;
-  net_gex_beyond_30d: number | null;
+   *
+   * Optional, not required-nullable. The backend always sends them now, but a row captured
+   * before T101 has no split and a fixture recorded before T101 has no key -- and `undefined`
+   * ("this payload predates the field") is a different fact from `null` ("the backend computed
+   * nothing here"). Neither is zero. */
+  net_gex_0dte?: number | null;
+  net_gex_this_week?: number | null;
+  net_gex_next_30d?: number | null;
+  net_gex_beyond_30d?: number | null;
 }
 
 /** Verified against `/openapi.json` (T11). */
