@@ -445,3 +445,186 @@ def test_rejected_geometry_is_emitted_last_with_its_reason():
         assert opp.status == "rejected"
         assert opp.rr is not None and opp.rr < MIN_REWARD_RISK
         assert "below" in (opp.rejection_reason or "")
+
+
+# ---------------------------------------------------------------------------------------
+# T99: a wall is named by its gamma, never by its position relative to spot.
+#
+# The six rows below are the real mislabeled decisions found in `gex.decisions` on
+# 2026-09-21, reproduced as literals. They are literals on purpose: the query that found
+# them joins `gex.decisions` to `gex.gex_levels`, and T99 changes the levels side of that
+# join, so a fixture that re-derived its expectations from live data would quietly stop
+# finding them. See plans/desk-integrity/00-wall-identity.md, decision 4.
+# ---------------------------------------------------------------------------------------
+
+#: `(decision id, underlying, spot, strike, net gamma at strike, expected key)`.
+#: `None` means the setup must not be emitted at all.
+_T99_MISLABELED = [
+    (23, "SLV", 57.44, 58.0, -7.5e6, None),
+    (32, "XLE", 65.12, 65.0, +51.5e6, "GAMMA_PIN"),
+    (50, "QQQ", 722.0, 720.0, +715e6, "GAMMA_PIN"),
+    (77, "SPY", 773.2, 772.0, +1.39e9, "GAMMA_PIN"),
+    (78, "QQQ", 741.0, 740.0, +662e6, "GAMMA_PIN"),
+    (80, "DIA", 519.9, 516.0, +41.4e6, "GAMMA_PIN"),
+]
+
+
+def _decide_one_wall(*, spot, strike, net_gex, atr, opposite_strike, opposite_net_gex,
+                     extra=()):
+    """A long-gamma book positioned as the real row was.
+
+    `extra` adds `(strike, net_gex)` pairs. A two-strike book is enough to decide a setup's
+    *name*, but not always to give it a target: `_fade` walks the by-strike ladder looking for
+    somewhere to aim, and returns `None` when nothing qualifies. The real QQQ book that
+    produced decision 78 has strikes in between; a synthetic one needs them supplied.
+    """
+    def as_strike(k, net):
+        return _strike(k, net, 0.0) if net >= 0 else _strike(k, 0.0, net)
+
+    strikes = sorted(
+        [as_strike(strike, net_gex), as_strike(opposite_strike, opposite_net_gex)]
+        + [as_strike(k, n) for k, n in extra],
+        key=lambda s: s.strike,
+    )
+    hi = max(strikes, key=lambda s: s.net_gex)
+    lo = min(strikes, key=lambda s: s.net_gex)
+    levels = _levels(
+        net_gex=abs(net_gex) + abs(opposite_net_gex),
+        abs_gex=abs(net_gex) + abs(opposite_net_gex),
+        call_wall=hi.strike if hi.net_gex > 0 else None,
+        call_wall_gex=hi.net_gex if hi.net_gex > 0 else None,
+        put_wall=lo.strike if lo.net_gex < 0 else None,
+        put_wall_gex=lo.net_gex if lo.net_gex < 0 else None,
+        max_net_strike=hi.strike,
+        min_net_strike=lo.strike,
+        max_abs_strike=max(strikes, key=lambda s: s.abs_gex).strike,
+        max_abs_gex=max(s.abs_gex for s in strikes),
+        flip_point=spot - 4 * atr,
+        spot=spot,
+    )
+    regime = _regime(levels=levels, by_strike=strikes, spot=spot, atr14=atr)
+    # `decide` takes the by-strike rows separately; without them the target ladder is empty
+    # and a setup with no opposite wall has nowhere to aim.
+    return decide(regime, by_strike=strikes)
+
+
+def _decide_id78():
+    """Decision 78 (QQQ, 2026-09-21) as captured: spot 741.0, call wall 740 at +662mn, put wall
+    700 at -425mn -- **both below spot**, which is the whole reason the row was mislabeled."""
+    return _decide_one_wall(
+        spot=741.0, strike=740.0, net_gex=662e6, atr=7.4,
+        opposite_strike=700.0, opposite_net_gex=-425e6,
+        extra=[(760.0, 400e6)],
+    )
+
+
+@pytest.mark.parametrize(
+    ("decision_id", "symbol", "spot", "strike", "net_gex", "expected"),
+    _T99_MISLABELED,
+    ids=[f"id{row[0]}-{row[1]}" for row in _T99_MISLABELED],
+)
+def test_t99_mislabeled_decisions_are_named_from_gamma(
+    decision_id, symbol, spot, strike, net_gex, expected
+):
+    """Each of the six historically mislabeled rows now gets the right key, or none at all.
+
+    Every one of them was emitted as a fade whose name came from the wall's position. Five
+    were sound trades with the wrong noun; SLV id 23 shorted into the most negative-gamma
+    strike in the book while claiming hedging would sell strength there, and is suppressed.
+    """
+    atr = max(spot * 0.01, 0.05)
+    # The opposite wall sits far enough away not to be emitted itself.
+    opposite_strike = strike + (6 * atr if strike < spot else -6 * atr)
+    keys = {
+        o.key
+        for o in _decide_one_wall(
+            spot=spot, strike=strike, net_gex=net_gex, atr=atr,
+            opposite_strike=opposite_strike, opposite_net_gex=-net_gex,
+        ).opportunities
+    }
+    if expected is None:
+        assert "FADE_CALL_WALL" not in keys and "FADE_PUT_WALL" not in keys, (
+            f"decision {decision_id} ({symbol}): a put wall above spot was emitted as a fade; "
+            "dealer hedging amplifies there, so the long-gamma rationale is inverted"
+        )
+        assert "GAMMA_PIN" not in keys
+    else:
+        assert expected in keys, (
+            f"decision {decision_id} ({symbol}): expected {expected}, got {sorted(keys) or 'none'}"
+        )
+        assert "FADE_PUT_WALL" not in keys, (
+            f"decision {decision_id} ({symbol}): a +{net_gex:.3g} strike was named a put wall"
+        )
+
+
+def test_t99_classic_fades_are_unchanged():
+    """The thirteen correctly-resolved rows are the regression risk. Default geometry is the
+    classic shape -- call wall above spot, put wall below -- and must be untouched."""
+    result = decide(_regime())
+    keys = {o.key for o in result.opportunities}
+    assert keys == {"FADE_CALL_WALL", "FADE_PUT_WALL"}
+    for opp in result.opportunities:
+        if opp.key == "FADE_CALL_WALL":
+            assert opp.side == "SHORT" and opp.entry == 104.0
+        else:
+            assert opp.side == "LONG" and opp.entry == 96.0
+
+
+def test_t99_pin_prose_describes_a_magnet_not_a_fade():
+    """F2: the thesis interpolated the wall's name, so the prose asserted the wrong structural
+    fact. It must now name the call wall and describe the pin."""
+    pin = next(o for o in _decide_id78().opportunities if o.key == "GAMMA_PIN")
+    blob = " ".join(pin.thesis).lower()
+    assert "put wall at 740" not in blob
+    assert "magnet" in blob and "largest positive-gamma strike" in blob
+    assert "call wall" in " ".join(pin.thesis[1:]).lower()
+    # Nothing anywhere in the row may still call this a put wall.
+    everything = json.dumps(pin.to_dict()).lower()
+    assert "put wall" not in everything
+
+
+def test_t99_put_wall_above_spot_is_suppressed_not_renamed():
+    """The SLV id 23 shape in isolation: both walls above spot, so the put wall is the nearer
+    one. Emitting a short there asserts resistance at the strike where hedging amplifies."""
+    strikes = [_strike(96.0, 0.0, -6.0e9), _strike(104.0, 8.0e9, 0.0)]
+    levels = _levels(call_wall=104.0, call_wall_gex=8.0e9, put_wall=96.0, put_wall_gex=-6.0e9,
+                     max_net_strike=104.0, min_net_strike=96.0)
+    # Spot below both walls: `_nearest_walls` hands the put wall up as `wall_above`.
+    result = decide(_regime(levels=levels, by_strike=strikes, spot=95.0))
+    for opp in result.opportunities:
+        assert not (opp.side == "SHORT" and opp.key.startswith("FADE")), (
+            "a short fade was emitted at a negative-gamma strike above spot"
+        )
+
+
+def test_t99_straddled_walls_still_select_by_position():
+    """The case the review's proposed fix would have broken: both walls on the same side of
+    spot. `_nearest_walls` must keep picking by position -- this must not crash or go empty."""
+    strikes = [_strike(96.0, 0.0, -6.0e9), _strike(98.0, 0.0, -4.0e9)]
+    levels = _levels(call_wall=None, call_wall_gex=None, put_wall=96.0, put_wall_gex=-6.0e9,
+                     max_net_strike=98.0, min_net_strike=96.0, max_abs_strike=96.0,
+                     max_abs_gex=6.0e9, net_gex=5.0e9)
+    result = decide(_regime(levels=levels, by_strike=strikes, spot=100.0))
+    assert result.no_trade_reasons or result.opportunities  # answered either way, never crashed
+
+
+def test_t99_pin_requires_proximity():
+    """A positive-gamma strike well below spot is a level price left behind, not a magnet."""
+    far = _decide_one_wall(
+        spot=741.0, strike=700.0, net_gex=662e6, atr=7.4,
+        opposite_strike=780.0, opposite_net_gex=-425e6,
+    )
+    assert "GAMMA_PIN" not in {o.key for o in far.opportunities}
+
+
+def test_t99_gamma_pin_reaches_the_track_record():
+    """A new key that is emitted but never scored is half a decision. Nothing downstream may
+    enumerate keys -- the pin must survive serialisation like any other row."""
+    pin = next(o for o in _decide_id78().opportunities if o.key == "GAMMA_PIN")
+    row = pin.to_dict()
+    assert row["key"] == "GAMMA_PIN"
+    assert row["setup"] == "pin"
+    assert row["side"] == "LONG"
+    assert row["entry"] == 740.0
+    assert row["stop"] is not None and row["stop"] < row["entry"]
+    json.dumps(row)  # the decisions job persists this verbatim

@@ -261,3 +261,73 @@ Run these, do not assert them:
   `T99` gives it an honest name and an honest thesis. The product question is the user's.
 - Any change to the continuation engine, including a short-gamma continuation to replace the
   suppressed row four.
+
+
+---
+
+## Result — T99, 2026-09-21
+
+**Done. 1,207 backend tests green (19 added), 408 frontend (1 added), both linters clean.**
+The backfill (acceptance 7) is the one item outstanding; see below.
+
+### What was verified live
+
+Decision 78 regenerated from its captured geometry. Before:
+
+> "Dealers are long gamma (25% of gross): hedging sells strength and buys weakness, so a move
+> into **the put wall at 740.00** meets demand."
+
+After, as `GAMMA_PIN` / `pin` / `LONG`, grade A:
+
+> "Spot is sitting on the largest positive-gamma strike in the book (740.00, $662m net).
+> Dealers are long gamma, so hedging sells every move up and buys every move down: the strike
+> acts as a magnet, not a boundary."
+>
+> "The **call wall** carries $662m of gamma and sits 0.14 ATR below spot…"
+>
+> "The gamma flip is 4.00 ATR below spot: **the pin holds** inside a long-gamma regime."
+
+### Judgment calls made, and what moved them
+
+- **`WALL_MIN_ABS_FRACTION = 1e-4`, not the 1e-2 this file proposed.** Measured first, as the
+  spec demanded, and the data moved the number. Across the 688 stored `ALL`/`EX_ZERO_DTE` rows
+  the weakest wall is **3.88 %** of its book maximum, so any floor below that is safe there.
+  But across 171 `ZERO_DTE` rows a 1 % floor would have nulled 19 rows whose weak side runs up
+  to **$44.8mn** -- a real level opposite a large 0DTE call side. The natural break is an order
+  of magnitude lower: 12 rows sit below 1e-4 with a weak side of at most **$3,866**, and the
+  next band up starts at $24,523. 1e-4 rejects residue and keeps small-but-real walls.
+  Relevance is left to the ATR reach gates downstream, where it belongs.
+- **`PIN_REACH_ATR = 1.0`.** The five historical pins sat 0.10, 0.11, 0.17, 0.25 and 0.72 ATR
+  from spot. 1.0 covers every observed case with margin and excludes the 1.0-3.0 ATR band
+  `WATCH_REACH_ATR` would otherwise have emitted, where a positive-gamma strike below spot is
+  a level price has left behind rather than a magnet holding it.
+- **A pin scores in the fade *family* while carrying its own `setup` label.** `_score`
+  compares `setup` against the regime *verdict*, and the verdict a pin occurs under is
+  `fade` -- a long-gamma, range-bound book is the precondition for both. Passing `"pin"` there
+  scored the pin as contradicting the very regime that makes it work, and printed that
+  contradiction in the breakdown. Caught by the acceptance test, not by review.
+- **The engine fix is symmetric.** `argmax(net)` over an all-negative book had the same latent
+  defect as `argmin` over an all-positive one, so `call_wall` gained the mirrored sign and
+  magnitude test. No stored row exhibits it yet; it would have been the next bug.
+
+### Cheaper than expected
+
+Nothing downstream enumerates decision keys. `scan/outcomes.py` never mentions them,
+`scan/factors.py` treats them as opaque strings, and the frontend derives its label
+generically (`setupLabel('GAMMA_PIN')` -> "Gamma pin"). The only edit needed outside the two
+modules was widening `OpportunitySetup` in `types.ts` to admit `'pin'`. Tests were added at
+both ends to keep it that way -- a setup that needs a frontend edit before it renders is a
+setup that vanishes from the desk on the day it starts emitting.
+
+### Outstanding
+
+**Acceptance 7, the historic `gex.gex_levels` recompute, has not been run.** It rewrites
+stored data on the homeserver and the connector available here is read-only by design. The
+fixture is locked as literals first, exactly as decision 4 requires, so the backfill can now
+run safely whenever there is a write seat and a window outside capture hours.
+
+Unchanged and deliberately so: the six wrong rows in `gex.decisions`. The table is append-only
+and the track record depends on that. `FADE_PUT_WALL` (n=4) and `FADE_CALL_WALL` (n=7) remain
+contaminated by two mislabeled losses until enough correctly-named rows accumulate to make the
+old ones a small minority -- `T107` should carry that caveat wherever per-key fade history is
+quoted.

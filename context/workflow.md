@@ -110,8 +110,12 @@ Commit subjects follow the existing log: imperative, and referencing the task wh
 applies — `T09: persist computed GEX levels at capture time`, `fix(backend): T35 -- unreachable
 Postgres must not hang startup`, `Make a fresh docker compose up actually work`.
 
-There is currently **no git remote** — the repo exists only on this machine and is
-unbacked-up. That is item P0 in the state review.
+The remote is `origin` (GitHub). This line previously read "there is currently **no git
+remote** — the repo exists only on this machine and is unbacked-up", which was true when the
+state review filed it as P0 and stopped being true once the remote was added. It was corrected
+on 2026-09-21, after an agent read it, repeated it back to the user as fact, and was told
+otherwise — the same `F7` failure the `desk-integrity` initiative exists to fix, in the
+document that tells agents how to work.
 
 ## Scope guardrails
 

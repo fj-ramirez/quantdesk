@@ -169,6 +169,7 @@ __all__ = [
     "DEFAULT_TOP_N",
     "FRAME_COLUMNS",
     "PCT_MOVE",
+    "WALL_MIN_ABS_FRACTION",
     "ExpiryFilter",
     "ExpiryGex",
     "GammaProfile",
@@ -202,6 +203,30 @@ DEFAULT_PROFILE_STEP = 0.001
 
 #: How many strikes :func:`key_levels` reports on each side.
 DEFAULT_TOP_N = 5
+
+#: Minimum |net GEX| a strike must carry, as a fraction of the largest |net GEX| in the same
+#: (snapshot, filter), before :func:`key_levels` will call it a wall (T99).
+#:
+#: **This exists to reject numerical residue, not small walls.** ``argmin(net)`` over an array
+#: with no negative entries returns the *least positive* strike and reports it as a put wall.
+#: Live examples from the stored 2026-09-21 data, all ``ZERO_DTE``: put walls carrying
+#: −2.17e−20, −5.48e−37 and −1.87 dollars against books whose largest strike held +4.35e6,
+#: +2.00e8 and +1.79e9 respectively. A sign check passes all three, because they really are
+#: negative; only a magnitude test rejects them.
+#:
+#: **1e-4 is measured, not chosen.** Across the 688 stored ``ALL`` / ``EX_ZERO_DTE`` rows the
+#: weakest wall is 3.88 % of its book's maximum -- a 388× margin, so this floor cannot touch a
+#: full chain. Across 171 ``ZERO_DTE`` rows it nulls exactly the 12 whose weak side is at most
+#: $3,866, and preserves the next band up, which starts at $24,523 and reaches $44.8mn. A 1 %
+#: floor -- the value first proposed -- would have destroyed that $44.8mn wall, which is a real
+#: level that merely sits opposite a very large 0DTE call side.
+#:
+#: Relative rather than absolute on purpose: no dollar threshold can be right for SLV and SPX
+#: at once. And *relevance* is deliberately not this module's job -- whether a real but small
+#: wall is worth trading is decided downstream by the ATR reach gates in
+#: :mod:`app.modules.gex.scan.decisions`. This function only refuses to name a wall that is not
+#: measurably there.
+WALL_MIN_ABS_FRACTION = 1e-4
 
 #: Columns :func:`to_frame` guarantees. Anything downstream may rely on these names.
 #:
@@ -1283,9 +1308,11 @@ def key_levels(
     against vendors:
 
     * **call wall** — the strike with the largest positive **net** GEX. Ties break to the
-      lower strike. Identical to ``max_net_strike``.
-    * **put wall** — the strike with the most negative **net** GEX. Identical to
-      ``min_net_strike``.
+      lower strike. ``None`` when no strike has positive net GEX, or when the largest is below
+      :data:`WALL_MIN_ABS_FRACTION` of the book's largest |net GEX|.
+    * **put wall** — the strike with the most negative **net** GEX, under the same two
+      conditions mirrored. ``max_net_strike`` / ``min_net_strike`` report the raw extrema
+      unconditionally and are *not* subject to either test -- they are not wall claims.
     * **max absolute strike** — the strike with the largest Σ|contract gex|, regardless of
       side; the single strike with the most gamma pinned to it.
     * **top positive / negative** — the ``top_n`` strikes ranked by *net* GEX, descending and
@@ -1343,15 +1370,24 @@ def key_levels(
     positive = ranked[ranked["net_gex"] > 0].head(top_n)
     negative = ranked[ranked["net_gex"] < 0].tail(top_n).iloc[::-1]
 
+    # A wall must have the right sign *and* be measurably there (T99). `argmax`/`argmin` always
+    # return an index, so on a book with no negative strike at all `i_lo` is the least positive
+    # one -- which is how put walls carrying −2.17e−20 dollars reached storage. `max_net_strike`
+    # / `min_net_strike` below keep reporting the raw extrema unconditionally: they are
+    # documented as "the same two numbers under unambiguous names" and are not wall claims.
+    floor = WALL_MIN_ABS_FRACTION * float(np.max(np.abs(net))) if net.size else 0.0
+    has_call_wall = net[i_hi] > 0 and abs(net[i_hi]) >= floor
+    has_put_wall = net[i_lo] < 0 and abs(net[i_lo]) >= floor
+
     return KeyLevels(
         net_gex=float(net.sum()),
         call_gex=float(call.sum()),
         put_gex=float(put.sum()),
         abs_gex=float(absolute.sum()),
-        call_wall=float(strikes[i_hi]),
-        call_wall_gex=float(net[i_hi]),
-        put_wall=float(strikes[i_lo]),
-        put_wall_gex=float(net[i_lo]),
+        call_wall=float(strikes[i_hi]) if has_call_wall else None,
+        call_wall_gex=float(net[i_hi]) if has_call_wall else None,
+        put_wall=float(strikes[i_lo]) if has_put_wall else None,
+        put_wall_gex=float(net[i_lo]) if has_put_wall else None,
         max_abs_strike=float(strikes[i_abs]),
         max_abs_gex=float(absolute[i_abs]),
         max_net_strike=float(strikes[i_hi]),

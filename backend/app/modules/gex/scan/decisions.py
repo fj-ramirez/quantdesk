@@ -115,6 +115,7 @@ __all__ = [
     "LEVEL_STOP_BUFFER_ATR",
     "MIN_REWARD_RISK",
     "MIN_TARGET_ATR",
+    "PIN_REACH_ATR",
     "STOP_MAX_ATR",
     "TARGET_FALLBACK_ATR",
     "VOLATILITY_STOP_ATR",
@@ -142,6 +143,18 @@ FADE_REACH_ATR = 1.5
 #: around. Past it the wall is not emitted at all -- three ATR is more than a week of ordinary
 #: range and the chain will have been recaptured several times before spot gets there.
 WATCH_REACH_ATR = 3.0
+
+#: How close spot must sit to a positive-gamma strike *below* it before that strike is a
+#: `GAMMA_PIN` rather than a level price has left behind (T99).
+#:
+#: A pin is a claim about proximity, not about reach: the setup is "spot is resting on the
+#: largest positive-gamma strike in the book and dealer hedging is holding it there", which
+#: stops being true once price has actually travelled away. The five historical rows that
+#: motivated this key sat 0.10, 0.11, 0.17, 0.25 and 0.72 ATR from spot, so 1.0 covers every
+#: observed case with margin while excluding the 1.0-3.0 ATR band where `WATCH_REACH_ATR`
+#: would otherwise have emitted one. Deliberately tighter than `FADE_REACH_ATR`: a wall you
+#: can rest a limit at is a different claim from a strike price is pinned to.
+PIN_REACH_ATR = 1.0
 
 #: Stop distance beyond a faded wall. Half an ATR is enough that an intraday probe through the
 #: strike (the ordinary way a wall gets *tested*) does not stop the trade, while a close a full
@@ -458,6 +471,21 @@ def _score(
 def _structure(setup: str, side: str, iv_rv_ratio: float | None) -> str:
     """A one-line options-structure hint. Reads the IV/RV ratio when there is one; expresses
     no vol view when there is not, rather than assuming one."""
+    if setup == "pin":
+        # Same legs as a fade -- a credit spread with its short strike at the level is the
+        # structure either way -- but the reasoning differs enough to be worth saying: a pin
+        # is sold because price is expected to stay, not because a level is expected to hold.
+        if iv_rv_ratio is not None and iv_rv_ratio >= IV_RICH_RATIO:
+            return (
+                f"Sell a put credit spread with the short strike at the pinned level (IV/RV "
+                f"{iv_rv_ratio:.2f}: implied is rich versus realized, and a pinned strike is "
+                "where decay is paid for twice)."
+            )
+        return (
+            "Buy the pinned strike in the underlying with a stop below it, or sell a put "
+            "credit spread whose short strike sits on it; the edge is dealer hedging holding "
+            "price near the strike, not a directional view."
+        )
     if setup == "fade":
         if iv_rv_ratio is not None and iv_rv_ratio >= IV_RICH_RATIO:
             leg = "call credit spread" if side == "SHORT" else "put credit spread"
@@ -541,8 +569,35 @@ def _fade(
     trend_composite: float | None,
     breakouts: BreakoutSummary | None,
 ) -> Opportunity | None:
-    """A fade at `wall`. `side` is `SHORT` for the wall above spot, `LONG` for the one below.
-    Returns `None` when the wall is beyond `WATCH_REACH_ATR` -- not a suggestion at all."""
+    """A fade at `wall`, or a pin on it. `side` is `SHORT` for the wall above spot, `LONG` for
+    the one below. Returns `None` when the wall is out of reach, or when the setup the caller
+    asked for contradicts the wall's own gamma -- see below.
+
+    **A wall is named by its net gamma, never by which side of spot it landed on** (T99).
+    `app.modules.gex.scan.regime._nearest_walls` deliberately selects the nearest wall below
+    and above spot *by position*, because the two walls are not guaranteed to straddle spot;
+    in doing so it discards which one was the call wall and which the put wall. Re-deriving
+    that identity from `side` -- as this function did until T99 -- renames whichever wall
+    happens to sit on the "wrong" side, and produces confident prose asserting the wrong
+    structural fact. Six emitted decisions carried that error.
+
+    The four combinations of position and sign, stated exhaustively because collapsing them
+    into a single sign assertion is the fix that looks right and is not:
+
+    ============ ========== =================================== ========================
+    position     net gamma  dealer hedging into it              emitted as
+    ============ ========== =================================== ========================
+    above spot   positive   sells strength: resists             ``FADE_CALL_WALL`` (SHORT)
+    below spot   negative   buys weakness: resists              ``FADE_PUT_WALL`` (LONG)
+    below spot   positive   buys weakness: holds price          ``GAMMA_PIN`` (LONG)
+    above spot   negative   chases the move: **amplifies**      nothing
+    ============ ========== =================================== ========================
+
+    The last row is suppressed rather than renamed. Every fade here rests on dealers being
+    long gamma so that hedging leans against the move; at the most negative-gamma strike in
+    the book hedging does the opposite, so the thesis is inverted rather than mislabelled.
+    Shorting into it was a real trade error, not a naming one.
+    """
     atr = regime.atr14
     assert atr is not None  # gated in `decide`
     spot = regime.spot
@@ -550,13 +605,30 @@ def _fade(
 
     if wall.distance_atr is None or wall.distance_atr > WATCH_REACH_ATR:
         return None
+
+    is_call_wall = wall.net_gex > 0
+    if side == "SHORT" and not is_call_wall:
+        return None  # put wall above spot: the long-gamma rationale is inverted. See docstring.
+
+    is_pin = side == "LONG" and is_call_wall
+    if is_pin and wall.distance_atr > PIN_REACH_ATR:
+        # A positive-gamma strike this far below spot is a level price has left behind, not a
+        # magnet holding it. It is also not a put wall, so there is nothing honest to emit.
+        return None
+
     status = "active" if wall.distance_atr <= FADE_REACH_ATR else "watch"
 
     entry = wall.strike
     stop = entry - direction * FADE_STOP_BUFFER_ATR * atr
     risk = abs(stop - entry)
-    wall_word = "call wall" if side == "SHORT" else "put wall"
+    wall_word = "call wall" if is_call_wall else "put wall"
     beyond_word = "above" if side == "SHORT" else "below"
+    # The opposite wall's identity is derived the same way, for the same reason.
+    opposite_word = (
+        ("call wall" if opposite.net_gex > 0 else "put wall")
+        if opposite is not None
+        else "the opposite side of the book"
+    )
 
     # Target: walk the by-strike ladder from the entry back toward the opposite wall (or, with
     # no opposite wall, toward the far edge of the chain) and take the first strike with
@@ -576,9 +648,9 @@ def _fade(
         if distance >= MIN_REWARD_RISK * risk:
             target = row.strike
             target_label = (
-                f"first strike back toward the {'put' if side == 'SHORT' else 'call'} wall "
-                f"carrying at least {ROOM_BEYOND_FRACTION:.0%} of the faded wall's gamma "
-                f"({_gex(row.abs_gex)})"
+                f"first strike back toward the {opposite_word} carrying at least "
+                f"{ROOM_BEYOND_FRACTION:.0%} of the {'pinned' if is_pin else 'faded'} strike's "
+                f"gamma ({_gex(row.abs_gex)})"
             )
             break
     target_2: float | None = None
@@ -586,10 +658,10 @@ def _fade(
     if opposite is not None:
         if target is None:
             target = opposite.strike
-            target_label = f"the opposite ({'put' if side == 'SHORT' else 'call'}) wall"
+            target_label = f"the opposite wall ({opposite_word})"
         elif opposite.strike != target:
             target_2 = opposite.strike
-            target_2_label = f"the opposite ({'put' if side == 'SHORT' else 'call'}) wall"
+            target_2_label = f"the opposite wall ({opposite_word})"
     if target is None:
         # No opposite wall and no ladder strike: the fade has nowhere computed to aim at.
         # Spot itself is the one honest reference left -- the trade is "back to where it
@@ -603,6 +675,11 @@ def _fade(
     rr = reward / risk if risk > 0 else None
 
     score, breakdown = _score(
+        # A pin scores in the **fade family**, deliberately, while carrying its own `setup`
+        # label on the row below. `_score` compares `setup` against the regime *verdict*, and
+        # the verdict a pin occurs under is "fade" -- a long-gamma, range-bound book is the
+        # precondition for both. Passing "pin" here would score it as contradicting the very
+        # regime that makes it work, and print that contradiction in the breakdown.
         setup="fade",
         verdict=regime.verdict,
         ratio=regime.positioning.ratio,
@@ -611,13 +688,26 @@ def _fade(
         breakout_rate=breakouts.rate if breakouts is not None else None,
     )
 
+    ratio_clause = (
+        f" ({regime.positioning.ratio:.0%} of gross)" if regime.positioning.ratio is not None else ""
+    )
+    if is_pin:
+        # A pin is not a fade and must not be described as one: spot is resting *on* the
+        # strike, so the claim is that hedging holds it there, not that it turns it away.
+        lead = (
+            f"Spot is sitting on the largest positive-gamma strike in the book "
+            f"({_fmt(wall.strike)}, {_gex(wall.net_gex)} net). Dealers are long "
+            f"gamma{ratio_clause}, so hedging sells every move up and buys every move down: "
+            f"the strike acts as a magnet, not a boundary."
+        )
+    else:
+        lead = (
+            f"Dealers are long gamma{ratio_clause}: hedging sells strength and buys weakness, "
+            f"so a move into the {wall_word} at {_fmt(wall.strike)} meets "
+            f"{'supply' if side == 'SHORT' else 'demand'}."
+        )
     thesis = [
-        f"Dealers are long gamma ({regime.positioning.ratio:.0%} of gross): hedging sells "
-        f"strength and buys weakness, so a move into the {wall_word} at {_fmt(wall.strike)} "
-        f"meets {'supply' if side == 'SHORT' else 'demand'}."
-        if regime.positioning.ratio is not None
-        else f"Dealers are long gamma: a move into the {wall_word} at {_fmt(wall.strike)} "
-        f"meets {'supply' if side == 'SHORT' else 'demand'}.",
+        lead,
         f"The {wall_word} carries {_gex(wall.abs_gex)} of gamma and sits "
         f"{wall.distance_atr:.2f} ATR {beyond_word} spot"
         + (
@@ -632,7 +722,9 @@ def _fade(
             thesis.append(
                 f"The gamma flip is {regime.flip_distance_atr:.2f} ATR below spot"
                 + (
-                    ": a rejection at the wall plays out inside a long-gamma regime."
+                    ": the pin holds inside a long-gamma regime."
+                    if is_pin
+                    else ": a rejection at the wall plays out inside a long-gamma regime."
                     if regime.flip_distance_atr > CONTINUATION_FLIP_ATR
                     else ", close enough that a downside break would flip dealers short."
                 )
@@ -665,8 +757,8 @@ def _fade(
     ]
     if regime.flip_point is not None and side == "LONG" and regime.flip_distance_atr is not None:
         invalidation.append(
-            f"Spot trading below the flip at {_fmt(regime.flip_point)}: the demand at the put "
-            "wall is only there while dealers are long gamma above the flip."
+            f"Spot trading below the flip at {_fmt(regime.flip_point)}: the demand at the "
+            f"{wall_word} is only there while dealers are long gamma above the flip."
         )
 
     warnings: list[str] = []
@@ -696,14 +788,19 @@ def _fade(
         )
 
     return Opportunity(
-        key=f"FADE_{'CALL' if side == 'SHORT' else 'PUT'}_WALL",
-        setup="fade",
+        # Derived from the wall's gamma, never from `side`. See this function's docstring.
+        key="GAMMA_PIN" if is_pin else f"FADE_{'CALL' if is_call_wall else 'PUT'}_WALL",
+        setup="pin" if is_pin else "fade",
         side=side,
         status=status,
         score=score,
         grade=_grade(score),
         entry=entry,
-        entry_label=f"resting limit at the {wall_word}",
+        entry_label=(
+            f"resting limit at the pinned strike ({wall_word})"
+            if is_pin
+            else f"resting limit at the {wall_word}"
+        ),
         stop=stop,
         stop_label=f"{wall_word} {'+' if side == 'SHORT' else '-'} {FADE_STOP_BUFFER_ATR:.1f} ATR",
         target=target,
@@ -717,7 +814,7 @@ def _fade(
         reward_atr=reward / atr,
         thesis=tuple(thesis),
         invalidation=tuple(invalidation),
-        structure=_structure("fade", side, regime.iv_rv_ratio),
+        structure=_structure("pin" if is_pin else "fade", side, regime.iv_rv_ratio),
         warnings=tuple(warnings),
         score_breakdown=breakdown,
         rejection_reason=rejection,

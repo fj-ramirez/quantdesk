@@ -1603,8 +1603,13 @@ dispatches -- sequential, never parallel.
 decisions carry the wrong wall name, with confident prose asserting it; one of the six is a
 genuine trade error, not just a mislabel, and the resolved pair has contaminated the track
 record. Adds a fifth decision key, **`GAMMA_PIN`** -- spot resting on the largest
-positive-gamma strike is a magnet, not a wall -- scored in its own right. Spec:
+positive-gamma strike is a magnet, not a wall -- scored in its own right. Spec and result:
 [plans/desk-integrity/00-wall-identity.md](plans/desk-integrity/00-wall-identity.md).
+
+**Done 2026-09-21.** 1,207 backend tests green (19 added), 408 frontend (1 added), both
+linters clean. `WALL_MIN_ABS_FRACTION` landed at 1e-4 rather than the 1e-2 first proposed --
+measured against 859 stored rows, where 1e-2 would have nulled a real $44.8mn 0DTE wall. The
+historic `gex.gex_levels` recompute still needs a write seat on the homeserver.
 
 ## T100 · Opus · T99
 

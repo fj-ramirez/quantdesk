@@ -34,6 +34,7 @@ from zoneinfo import ZoneInfo
 
 import httpx
 import numpy as np
+import pandas as pd
 import pytest
 
 from app.core.config import settings
@@ -854,3 +855,81 @@ def test_compute_all_on_the_spx_fixture_runs_well_under_two_seconds(spx_fixture_
     start = time.perf_counter()
     E.compute_all(spx_fixture_snapshot)
     assert time.perf_counter() - start < 2.0
+
+
+# --------------------------------------------------------------------------------------
+# T99: a wall must be measurably there, not merely the extreme of the array.
+# --------------------------------------------------------------------------------------
+
+
+def _levels_from(rows):
+    """`key_levels` over `(strike, call_gex, put_gex)` triples."""
+    frame = pd.DataFrame(
+        [
+            {
+                "strike": k,
+                "call_gex": c,
+                "put_gex": p,
+                "net_gex": c + p,
+                "abs_gex": abs(c) + abs(p),
+            }
+            for k, c, p in rows
+        ]
+    )
+    return E.key_levels(frame, spot=100.0)
+
+
+#: The three live `ZERO_DTE` rows from 2026-09-21 that motivated the floor: each reports a put
+#: wall whose net gamma is numerical residue, because `argmin` over an all-positive array
+#: returns the *least positive* strike. `(book max net, residue net)`.
+_T99_RESIDUE = [
+    pytest.param(1.79e9, -1.87, id="minus-1.87-dollars"),
+    pytest.param(2.00e8, -5.48e-37, id="minus-5.48e-37"),
+    pytest.param(4.35e6, -2.17e-20, id="minus-2.17e-20"),
+]
+
+
+@pytest.mark.parametrize(("book_max", "residue"), _T99_RESIDUE)
+def test_t99_residual_put_wall_is_not_a_wall(book_max, residue):
+    """A sign check passes all three of these -- they really are negative. Only a magnitude
+    test rejects them, which is why `WALL_MIN_ABS_FRACTION` is not a sign guard."""
+    levels = _levels_from([(95.0, 0.0, residue), (105.0, book_max, 0.0)])
+    assert levels.put_wall is None
+    assert levels.put_wall_gex is None
+    # The raw extremum is still reported under its unambiguous name -- it is not a wall claim.
+    assert levels.min_net_strike == 95.0
+    assert levels.call_wall == 105.0
+
+
+def test_t99_small_but_real_wall_survives():
+    """The floor rejects residue, not small walls. A $44.8mn wall opposite a large 0DTE call
+    side is the real case a 1% floor would have destroyed; at 1e-4 it survives."""
+    levels = _levels_from([(95.0, 0.0, -44.8e6), (105.0, 20.0e9, 0.0)])
+    assert levels.put_wall == 95.0
+    assert levels.put_wall_gex == pytest.approx(-44.8e6)
+
+
+def test_t99_full_chain_walls_are_untouched():
+    """688 stored ALL/EX_ZERO_DTE rows have a weakest wall at 3.88% of their book maximum, a
+    388x margin over the floor. A normal chain must not lose a level."""
+    levels = _levels_from(
+        [(95.0, 0.0, -425e6), (100.0, 50e6, -40e6), (105.0, 662e6, 0.0)]
+    )
+    assert levels.call_wall == 105.0
+    assert levels.put_wall == 95.0
+
+
+def test_t99_all_positive_book_has_no_put_wall():
+    """The general form of the bug: with no negative strike at all there is no put wall, and
+    saying so is the honest answer. `argmin` would have named the least positive one."""
+    levels = _levels_from([(95.0, 1.0e6, 0.0), (105.0, 8.0e9, 0.0)])
+    assert levels.put_wall is None
+    assert levels.call_wall == 105.0
+
+
+def test_t99_all_negative_book_has_no_call_wall():
+    """The mirror, which had the same latent defect: `argmax` over an all-negative array
+    returns the least negative strike and would have called it a call wall."""
+    levels = _levels_from([(95.0, 0.0, -8.0e9), (105.0, 0.0, -1.0e6)])
+    assert levels.call_wall is None
+    assert levels.put_wall == 95.0

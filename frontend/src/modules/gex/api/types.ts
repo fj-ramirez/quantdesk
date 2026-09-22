@@ -1113,7 +1113,10 @@ export interface FlowsResponse {
 // multiple named as such in its `*_label`).
 // ---------------------------------------------------------------------------------------
 
-export type OpportunitySetup = 'fade' | 'continuation';
+/** `pin` (T99) is a `GAMMA_PIN`: spot resting on the largest positive-gamma strike in the
+ * book, held there by dealer hedging. It is scored in the fade family but is not a fade --
+ * the claim is that price stays, not that a level turns it away. */
+export type OpportunitySetup = 'fade' | 'continuation' | 'pin';
 export type OpportunitySide = 'LONG' | 'SHORT';
 /** `active`: the entry is reachable now. `watch`: a fade whose wall is 1.5-3 ATR away, to
  * pre-plan around. `rejected`: emitted so the user sees *why* the geometry does not pay

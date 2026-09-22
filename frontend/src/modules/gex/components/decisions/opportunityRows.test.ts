@@ -29,4 +29,11 @@ describe('opportunityRows', () => {
     expect(setupLabel('FADE_CALL_WALL')).toBe('Fade call wall');
     expect(setupLabel('CONTINUATION_DOWN')).toBe('Continuation down');
   });
+
+  it('labels a key it has never seen, without a code change', () => {
+    // T99 added GAMMA_PIN backend-side. Nothing here enumerates keys, and nothing should:
+    // a new setup that needs a frontend edit before it renders is a setup that silently
+    // disappears from the desk on the day it starts emitting.
+    expect(setupLabel('GAMMA_PIN')).toBe('Gamma pin');
+  });
 });
