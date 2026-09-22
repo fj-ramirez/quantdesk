@@ -5,8 +5,16 @@ pointed at. This is that connector.
 
 **Domain tools first, `query_sql` as the escape hatch.** A server exposing only raw SQL makes
 the model guess at a schema it has never seen, and the failure mode is a confidently wrong
-query rather than an error. The eight tools below encode the questions actually worth asking;
+query rather than an error. The ten tools below encode the questions actually worth asking;
 `query_sql` covers everything else and is deliberately the least convenient option.
+
+**A domain tool that is awkward for the common case costs more than the calls it wastes**
+(T105/T106). `gex_levels` used to take one symbol and return every stored snapshot of it, so
+the everyday question -- the board, now -- meant either 28 calls or a drop to `query_sql`,
+which is what the `market-research` skill ended up teaching. Bypassing the domain tool also
+bypasses its caveats, so ergonomics here is an honesty property, not a convenience one. The
+same reasoning added `desk_status` and `gex_track_record`: both were hand-written SQL in a
+prompt file, and the track record was additionally *hardcoded as prose* that then rotted.
 
 **Every result carries its caveats, structurally.** `research_leaderboard` returns the noise
 ceiling in the same payload as the rows, the terminal tools state the `as_of` they actually used
@@ -23,6 +31,7 @@ failure looks like the client's fault.
 from __future__ import annotations
 
 import datetime as dt
+import json
 
 import psycopg
 from mcp.server.mcpserver import MCPServer
@@ -106,32 +115,84 @@ def _as_of_note(as_of: dt.datetime, explicit: bool) -> str:
 
 @server.tool(
     description=(
-        "GEX levels for one underlying: flip point, call/put walls and net gamma, from the "
-        "stored snapshot index. Returns the most recent snapshot on or before `date`, or the "
-        "latest overall when `date` is omitted."
+        "GEX levels: flip point, call/put walls and net gamma, from the stored snapshot index. "
+        "**One row per (symbol, filter) for each symbol's most recent snapshot** on or before "
+        "`date`. `symbol` accepts a comma-separated list, or omit it for the whole universe — "
+        "the board in one call. Set `history=true` for every stored snapshot of one symbol "
+        "over time instead."
     )
 )
-def gex_levels(symbol: str, date: str | None = None, limit: int = DEFAULT_ROW_LIMIT) -> str:
-    """Flip point, walls and regime for a symbol."""
-    on = _parse_date(date, field="date")
-    sql = f"""
-        SELECT s.underlying, s.captured_at, s.spot, s.is_eod, l.filter,
-               l.net_gex, l.flip_point, l.call_wall, l.call_wall_gex,
-               l.put_wall, l.put_wall_gex, l.max_abs_strike
-        FROM {SCHEMA_GEX}.gex_levels l
-        JOIN {SCHEMA_GEX}.snapshots s ON s.id = l.snapshot_id
-        WHERE s.underlying = %(symbol)s
-          {"AND s.captured_at::date <= %(on)s" if on else ""}
-        ORDER BY s.captured_at DESC, l.filter
+def gex_levels(
+    symbol: str | None = None,
+    date: str | None = None,
+    history: bool = False,
+    limit: int = DEFAULT_ROW_LIMIT,
+) -> str:
+    """Flip point, walls and regime -- latest per symbol, or one symbol's history.
+
+    **Latest-per-symbol is the default because it is the question** (T105). This tool used to
+    order every stored snapshot by `captured_at DESC` and cut at `limit`, which meant a single
+    `gex_levels("QQQ")` returned ~33 snapshots across 3 filters -- roughly 9,000 tokens to
+    answer something whose answer is the first three rows, with a truncation warning attached.
+    Its description already claimed it returned "the most recent snapshot"; now it does.
     """
-    params: dict[str, object] = {"symbol": symbol.upper()}
-    if on:
-        params["on"] = on
+    on = _parse_date(date, field="date")
+    symbols = [part.strip().upper() for part in symbol.split(",") if part.strip()] if symbol else None
+
+    if history:
+        if not symbols or len(symbols) != 1:
+            return (
+                "`history=true` describes one symbol over time, so it needs exactly one "
+                "`symbol`. Omit `history` to compare symbols at their latest capture."
+            )
+        sql = f"""
+            SELECT s.underlying, s.captured_at, s.session_date, s.spot, s.is_eod, l.filter,
+                   l.net_gex, l.flip_point, l.call_wall, l.call_wall_gex,
+                   l.put_wall, l.put_wall_gex, l.max_abs_strike
+            FROM {SCHEMA_GEX}.gex_levels l
+            JOIN {SCHEMA_GEX}.snapshots s ON s.id = l.snapshot_id
+            WHERE s.underlying = %(symbol)s
+              {"AND s.captured_at::date <= %(on)s" if on else ""}
+            ORDER BY s.captured_at DESC, l.filter
+        """
+        params: dict[str, object] = {"symbol": symbols[0]}
+        if on:
+            params["on"] = on
+        scope_note = f"**History for {symbols[0]}**, newest capture first."
+    else:
+        sql = f"""
+            WITH latest AS (
+                SELECT DISTINCT ON (s.underlying)
+                       s.id, s.underlying, s.captured_at, s.session_date, s.spot, s.is_eod
+                FROM {SCHEMA_GEX}.snapshots s
+                WHERE (%(symbols)s::text[] IS NULL OR s.underlying = ANY(%(symbols)s))
+                  {"AND s.captured_at::date <= %(on)s" if on else ""}
+                ORDER BY s.underlying, s.captured_at DESC
+            )
+            SELECT t.underlying, t.captured_at, t.session_date, t.spot, t.is_eod, l.filter,
+                   l.net_gex, l.flip_point, l.call_wall, l.call_wall_gex,
+                   l.put_wall, l.put_wall_gex, l.max_abs_strike
+            FROM latest t
+            JOIN {SCHEMA_GEX}.gex_levels l ON l.snapshot_id = t.id
+            ORDER BY t.underlying, l.filter
+        """
+        params = {"symbols": symbols}
+        if on:
+            params["on"] = on
+        scope_note = (
+            "Each symbol's **most recent** capture"
+            + (f" on or before {on.isoformat()}" if on else "")
+            + ". Pass `history=true` with one symbol for its history instead."
+        )
+
     result = run_query(sql, params, limit=limit)
     note = (
-        "`captured_at` is when the chain was captured, in UTC. A null level is a real answer — "
-        "it means that filter admitted no contracts, or the profile never changed sign — and is "
-        "never a zero."
+        f"{scope_note}\n\n"
+        "`captured_at` is when the chain was captured, in UTC; `session_date` is the trading "
+        "session its *contents* belong to, which differs on any weekend or pre-open capture — "
+        "group by `session_date`, not by `captured_at`. A null level is a real answer: the "
+        "filter admitted no contracts, the profile never changed sign, or no strike carried "
+        "enough net gamma to be a wall. It is never a zero."
     )
     return render_result(result, note=note)
 
@@ -139,36 +200,253 @@ def gex_levels(symbol: str, date: str | None = None, limit: int = DEFAULT_ROW_LI
 @server.tool(
     description=(
         "The decision log: opportunities the engine emitted, with the levels as suggested and "
-        "the outcome columns filled in from later bars. Filter by symbol and/or a start date."
+        "the outcome columns filled in from later bars. Filter by symbol, decision `key` "
+        "(e.g. FADE_CALL_WALL, GAMMA_PIN) and/or a start date. Set `thesis=true` to get each "
+        "row's full reasoning rather than a second query for it."
     )
 )
 def gex_decisions(
-    symbol: str | None = None, since: str | None = None, limit: int = DEFAULT_ROW_LIMIT
+    symbol: str | None = None,
+    key: str | None = None,
+    since: str | None = None,
+    thesis: bool = False,
+    limit: int = DEFAULT_ROW_LIMIT,
 ) -> str:
-    """Emitted opportunities and how they resolved."""
+    """Emitted opportunities, the levels they named, and how they resolved."""
     start = _parse_date(since, field="since")
     clauses = []
     params: dict[str, object] = {}
     if symbol:
         clauses.append("underlying = %(symbol)s")
         params["symbol"] = symbol.upper()
+    if key:
+        clauses.append("key = %(key)s")
+        params["key"] = key.upper()
     if start:
         clauses.append("decided_on >= %(start)s")
         params["start"] = start
     where = f"WHERE {' AND '.join(clauses)}" if clauses else ""
     sql = f"""
-        SELECT underlying, decided_on, filter, key, outcome, fill,
-               result_r, mfe_r, mae_r, mark_r
+        SELECT id, underlying, decided_on, filter, key, side, status, grade,
+               spot, entry, stop, target, snapshot_id,
+               outcome, fill, result_r, mfe_r, mae_r, mark_r
         FROM {SCHEMA_GEX}.decisions
         {where}
         ORDER BY decided_on DESC, underlying
     """
+    result = run_query(sql, params, limit=limit)
     note = (
         "A recorded level is a commitment the track record scores: rows are inserted when first "
-        "seen and never rewritten. `outcome` null means still pending, which is different from a "
-        "loss."
+        "seen and **never rewritten**, wrong ones included.\n\n"
+        "**`outcome` is never null.** It is one of `pending` (no resolution yet), `untriggered` "
+        "(the entry was never reached -- not a loss; most limit-style decisions end here), "
+        "`stop`, or `target`. The test for "
+        "*unresolved* is **`result_r IS NULL`**, not `outcome IS NULL`: far more rows carry an "
+        "`outcome` than carry a scored `result_r`, so counting the wrong one inflates every "
+        "track-record denominator. Use `gex_track_record` rather than averaging these by hand."
     )
-    return render_result(run_query(sql, params, limit=limit), note=note)
+    rendered = render_result(result, note=note)
+
+    if thesis and result.rows:
+        ids = [row[0] for row in result.rows]
+        if len(ids) > 10:
+            return rendered + (
+                f"\n\n*(`thesis` omitted: {len(ids)} rows. Narrow with `key`, `symbol` or "
+                "`since` to 10 or fewer and ask again — full reasoning is long, and truncating "
+                "it to fit a table is how a caveat gets lost.)*"
+            )
+        detail = run_query(
+            f"""
+            SELECT id, underlying, key,
+                   payload::jsonb->>'thesis' AS thesis,
+                   payload::jsonb->>'invalidation' AS invalidation,
+                   payload::jsonb->>'structure' AS structure
+            FROM {SCHEMA_GEX}.decisions WHERE id = ANY(%(ids)s) ORDER BY id
+            """,
+            {"ids": ids},
+            limit=len(ids),
+        )
+        parts = ["", "---", "", "## Reasoning, in full"]
+        for row in detail.rows:
+            d_id, und, d_key, th, inval, struct = row
+            parts.append(f"\n**#{d_id} {und} {d_key}**")
+            for label, blob in (("Thesis", th), ("Invalidation", inval)):
+                if not blob:
+                    continue
+                try:
+                    items = json.loads(blob)
+                except (TypeError, ValueError):
+                    items = [blob]
+                parts.append(f"\n*{label}:*")
+                parts.extend(f"- {item}" for item in (items if isinstance(items, list) else [items]))
+            if struct:
+                parts.append(f"\n*Structure:* {struct}")
+        rendered += "\n".join(parts)
+
+    return rendered
+
+
+@server.tool(
+    description=(
+        "Is the desk fresh? One call: the newest capture, terminal observation, research trial "
+        "and decision, with the rules that decide whether 'recent' actually means 'current'. "
+        "**Run this before quoting any number from this database.**"
+    )
+)
+def desk_status() -> str:
+    """Freshness across all three modules, with the rules that qualify it.
+
+    This exists because the alternative was a hand-written `query_sql` at the top of every
+    session (T106). The `market-research` skill opens by calling a freshness check
+    "non-negotiable, and first, every time" and then supplies the SQL to run -- which is a
+    tool-surface gap wearing a prompt's clothes. A tool can also carry the rules *beside* the
+    numbers they qualify, which prose in a separate file cannot.
+    """
+    gex = run_query(
+        f"""
+        SELECT max(captured_at) AS last_capture,
+               max(session_date) AS last_session,
+               count(*) FILTER (WHERE session_date = (SELECT max(session_date) FROM {SCHEMA_GEX}.snapshots))
+                   AS snaps_in_last_session,
+               count(DISTINCT underlying) FILTER (
+                   WHERE session_date = (SELECT max(session_date) FROM {SCHEMA_GEX}.snapshots)
+               ) AS symbols_in_last_session
+        FROM {SCHEMA_GEX}.snapshots
+        """,
+        limit=1,
+    )
+    decisions = run_query(
+        f"""
+        SELECT max(decided_on) AS last_decision,
+               count(*) FILTER (WHERE result_r IS NULL) AS unresolved,
+               count(result_r) AS scored
+        FROM {SCHEMA_GEX}.decisions
+        """,
+        limit=1,
+    )
+    terminal = run_query(
+        f"""
+        SELECT max(as_of) AS last_as_of, count(DISTINCT series_id) AS series
+        FROM {SCHEMA_TERMINAL}.observations
+        """,
+        limit=1,
+    )
+    research = run_query(
+        f"""
+        SELECT max(run_date) AS last_run, count(*) AS trials
+        FROM {SCHEMA_RESEARCH}.trials
+        """,
+        limit=1,
+    )
+
+    def cell(result, idx):
+        return result.rows[0][idx] if result.rows else None
+
+    from app.mcp.format import render_rows, render_value
+
+    rows = [
+        ("gex — last capture", render_value(cell(gex, 0))),
+        ("gex — last session covered", render_value(cell(gex, 1))),
+        ("gex — snapshots in that session", render_value(cell(gex, 2))),
+        ("gex — symbols in that session", render_value(cell(gex, 3))),
+        ("gex — last decision emitted", render_value(cell(decisions, 0))),
+        ("gex — decisions scored / unresolved",
+         f"{render_value(cell(decisions, 2))} / {render_value(cell(decisions, 1))}"),
+        ("terminal — newest as_of", render_value(cell(terminal, 0))),
+        ("terminal — series count", render_value(cell(terminal, 1))),
+        ("research — last run_date", render_value(cell(research, 0))),
+        ("research — trials searched", render_value(cell(research, 1))),
+    ]
+    table = render_rows(["fact", "value"], [(a, b) for a, b in rows])
+
+    note = (
+        "**Three rules decide whether these numbers mean the market is current.** Each has "
+        "already caused a wrong read on this desk.\n\n"
+        "1. **A weekend or holiday capture holds the previous session's book.** Cboe serves the "
+        "last session, so a Sunday capture is Friday's chain -- useful, and not stale, but it "
+        "is Friday's. `session_date` is the session the contents belong to; `captured_at` is "
+        "the wall clock. Group and compare by `session_date`.\n"
+        "2. **A passed opex voids a gamma profile rather than ageing it.** The third Friday "
+        "(quarterly in Mar/Jun/Sep/Dec) expires the near walls. Levels captured before an opex "
+        "that has since passed must not be quoted at all -- not even with a caveat.\n"
+        "3. **A multi-day gap with sessions inside it is an outage**, and `catchup_skipped … "
+        "\"not a trading day\"` in the worker log is correct behaviour rather than one. Compare "
+        "`last session covered` against the sessions that have actually traded since.\n\n"
+        "`decisions scored / unresolved` uses `result_r IS NOT NULL` as the test for scored, "
+        "which is the only correct one -- see `gex_track_record`."
+    )
+    return f"{note}\n\n{table}"
+
+
+@server.tool(
+    description=(
+        "The decision engine's track record, per signal key, with the standard error beside "
+        "every mean. Read it per key -- the aggregate hides everything useful. Optionally "
+        "filter by `since` or a single `key`."
+    )
+)
+def gex_track_record(key: str | None = None, since: str | None = None) -> str:
+    """Per-key performance, with the sample size and standard error that qualify it.
+
+    **Resolved means `result_r IS NOT NULL`.** Not `outcome IS NOT NULL`: every row carries an
+    `outcome`, including `pending` and `untriggered`, so testing that instead inflates the
+    denominator by more than a factor of two and deflates every mean with rows that never
+    scored. That mistake is the single easiest way to misreport this table.
+
+    **Keys are read from the data, never enumerated here** (T106). `T99` added `GAMMA_PIN`
+    while this tool was being written; a hardcoded list would have dropped it from the record
+    on the day it started emitting, which is exactly the class of silent wrongness the
+    `desk-integrity` initiative exists to remove.
+    """
+    start = _parse_date(since, field="since")
+    clauses = ["result_r IS NOT NULL"]
+    params: dict[str, object] = {}
+    if key:
+        clauses.append("key = %(key)s")
+        params["key"] = key.upper()
+    if start:
+        clauses.append("decided_on >= %(start)s")
+        params["start"] = start
+    where = " AND ".join(clauses)
+
+    sql = f"""
+        SELECT coalesce(key, 'ALL KEYS') AS key,
+               count(*) AS n,
+               count(*) FILTER (WHERE result_r > 0) AS wins,
+               round(avg(result_r)::numeric, 3) AS avg_r,
+               round((stddev_samp(result_r) / sqrt(count(*)))::numeric, 3) AS se,
+               round(min(result_r)::numeric, 2) AS worst,
+               round(max(result_r)::numeric, 2) AS best,
+               min(decided_on) AS first_decision,
+               max(decided_on) AS last_decision
+        FROM {SCHEMA_GEX}.decisions
+        WHERE {where}
+        GROUP BY ROLLUP(key)
+        ORDER BY key = 'ALL KEYS', avg_r DESC NULLS LAST
+    """
+    result = run_query(sql, params, limit=MAX_ROW_LIMIT)
+    if not result.rows:
+        return (
+            "No scored decisions match. Rows are only scored once `result_r` is filled in from "
+            "later bars; `pending` and `untriggered` rows carry an `outcome` but no `result_r`, "
+            "and never will in the untriggered case."
+        )
+
+    note = (
+        "**Resolved means `result_r IS NOT NULL`.** Rows whose `outcome` is `pending` or "
+        "`untriggered` are excluded: they carry an outcome but were never scored, and counting "
+        "them would inflate `n` while deflating `avg_r`. `untriggered` in particular is not a "
+        "loss -- most limit-style decisions never fill, which is the system working.\n\n"
+        "**Read `n` and `se` before `avg_r`.** A mean R over a handful of trades is noise with "
+        "a decimal point, and the same discipline the research module's noise ceiling enforces "
+        "applies here: at n below roughly 30, `avg_r ± 2·se` will usually straddle zero, which "
+        "means the sign of the mean is not established. Quote the `n` every time, and describe "
+        "small samples as leanings rather than results.\n\n"
+        "`wins` counts `result_r > 0`, so a scratch at exactly 0 is neither a win nor counted "
+        "as a loss in that column. Keys come from the data, so a signal added later appears "
+        "here without anyone editing this tool."
+    )
+    return render_result(result, note=note)
 
 
 # --- research --------------------------------------------------------------------------------

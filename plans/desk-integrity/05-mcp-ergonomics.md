@@ -178,3 +178,86 @@ Measured 2026-09-21 against live Postgres.
   not where the cost is.
 - Any change to the noise ceiling, the point-in-time rule or the null marker.
 - A write path of any kind.
+
+
+---
+
+## Result — T105 and T106, 2026-09-22
+
+**Done. Both linters clean; the MCP suite is 32 passing, 8 skipped (the skips need Postgres and
+are unrelated).** Written while the homeserver's SSH path was unavailable, so these are verified
+by their contracts and unit tests rather than by a live session; the call-count measurement in
+*Acceptance* 1 and 6 still has to be taken against the real desk.
+
+### `gex_levels` now answers the question it always claimed to
+
+Its description promised "the most recent snapshot on or before `date`". Its SQL ordered every
+stored snapshot by `captured_at DESC` and cut at `limit`, so `gex_levels("QQQ")` returned ~33
+snapshots across three filters -- ~9,000 tokens, truncation warning attached, to answer
+something whose answer was the first three rows.
+
+Now: **one row per (symbol, filter) at each symbol's latest capture**, `symbol` takes a
+comma-separated list, and **omitting it returns the whole universe** -- the board in one call
+instead of 28. `history=true` with exactly one symbol gives the old shape, and asking for
+history across several symbols is refused with an explanation rather than silently returning
+the board.
+
+It also surfaces `session_date` (T102) beside `captured_at`, with the note saying which one to
+group by. That pairing is the point: the tool that hands over the number also hands over the
+rule for reading it.
+
+### `gex_decisions` is terminal for the common question
+
+Added `id`, `side`, `status`, `grade`, `spot`, `stop`, `target` and `snapshot_id`, plus a `key`
+filter -- so "how did `GAMMA_PIN` do" is one call rather than a `query_sql` fallback.
+
+`thesis=true` appends each row's full reasoning *below* the table rather than as a column,
+because the formatter truncates cells at 160 characters and a truncated invalidation clause is
+a caveat that has been silently removed. Over ten rows it refuses and says to narrow the query,
+for the same reason.
+
+**The note's factual bug is fixed.** It told every caller "`outcome` null means still pending".
+`outcome` is never null -- it is `pending`, `untriggered`, `stop` or `target` -- so a model
+following that concluded nothing was pending. The note now names all four and states that the
+real test is `result_r IS NULL`, with the reason: far more rows carry an `outcome` than carry a
+scored `result_r`, so the wrong test inflates every denominator by more than a factor of two.
+
+### `desk_status` and `gex_track_record` retire hand-written SQL from the prompt
+
+`desk_status` is one call for the newest capture, session covered, terminal observation,
+research trial and decision -- plus the three rules that decide whether "recent" means
+"current": weekend captures hold the previous session, a passed opex voids a profile rather
+than ageing it, and `catchup_skipped "not a trading day"` is correct behaviour rather than an
+outage. The skill called this check "non-negotiable, and first, every time" and then supplied
+the SQL, which is a tool-surface gap wearing a prompt's clothes.
+
+`gex_track_record` returns per-key `n`, wins, mean R, **standard error**, worst, best and date
+span, with `ROLLUP` for the total. It is the `F7d` fix: there is now nothing left to hardcode.
+
+Two properties it is tested for, both by reading its own source:
+
+- **Keys come from the data** (`GROUP BY ROLLUP(key)`), never a list. `T99` added `GAMMA_PIN`
+  while this was being written, and a hardcoded four-key list would have dropped the new signal
+  from the record on the day it started emitting.
+- **Scored means `result_r IS NOT NULL`**, never `outcome IS NOT NULL`.
+
+The first draft of those two tests grepped the raw source and failed -- because both tools
+*discuss* the wrong approach in prose, deliberately, so the next reader does not reintroduce
+it. The tests now strip the docstring first. Worth recording: a guard that cannot tell a
+warning from the thing it warns about will fire on well-documented code.
+
+### Deliberately not done
+
+No caveat was shortened anywhere. The per-tool notes cost ~60 tokens against the ~9,000 of rows
+they used to ride along with, so they were never the expense -- and they are the reason a
+smaller model on the other end still reports the noise ceiling.
+
+`query_sql`'s schema-on-error idea (design decision 6) is left alone: it was optional, and the
+row-shape work is where the measured waste was.
+
+### Outstanding
+
+**The measurement.** Acceptance 1 and 6 ask for the new token count on a QQQ levels call and a
+replayed `/market-research` session's MCP call count, against the old ~9,000 and ~12. Both need
+a working connector; the homeserver's SSH path -- which is how this connector is reached -- was
+blocked while this was written. The numbers belong in this section once taken.

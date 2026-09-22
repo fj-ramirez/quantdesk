@@ -275,3 +275,85 @@ def test_the_schema_resource_names_the_point_in_time_trap():
     assert "terminal" in out
     assert "as_of" in out
     assert "look-ahead" in out
+
+
+# --- T105/T106: tool shape and the caveats that travel with it -------------------------------
+#
+# Offline on purpose. These assert the *contracts* -- what a caller is told, and what the tool
+# refuses to guess -- which is where this connector's value lives and which needs no database.
+
+
+def _code_without_docstring(fn) -> str:
+    """A function's source with its docstring removed.
+
+    These tools *discuss* the wrong approach in prose -- "not `outcome IS NOT NULL`", "T99
+    added GAMMA_PIN" -- precisely so the next reader does not reintroduce it. Grepping the raw
+    source therefore finds the warning and reads it as the crime.
+    """
+    import inspect
+
+    src = inspect.getsource(fn)
+    doc = inspect.getdoc(fn)
+    if not doc:
+        return src
+    for line in doc.split(chr(10)):
+        stripped = line.strip()
+        if stripped:
+            src = src.replace(stripped, "")
+    return src
+
+
+def test_t105_history_without_one_symbol_is_refused_before_querying():
+    """`history=true` describes one symbol over time. Asking it of the whole universe is a
+    question with no sensible answer, so it is refused with an explanation rather than silently
+    returning the board. Returns before touching the database, hence offline."""
+    from app.mcp.server import gex_levels
+
+    for bad in (None, "QQQ,SPY"):
+        out = gex_levels(symbol=bad, history=True)
+        assert "exactly one" in out
+        assert "Omit `history`" in out
+
+
+def test_t106_track_record_derives_its_keys_from_the_data():
+    """T99 added GAMMA_PIN while T106 was being written. A tool that enumerated the four keys
+    it knew about would have dropped the new signal from the record on the day it started
+    emitting -- the exact silent wrongness this initiative exists to remove."""
+    from app.mcp.server import gex_track_record
+
+    src = _code_without_docstring(gex_track_record)
+    assert "ROLLUP(key)" in src, "keys must be grouped from the data"
+    for hardcoded in ("FADE_CALL_WALL", "FADE_PUT_WALL", "CONTINUATION_UP", "GAMMA_PIN"):
+        assert hardcoded not in src, f"{hardcoded} is enumerated in the track-record tool"
+
+
+def test_t106_track_record_scores_on_result_r_not_outcome():
+    """Every row carries an `outcome`, including `pending` and `untriggered`. Testing that
+    instead of `result_r` inflated the denominator by more than 2x on the live table."""
+    from app.mcp.server import gex_track_record
+
+    src = _code_without_docstring(gex_track_record)
+    assert "result_r IS NOT NULL" in src
+    assert "outcome IS NOT NULL" not in src
+
+
+def test_t105_decisions_note_states_the_real_pending_test():
+    """The note used to say "`outcome` null means still pending". `outcome` is never null, so a
+    caller following that concluded nothing was pending."""
+    import inspect
+
+    from app.mcp.server import gex_decisions
+
+    src = inspect.getsource(gex_decisions)  # note text lives outside the docstring here
+    assert "`outcome` is never null" in src
+    for literal in ("pending", "untriggered", "stop", "target"):
+        assert literal in src, f"{literal} is not named in the note"
+    assert "result_r IS NULL" in src
+    assert "outcome` null means still pending" not in src
+
+
+def test_t106_tools_are_registered():
+    from app.mcp import server as mod
+
+    for name in ("desk_status", "gex_track_record", "gex_levels", "gex_decisions"):
+        assert callable(getattr(mod, name)), f"{name} missing"
