@@ -10,10 +10,11 @@ in-memory test of the parsing would catch.
 from __future__ import annotations
 
 import datetime as dt
+from types import SimpleNamespace
 
 import pytest
 
-from app.modules.terminal import universe
+from app.modules.terminal import cli, universe
 from app.modules.terminal.adapters import prices as prices_module
 from app.modules.terminal.adapters.prices import PricesAdapter
 from app.modules.terminal.errors import EmptyFetchError, UnknownSeriesError
@@ -156,3 +157,26 @@ def test_each_proxy_series_records_that_it_is_a_proxy():
         assert tracked in (meta.notes or "")
         assert meta.vintage_source == "derived_lag"
         assert meta.snapshot_local_time == "17:30"
+
+
+@pytest.mark.parametrize("source", sorted(universe.FETCHABLE_SOURCES))
+def test_every_fetchable_source_is_accepted_by_the_ingest_flag(source, monkeypatch):
+    """`--source` used to restate the list, so T91's new source ran perfectly well under
+    `--source all` and was rejected outright when named -- a discrepancy nothing else would
+    have caught, and one that returns the moment someone adds the sixth source.
+
+    The handler is stubbed: this is about argparse accepting the value, and running a real
+    ingest here would fetch from four vendors.
+    """
+    seen: list[str] = []
+
+    def _stub(args, settings):
+        seen.append(args.source)
+        return 0
+
+    monkeypatch.setattr(cli, "cmd_ingest", _stub)
+    monkeypatch.setattr(cli, "configure", lambda level: None)
+    monkeypatch.setattr(cli, "load_settings", lambda: SimpleNamespace(log_level="INFO"))
+
+    assert cli.main(["ingest", "--source", source]) == 0
+    assert seen == [source]

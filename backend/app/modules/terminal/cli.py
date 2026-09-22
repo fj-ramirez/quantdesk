@@ -686,8 +686,11 @@ def main(argv: list[str] | None = None) -> int:
     sub.add_parser("verify", help="check every source code is still live")
 
     p_ing = sub.add_parser("ingest", help="register the universe and backfill")
+    # Derived from the universe, not restated: the hardcoded list silently omitted `prices`
+    # the day T91 added it, so `--source prices` was rejected by argparse while the same
+    # source ran perfectly well under `--source all`.
     p_ing.add_argument("--source", default="all",
-                       choices=["all", "fred", "treasury", "cboe", "cftc"])
+                       choices=["all", *sorted(universe.FETCHABLE_SOURCES)])
     p_ing.add_argument("--since", type=date.fromisoformat,
                        help="first value_date (default: XA_BACKFILL_START)")
     p_ing.add_argument("--until", type=date.fromisoformat,
