@@ -70,6 +70,26 @@ Two things follow, and both are easy to get wrong:
 `T104`'s `capture-watch` worker exists because this is unrecoverable: the only available
 mitigation is noticing *today* rather than twelve days later.
 
+## A power cut costs GEX permanently and the terminal nothing
+
+Confirmed on 2026-09-22: the host lost power overnight, came back at 08:38, and the 03:00
+terminal ingest simply never ran. Worth writing down because the two halves of this desk have
+opposite exposure to the same event, and the instinct to treat them alike is wrong both ways.
+
+**GEX captures are unrecoverable.** See above. An outage inside market hours is a permanent
+hole, which is why `T104`'s `capture-watch` exists and why anything risking a capture is a P0.
+
+**Terminal ingest self-heals.** Its sources publish history, and `cmd_ingest` requests a window
+from `settings.backfill_start` rather than "since last run", inserting only what is missing —
+the 2026-09-22 batches wrote 3 and 5 rows because everything else was already present. A missed
+night is picked up by the next one at no cost. Do not build catch-up for it, and do not treat a
+one-night gap in `terminal.observations` as data loss.
+
+So the honest asymmetry: **`capture-watch` alerting on a GEX gap is urgent; the terminal has no
+watchdog and does not need one for missed runs.** What the terminal *would* need a watchdog for
+is a gap that persists across several nights, since that is no longer a missed run but a broken
+source — not built, and named here so the absence is deliberate rather than forgotten.
+
 ## On-disk layout
 
 ```

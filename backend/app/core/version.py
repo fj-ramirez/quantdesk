@@ -134,13 +134,21 @@ def record_service_version(service: str) -> Path | None:
         temporary.write_text(json.dumps(version.to_dict(), indent=2), encoding="utf-8")
         temporary.replace(path)
     except OSError:
+        # The path below is **inside the container**. The previous wording read as a host
+        # path and was followed literally on 2026-09-22, creating /data/run/versions on the
+        # host root -- a real directory, on the wrong filesystem, fixing nothing. DATA_DIR is
+        # a bind mount, so the host location depends on where the stack lives; the docker
+        # form below resolves that by itself and cannot be misapplied.
         logger.warning(
-            "version: could not record %s at %s -- this service will be missing from "
-            "GET /health's `services`. On the homeserver the fix is one command: "
-            "`sudo install -d -o 10001 -g 10001 %s`. Nothing else is affected.",
+            "version: could not record %s at %s (a path INSIDE the container) -- this service "
+            "will be missing from GET /health's `services`. Fix, from the stack directory on "
+            "the host: `docker compose run --rm -u 0 backend sh -c 'mkdir -p %s && chown -R "
+            "10001:10001 %s'`. Do not run `mkdir` on the host path directly unless you "
+            "translate it through the bind mount first. Nothing else is affected.",
             service,
             path,
             path.parent,
+            path.parent.parent,
             exc_info=True,
         )
         return None
