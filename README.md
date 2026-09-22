@@ -124,9 +124,17 @@ source as `root:root`, which both services then refuse to use.
 
 ```
 sudo mkdir -p /srv/docker/quantdesk/data/postgres
+sudo mkdir -p /srv/docker/quantdesk/data/run                  # T98's per-service build stamps
 sudo chown -R 10001:10001 /srv/docker/quantdesk/data          # backend's app user
 sudo chown -R 999:999     /srv/docker/quantdesk/data/postgres # postgres user inside postgres:16
 ```
+
+**`chown` the directory itself, not only what is inside it.** A `data/` that is root-owned
+with 10001-owned children looks fine for a long time — every existing subtree is writable, so
+captures and reports keep working — and then fails the first time a service needs to create a
+*new* top-level directory. That is exactly how T98's version stamps failed on their first
+deploy: three workers logged `could not record ... /data/run/versions` and went unreported
+while everything else carried on normally.
 
 Everything the stack persists lives under `data/`, so the whole thing tars as one unit:
 

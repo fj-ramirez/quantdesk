@@ -117,6 +117,12 @@ def record_service_version(service: str) -> Path | None:
     permissions mismatch is not a reason to lose a 16:20 chain. The failure is logged and the
     service simply goes unreported, which the API renders as an absence rather than as a
     claim.
+
+    The likely cause on a real deployment is the one this hit on its first run: the containers
+    run as uid 10001 and `DATA_DIR` itself is root-owned on the host, so its *existing*
+    subdirectories are writable and a *new* one cannot be created. The log line names the
+    remedy rather than leaving it to be rediscovered -- it is the same one-time `chown` the
+    README's deploy steps already describe for `data/`.
     """
     version = own_version(service)
     path = versions_dir() / f"{service}.json"
@@ -128,7 +134,15 @@ def record_service_version(service: str) -> Path | None:
         temporary.write_text(json.dumps(version.to_dict(), indent=2), encoding="utf-8")
         temporary.replace(path)
     except OSError:
-        logger.warning("version: could not record %s at %s", service, path, exc_info=True)
+        logger.warning(
+            "version: could not record %s at %s -- this service will be missing from "
+            "GET /health's `services`. On the homeserver the fix is one command: "
+            "`sudo install -d -o 10001 -g 10001 %s`. Nothing else is affected.",
+            service,
+            path,
+            path.parent,
+            exc_info=True,
+        )
         return None
     logger.info("version: %s", version.label)
     return path
