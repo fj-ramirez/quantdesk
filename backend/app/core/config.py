@@ -126,6 +126,30 @@ class Settings(BaseSettings):
     XA_FRED_API_KEY: str = ""
     XA_HTTP_TIMEOUT_SECONDS: float = 30.0
 
+    # T104. Outage alerting. **Detection always runs; delivery is opt-in.**
+    #
+    # Empty by default and that is a supported configuration, not a degraded one: the desk must
+    # not require a Telegram account, and the watchdog logs its findings either way. Both must
+    # be set for anything to be sent -- `app.core.notify.notifier_status` says at boot which
+    # mode the worker is in, so alerting nobody ever enabled cannot be mistaken for alerting
+    # that never fired.
+    #
+    # Same recreate-not-restart trap as XA_FRED_API_KEY: compose reads a changed `.env` on
+    # container *recreate*, not on restart.
+    TELEGRAM_BOT_TOKEN: str = ""
+    TELEGRAM_CHAT_ID: str = ""
+
+    # How often the capture watchdog checks. Hourly is far more often than the thing it watches
+    # changes -- the alertable event is a whole session with no captures -- and cheap enough
+    # that the cost of the extra checks is not worth reasoning about.
+    CAPTURE_WATCH_INTERVAL_MINUTES: int = 60
+
+    # Post a "still healthy" note every N days so that *silence* becomes a signal. 0 is off,
+    # and off is the default: the watchdog cannot alert if its own container dies, and a
+    # heartbeat is the cheap mitigation -- but an unsolicited periodic message on a channel the
+    # user was not required to set up is a choice they should make, not inherit.
+    CAPTURE_WATCH_HEARTBEAT_DAYS: int = 0
+
     # Spec 7: one snapshot convention, stored in metadata and applied consistently.
     XA_SNAPSHOT_TZ: str = "America/New_York"
     XA_SNAPSHOT_LOCAL_TIME: str = "16:00"

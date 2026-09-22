@@ -124,6 +124,17 @@ services:
       # research search at 02:00 so two heavy jobs do not contend on one box.
       XA_FRED_API_KEY: ${XA_FRED_API_KEY:-}
       XA_INGEST_CRON: ${XA_INGEST_CRON:-0 3 * * *}
+      # T104. Outage alerting. **Detection always runs; delivery is opt-in and off by default.**
+      # Unset means the `capture-watch` worker logs its findings and sends nothing, which is a
+      # supported configuration -- the desk does not require a Telegram account. Set both to
+      # turn delivery on; the worker logs which mode it is in at every boot.
+      #
+      # Compose reads a changed `.env` on container *recreate*, not on restart -- the same trap
+      # that silently disables FRED ingestion.
+      TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN:-}
+      TELEGRAM_CHAT_ID: ${TELEGRAM_CHAT_ID:-}
+      CAPTURE_WATCH_INTERVAL_MINUTES: ${CAPTURE_WATCH_INTERVAL_MINUTES:-60}
+      CAPTURE_WATCH_HEARTBEAT_DAYS: ${CAPTURE_WATCH_HEARTBEAT_DAYS:-0}
       # T76. The read-only role the T82 MCP connector authenticates as. `alembic upgrade head`
       # creates the role and its grants; `app.core.ro_role` (the boot step after it, see
       # backend/Dockerfile) gives it LOGIN with this password. Defaulted in dev and required in
@@ -235,6 +246,29 @@ services:
       # any more. The mount is here only so a hand-run CLI session can write a log or an export
       # alongside the other modules' data rather than into the container's filesystem.
       - ./data:/data
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  # T104. The watchdog. September quarterly opex week is missing from `gex.snapshots` -- five
+  # open sessions, the whole universe -- and nothing said so for twelve days, because the
+  # endpoint built to catch exactly that (`/api/gex/health/capture`, T29) was never polled.
+  #
+  # **Its own container rather than a job inside `gex-capture`**, which is the entire point: a
+  # watchdog inside the process it watches dies with it and reproduces the silence. This costs
+  # one small container and removes that failure mode for everything short of the host going
+  # down. It does not fix the case where *this* container dies -- see the module docstring,
+  # which says so rather than pretending otherwise.
+  #
+  # No volumes: it reads Postgres and writes nothing but logs and, if configured, one HTTPS
+  # POST. It does not need the Parquet tree.
+  capture-watch:
+    build:
+      context: ./backend
+      target: runtime
+      args: *build_stamp
+    command: ["python", "-m", "app.workers.capture_watch"]
+    environment: *backend_environment
     depends_on:
       postgres:
         condition: service_healthy

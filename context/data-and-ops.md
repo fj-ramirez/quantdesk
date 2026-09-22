@@ -45,6 +45,31 @@ Freshness monitoring: `GET /api/gex/health/capture`. "Stale" means **two or more
 behind the last completed trading day — being exactly one day behind is normal for most of
 any trading day, since today's EOD row does not exist until 16:20.
 
+## A missed capture is gone permanently
+
+**Options open interest cannot be backfilled.** The free Cboe feed serves the current book and
+nothing else: there is no historical endpoint, no vendor archive within this project's cost
+constraints, and no way to reconstruct what open interest was at 16:20 on a day that has
+passed. A capture that did not happen is not "recoverable later" — it is a hole in the record
+forever.
+
+This is why `jobs/catchup.py` exists at all, why anything that risks the 16:20 run is a P0, and
+why the September 2026 gap (09-14 to 09-18, five open sessions, the whole 28-symbol universe)
+is permanent. QQQ's gamma regime flipped from −2.17bn to +4.80bn entirely inside it, across the
+quarterly opex. Both endpoints are in the database; the path between them never will be.
+
+Two things follow, and both are easy to get wrong:
+
+- **Do not plan around recovery.** If a capture is at risk, the choice is to protect it, not to
+  note it for backfilling.
+- **`gex/backfill.py --recompute` is not this.** It recomputes *derived* rows — levels, the
+  per-strike rollup, the expiry rollup — from Parquet files that already exist. It cannot
+  create a snapshot that was never captured, and a session missing from `gex.snapshots` stays
+  missing however often it runs.
+
+`T104`'s `capture-watch` worker exists because this is unrecoverable: the only available
+mitigation is noticing *today* rather than twelve days later.
+
 ## On-disk layout
 
 ```

@@ -59,12 +59,24 @@ in-container poller that dies with the container it lives in reproduces exactly 
 being fixed. Weigh that against this being a single-user homeserver with no existing external
 monitoring, and argue the choice.
 
-### 2. Where the alert goes — Telegram
+### 2. Where the alert goes — Telegram, opt-in
 
-**Decided by the user, 2026-09-21: Telegram.** A bot message via the Bot API — one outbound
-HTTPS POST, no inbound port, no third-party service to pay for, and it reaches a phone. That
-last part is the requirement: the failure mode is twelve days of not looking at the desk, so
-the launcher at `/` showing a red banner is necessary and not sufficient.
+**Decided by the user, 2026-09-21: Telegram, and 2026-09-22: off by default.** A bot message
+via the Bot API — one outbound HTTPS POST, no inbound port, nothing to pay for, and it reaches
+a phone. That last part is the requirement: the failure mode is twelve days of not looking at
+the desk, so a red banner on the launcher is necessary and not sufficient.
+
+**But it needs a Telegram account, and the desk must not require one.** So the split is:
+
+- **Detection always runs.** The check, and the loud log line it produces, are unconditional.
+  They are the part that turns a silent outage into a recorded one.
+- **Delivery is opt-in.** Telegram is used only when `TELEGRAM_BOT_TOKEN` and
+  `TELEGRAM_CHAT_ID` are both set. Unset is a supported, first-class configuration, not a
+  degraded one — the worker says at boot which mode it is in, so "I thought it was on" is
+  not a thing that can happen quietly.
+
+This is also the right shape regardless of accounts: a notifier that hard-depends on an
+external service is one whose failure is indistinguishable from the silence it watches for.
 
 `TELEGRAM_BOT_TOKEN` and `TELEGRAM_CHAT_ID` come from the environment, never from a compose
 file. Note the existing trap, already documented in the `market-research` skill for
@@ -169,3 +181,86 @@ Independent of every other task here; dispatch in parallel with `T105`.
   from both review passes. If they survive, file the post-mortem separately.
 - Whether `jobs/catchup.py` should have backfilled. Worth answering; not this task.
 - Alerting for the research or terminal modules. Same pattern, different data, later.
+
+
+---
+
+## Result — T104, 2026-09-22
+
+**Done. 1,243 backend tests green (11 added), linters clean, both compose configurations
+validate.** Not deployed: written during an open session, and deploying restarts the capture
+worker.
+
+### Detection always runs; delivery is opt-in and off by default
+
+Decided with the user on 2026-09-22 and it improved the design rather than merely constraining
+it. The split:
+
+- `modules/gex/jobs/outage.py` does the detection and logs at ERROR when a session is silent.
+  Unconditional.
+- `core/notify.py` delivers, and only when `TELEGRAM_BOT_TOKEN` **and** `TELEGRAM_CHAT_ID` are
+  both set. Unset is first-class, not degraded.
+- `workers/capture_watch.py` logs `notifier_status()` at every boot, so which mode it is in is
+  never something anyone has to infer from an absence of messages.
+
+The durable argument for this split is not the account requirement. **A notifier that
+hard-depends on an external service has a failure indistinguishable from the silence it watches
+for.** A bad token that produced no alert *and* no trace would fail exactly the way the capture
+worker failed in September, for the same reason. `send()` therefore always logs first, never
+raises, and returns *why* nothing was delivered rather than a bare boolean.
+
+### Keyed on `session_date`, which only exists because of T102
+
+"Did this session produce anything" is a question about the session a chain belongs to. Keying
+it on `captured_at` would invent weekend sessions *and* miss that a Sunday capture covered
+Friday -- which is precisely the staggered recovery the September outage ended with (3 symbols
+Saturday, 25 Sunday, 28 Monday). `T102` landed that column two tasks ago and this is the first
+consumer; the query is now correct in SQL instead of approximated in prose.
+
+### Its own container, and the limit is stated rather than papered over
+
+`capture-watch` is a separate service. A watchdog inside `gex-capture` dies with it and
+reproduces the silence it exists to break -- one small container removes that failure mode for
+everything short of the host going down.
+
+It does **not** close the case where the watchdog's own container dies. The mitigation offered
+is `CAPTURE_WATCH_HEARTBEAT_DAYS`: with a channel configured it posts a periodic "capture
+healthy" note, so silence itself becomes a signal. Off by default -- an unsolicited recurring
+message on a channel the user was not required to set up is their choice to make. An external
+check from off the box is strictly better and is named as out of scope rather than pretended
+away.
+
+### The half that decides whether the alert survives
+
+Six of the eleven tests assert it does **not** fire: on a weekend, on a session covered only by
+a later weekend capture, on one stale symbol among many, on an empty range. `STALE_THRESHOLD_
+MINUTES` documents measured per-symbol lags of hours as ordinary, so an alert firing on those
+gets muted -- and a muted alert is worse than none, because it reads as coverage. Partial
+capture is reported as *degraded*, separately, for the same reason: a session with 3 of 28
+symbols is not silent.
+
+Repeat alerts are suppressed to once per day. An alert repeated hourly through a multi-day
+outage is one the user learns to swipe away.
+
+One test asserts the bot token never reaches the log, which is why the failure path logs the
+exception *type* rather than using `logger.exception` -- the token is in the URL and httpx
+carries the request in its representation.
+
+### Also landed
+
+`context/data-and-ops.md` gains **"A missed capture is gone permanently"**, which the review
+asked for explicitly. It states that options open interest cannot be backfilled at any price
+available to this project, that the September gap is therefore permanent, and -- the part
+easiest to get wrong -- that `backfill --recompute` is *not* this: it recomputes derived rows
+from Parquet that already exists and cannot create a snapshot that was never captured.
+
+### Outstanding
+
+- **Not deployed.** Goes out with `T105`/`T106` after a close.
+- **Acceptance 3 (a real Telegram message) is not met and cannot be**, by the user's own
+  configuration choice: with no account configured there is nothing to deliver to. The
+  substitute is the opt-in path being tested on both sides -- unconfigured reports "no channel
+  configured", configured-but-failing reports why and still logs. If a channel is ever
+  configured, send one real message then.
+- **Acceptance 4** (kill the container, record what happens) needs the stack running with the
+  worker deployed.

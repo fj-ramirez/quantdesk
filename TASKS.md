@@ -1670,8 +1670,14 @@ capture. Unlocks every rich/cheap question the desk currently cannot answer, and
 Something has to watch `/api/gex/health/capture`, and tell **Telegram** when it goes quiet.
 September quarterly opex week is missing entirely -- five open sessions, the whole 28-symbol
 universe -- and the endpoint built to catch exactly that was never polled. Alert on the
-universe-wide gap, never on ordinary per-symbol staleness. Spec:
+universe-wide gap, never on ordinary per-symbol staleness. Spec and result:
 [plans/desk-integrity/04-capture-alerting.md](plans/desk-integrity/04-capture-alerting.md).
+
+**Done 2026-09-22, not yet deployed.** 1,243 backend tests green (11 added). Detection always
+runs and logs; Telegram delivery is opt-in via `TELEGRAM_BOT_TOKEN`/`TELEGRAM_CHAT_ID` and off
+by default, because the desk must not require an account -- and because a notifier that
+hard-depends on an external service fails the same way the thing it watches does. Keyed on
+T102's `session_date`, its first consumer. Six of the eleven tests assert it does *not* fire.
 
 ## T105 · Sonnet · —
 

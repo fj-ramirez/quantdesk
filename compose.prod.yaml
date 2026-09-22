@@ -212,6 +212,22 @@ services:
         max-size: 10m
         max-file: "3"
 
+  # T104. The watchdog. Tiny by construction: one query an hour and, when configured, one
+  # HTTPS POST. `internal` only -- it reaches Postgres and api.telegram.org, and nothing
+  # reaches it. `restart: unless-stopped` matters more here than elsewhere: a watchdog that
+  # stays down after a crash is worse than no watchdog, because its silence reads as health.
+  capture-watch:
+    image: capture-watch:prod
+    environment: *prod_backend_environment
+    networks:
+      internal: {}
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: "0.25"
+          memory: 256M
+
   frontend:
     image: gex-frontend:prod
     build:
