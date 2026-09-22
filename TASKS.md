@@ -1383,6 +1383,13 @@ one of them can take the whole 5.7 GB host) and `MALLOC_ARENA_MAX=2` on the shar
 anchor. Unconditional -- both branches of the gate need it. Spec:
 [plans/capture-memory/00-containment.md](plans/capture-memory/00-containment.md).
 
+**Done and deployed 2026-09-21.** All five capped services read back a non-zero
+`HostConfig.Memory`, postgres `0`, `MALLOC_ARENA_MAX=2` live in the containers. Two acceptance
+items need a trading session and are named under the plan file's *Result* heading: capture
+`duration_seconds` against the recorded pre-change baseline, and the anon trajectory under the
+cap. `research-search` and `terminal-ingest` carry their limit in their existing `deploy` block
+because compose refuses a project where the two forms disagree -- also recorded there.
+
 ## T87 · Opus · T86
 
 A capture materializes 62,944 Pydantic contract models, writes them to Parquet, then
@@ -1391,6 +1398,12 @@ immediately re-reads the file to build all 62,944 again while the first set is s
 `snapshot=` and pass the object already in hand -- but only on a fresh write, never on the
 duplicate path, so a snapshot's levels stay reproducible from its stored Parquet. Spec:
 [plans/capture-memory/01-single-materialization.md](plans/capture-memory/01-single-materialization.md).
+
+**Done 2026-09-21 (code; deploy pending).** 1,158 backend tests green (4 added), ruff clean.
+Equivalence is asserted over a chain carrying both `open_interest=None` and `open_interest=0`,
+including that the `0` contract reaches the per-strike rows and the `None` one does not. The
+backfill-reproducibility check and the heap number both need the homeserver; see the plan
+file's *Result* heading.
 
 ## T88 · Sonnet · T87
 

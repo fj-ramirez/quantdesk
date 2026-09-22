@@ -181,12 +181,20 @@ async def capture_snapshot(
     # be recomputed after the fact (the free Cboe source keeps no history). A failure here is
     # self-healing: `uv run python -m app.modules.gex.gex.backfill` picks up any snapshot left without
     # levels on a later run.
+    #
+    # T87: the chain is handed to `compute_and_store` instead of letting it re-read the file,
+    # but **only on a fresh write**. On the duplicate path `row.id` is a *pre-existing*
+    # snapshot whose Parquet file is a different object from the chain just fetched -- very
+    # probably equal in content, but no longer provably so -- and levels that are reproducible
+    # from their own stored Parquet is the property that makes `backfill` a repair tool rather
+    # than a second opinion. Duplicates are rare and cost nothing to leave slow.
     try:
         await asyncio.to_thread(
             compute_and_store,
             row.id,
             session_factory=effective_session_factory,
             data_dir=data_dir,
+            snapshot=None if skipped_duplicate else snapshot,
         )
     except Exception:  # see the comment above: must never fail the capture
         logger.exception(

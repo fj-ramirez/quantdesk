@@ -114,3 +114,60 @@ Measured 2026-09-21, not assumed:
 
 Swap configuration, `memory.high` / soft limits, and any cgroup tuning beyond a hard cap.
 Restart-on-schedule as a mitigation — see [README.md](README.md)'s standing risk.
+
+---
+
+## Result — T86
+
+**Done and deployed 2026-09-21.** Merged config verified before deploy, limits verified on the
+host after it.
+
+```
+/quantdesk-backend-1          mem=1073741824
+/quantdesk-frontend-1         mem=134217728
+/quantdesk-gex-capture-1      mem=1572864000
+/quantdesk-postgres-1         mem=0
+/quantdesk-research-search-1  mem=1572864000
+/quantdesk-terminal-ingest-1  mem=805306368
+```
+
+`MALLOC_ARENA_MAX=2` reads back from inside both `gex-capture` and `backend`, so the shared
+anchor reaches production as the spec predicted it would. Nothing was OOM-killed on the way up.
+
+**One deviation, forced rather than chosen.** `research-search` and `terminal-ingest` carry
+their limit as `deploy.resources.limits.memory` instead of `mem_limit`, against what this file
+asked for. Compose refuses the project outright otherwise:
+
+```
+services.research-search: can't set distinct values on 'mem_limit'
+and 'deploy.resources.limits.memory': invalid compose project
+```
+
+An *unset* key counts as distinct, so a service that already has a `deploy.resources.limits`
+block — which both of these do, for `cpus` — has to keep its memory limit there too. The
+other three services have no deploy block and use `mem_limit` as specified. The failure is
+loud and happens at config-parse time, so this cannot silently regress.
+
+### Not yet verified
+
+Two acceptance items need a trading session that has not happened yet, and both are recorded
+here so they are not mistaken for passes:
+
+* **`duration_seconds` within 25 %.** The pre-change baseline was taken from the worker's own
+  structured log before the redeploy (113 successful captures, 2026-09-21), and is the number
+  the post-change run is measured against:
+
+  | Symbol | Captures | Contracts | Mean | Max |
+  |---|---|---|---|---|
+  | SPX | 18 | 29,518 | **3.319 s** | 3.718 s |
+  | SPY | 18 | 12,388 | 1.520 s | 1.678 s |
+  | QQQ | 18 | 10,560 | 1.236 s | 1.345 s |
+  | GLD | 18 | 7,758 | 0.963 s | 1.063 s |
+  | DIA | 18 | 4,778 | 0.644 s | 0.822 s |
+
+  If SPX comes back above ~4.1 s, arena contention is real on this host: raise
+  `MALLOC_ARENA_MAX` to 4, or drop it, and record which here.
+
+* **The anon trajectory under the cap.** The pre-change water mark is 600–630 MB, reached
+  within an hour of the open. That is the baseline T87 and T88 are measured against, and the
+  redeploy reset the worker's heap, so the next full session is the first comparable one.

@@ -128,3 +128,55 @@ Measured or read from the source 2026-09-21, not assumed:
 
 Streaming the vendor payload instead of buffering it, `__slots__` or a dataclass rewrite of
 `OptionContract`, and any change to the Parquet schema or the stored bytes.
+
+---
+
+## Result — T87
+
+**Done 2026-09-21.** 1,158 backend tests green (4 added), ruff clean. Not yet deployed.
+
+`compute_and_store` takes a keyword-only `snapshot: ChainSnapshot | None = None`. `None` keeps
+today's behaviour exactly — resolve via `resolve_snapshot_path` (invariant 5) and
+`read_snapshot` — which is what `gex/backfill.py` still does, untouched, having nothing but a
+`snapshot_id`. The `Snapshot` row is loaded and the `ValueError` for an unknown id is raised
+either way; a test pins that, because "I passed the chain" must not become "I skipped the
+check".
+
+`jobs/capture.py` passes `snapshot=None if skipped_duplicate else snapshot`, with the
+reproducibility reason in a comment beside it. Both the condition and the comment are the
+point of the task: on the duplicate path `row.id` is an *earlier* snapshot whose Parquet file
+is a different object from the chain just fetched.
+
+Four tests rather than the three the spec asked for:
+
+1. **Equivalence**, over a chain carrying both `open_interest=None` and `open_interest=0`.
+   Every persisted column of both tables is compared — `id` and `computed_at` excluded, being
+   row identity and a clock rather than computed values — and the assertion is checked for
+   vacuousness: `net_gex` is non-zero, strike 490 (the `0` contract) is in the per-strike rows
+   and strike 510 (the `None` one) is not. That last pair is invariant 3 surviving the change,
+   stated as data rather than as a claim.
+2. **The fresh path does not read**, asserted as zero calls, with the levels still landing for
+   all three filters — one materialization, not none.
+3. **The duplicate path still reads**, exactly once.
+4. **An unknown `snapshot_id` still raises** even with a chain in hand.
+
+The spy patches `read_snapshot` on `app.modules.gex.gex.store`, where it is used, not on
+`storage.parquet` where it is defined: `store.py` bound the name at import, and patching the
+origin would have left its reference alone and quietly made every one of these tests pass.
+
+**`asyncio.to_thread` forwards keyword arguments**, so the new one goes in beside
+`session_factory` and `data_dir` with no `partial` wrapper. Worth stating because the first
+draft reached for one.
+
+### Not yet measured
+
+The claim is that the *Pydantic* peak halves — roughly 63,000 models per cycle instead of
+126,000 — not that the heap does: the Arrow table, the pandas frame and the vendor JSON dict
+are still allocated per capture, and T88 is what returns any of it to the OS. The number goes
+here after a full session against T86's recorded 600–630 MB water mark.
+
+The acceptance item that needs the homeserver — `python -m app.modules.gex.gex.backfill` over
+a snapshot captured by the new code, recomputing from disk and changing no rows — is also
+still open. It is the real end of this task: it proves the stored levels are still
+reproducible from the stored Parquet, which is the property the duplicate-path condition
+exists to protect.

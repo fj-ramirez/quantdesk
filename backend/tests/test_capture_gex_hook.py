@@ -160,3 +160,86 @@ async def test_extended_symbol_capture_persists_a_non_zero_snapshot_with_stored_
             .all()
         )
     assert {r.filter for r in rows} == {f.value for f in DEFAULT_FILTERS}
+
+
+# --- T87: which path re-reads the Parquet file --------------------------------------------
+
+
+@pytest.fixture
+def read_snapshot_calls(monkeypatch):
+    """Counts `compute_and_store`'s reads of the file on disk.
+
+    Patched where it is used (`...gex.store`), not where it is defined, because `store.py`
+    imported the name at module load and rebinding the origin would leave its reference alone.
+    """
+    from app.modules.gex.gex import store as store_module
+
+    real = store_module.read_snapshot
+    calls: list[object] = []
+
+    def _spy(path, *args, **kwargs):
+        calls.append(path)
+        return real(path, *args, **kwargs)
+
+    monkeypatch.setattr(store_module, "read_snapshot", _spy)
+    return calls
+
+
+async def test_a_fresh_capture_does_not_re_read_the_file_it_just_wrote(
+    tmp_path, session_factory, read_snapshot_calls
+):
+    """T87. The chain is already in memory and was the source of that very file."""
+    result = await capture_snapshot(
+        "SPY",
+        is_eod=True,
+        provider=StubProvider(make_snapshot()),
+        session_factory=session_factory,
+        data_dir=tmp_path,
+    )
+
+    assert result.ok is True
+    assert result.skipped_duplicate is False
+    assert read_snapshot_calls == []
+
+    # The levels still landed -- the point is that they cost one materialization, not none.
+    with session_factory() as session:
+        rows = (
+            session.execute(select(GexLevel).where(GexLevel.snapshot_id == result.snapshot_id))
+            .scalars()
+            .all()
+        )
+    assert {r.filter for r in rows} == {f.value for f in DEFAULT_FILTERS}
+
+
+async def test_a_duplicate_capture_still_reads_from_disk(
+    tmp_path, session_factory, read_snapshot_calls
+):
+    """The deliberate slow path, and the one this test exists to keep slow.
+
+    On a duplicate, `row.id` is the *earlier* snapshot, whose Parquet file is a different
+    object from the chain just fetched -- near-certainly equal in content, but no longer
+    provably so. Levels that are reproducible from their own stored Parquet is what makes
+    `app.modules.gex.gex.backfill` a repair tool rather than a second opinion, so the
+    duplicate path keeps reading the file it is actually keyed to.
+    """
+    snapshot = make_snapshot()
+    first = await capture_snapshot(
+        "SPY",
+        is_eod=False,
+        provider=StubProvider(snapshot),
+        session_factory=session_factory,
+        data_dir=tmp_path,
+    )
+    read_snapshot_calls.clear()
+
+    second = await capture_snapshot(
+        "SPY",
+        is_eod=False,
+        provider=StubProvider(snapshot),
+        session_factory=session_factory,
+        data_dir=tmp_path,
+    )
+
+    assert second.skipped_duplicate is True
+    assert second.snapshot_id == first.snapshot_id
+    assert len(read_snapshot_calls) == 1

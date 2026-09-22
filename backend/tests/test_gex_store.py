@@ -196,3 +196,117 @@ def test_compute_and_store_accepts_a_subset_of_filters(tmp_path, session_factory
             .all()
         )
     assert len(stored) == 1
+
+
+# --- T87: the in-memory shortcut ------------------------------------------------------------
+
+
+def _oi_mixed_snapshot() -> ChainSnapshot:
+    """A chain carrying both kinds of "no open interest" (invariant 3).
+
+    `None` means the vendor did not report a figure and the contract is excluded from every
+    aggregate; `0` means it reported zero and the contract is included, contributing nothing.
+    They are different facts, the Parquet round trip is deliberately careful to keep them
+    apart (`read_snapshot` uses `to_pylist()` so a null comes back as `None` and not `NaN`),
+    and this is the chain the equivalence test below runs through both paths.
+    """
+    return ChainSnapshot(
+        underlying=Underlying.SPY,
+        spot=500.0,
+        captured_at=CAPTURED_AT,
+        source="stub",
+        delayed_minutes=15,
+        contracts=[
+            make_contract("SPY260911C00505000", open_interest=1500, iv=0.18, gamma=0.008),
+            make_contract("SPY260911P00495000", open_interest=1200, iv=0.19, gamma=0.009),
+            make_contract("SPY260911C00510000", open_interest=None, iv=0.20, gamma=0.007),
+            make_contract("SPY260911P00490000", open_interest=0, iv=0.21, gamma=0.006),
+        ],
+    )
+
+
+def _persisted(session_factory, snapshot_id: int) -> tuple[list[tuple], list[tuple]]:
+    """Every stored value for a snapshot, as comparable tuples.
+
+    `id` and `computed_at` are excluded deliberately: the row identity and the clock differ
+    between two runs by construction, and neither is a computed value. Everything else is.
+    """
+    with session_factory() as session:
+        levels = [
+            (
+                row.filter,
+                row.net_gex,
+                row.call_wall,
+                row.call_wall_gex,
+                row.put_wall,
+                row.put_wall_gex,
+                row.max_abs_strike,
+                row.max_call_gex_strike,
+                row.max_put_gex_strike,
+                row.flip_point,
+                row.spot,
+            )
+            for row in session.execute(
+                select(GexLevel).where(GexLevel.snapshot_id == snapshot_id).order_by(GexLevel.filter)
+            )
+            .scalars()
+            .all()
+        ]
+        by_strike = [
+            (row.filter, row.strike, row.call_gex, row.put_gex, row.net_gex)
+            for row in session.execute(
+                select(GexByStrike)
+                .where(GexByStrike.snapshot_id == snapshot_id)
+                .order_by(GexByStrike.filter, GexByStrike.strike)
+            )
+            .scalars()
+            .all()
+        ]
+    return levels, by_strike
+
+
+def test_in_memory_snapshot_produces_identical_rows_to_reading_the_file(tmp_path, session_factory):
+    """T87's load-bearing equivalence, asserted rather than reasoned about.
+
+    The in-memory object is the *input* to the Parquet round trip, so it should be identical
+    coming back -- but "should" is not good enough for the distinction invariant 3 exists to
+    protect, and a silent `None` -> `0` on either side would change `net_gex` by a real amount
+    while every row still looked plausible.
+    """
+    snapshot = _oi_mixed_snapshot()
+    path = write_snapshot(snapshot, data_dir=tmp_path)
+    with session_factory() as session:
+        snapshot_id = SnapshotRepository(session).add(snapshot, path, is_eod=True).id
+
+    compute_and_store(snapshot_id, session_factory=session_factory, data_dir=tmp_path)
+    from_disk = _persisted(session_factory, snapshot_id)
+
+    # Idempotent by construction (delete-then-insert), so the second call replaces the first
+    # rather than accumulating -- which is what makes comparing the two states meaningful.
+    compute_and_store(
+        snapshot_id, session_factory=session_factory, data_dir=tmp_path, snapshot=snapshot
+    )
+    from_memory = _persisted(session_factory, snapshot_id)
+
+    assert from_memory == from_disk
+    # And the comparison is not vacuous: the chain really does produce numbers, and the
+    # contract with `open_interest=0` is carried into the per-strike rows while the one with
+    # `None` is not -- the two "no open interest" cases staying apart across both paths.
+    level_rows, by_strike_rows = from_memory
+    net_gex = {row[0]: row[1] for row in level_rows}
+    assert net_gex["ALL"] not in (None, 0.0)
+    strikes = {row[1] for row in by_strike_rows if row[0] == "ALL"}
+    assert 490.0 in strikes
+    assert 510.0 not in strikes
+
+
+def test_in_memory_snapshot_still_requires_the_snapshot_row(tmp_path, session_factory):
+    """Passing the chain skips the file read, never the index row: the levels are keyed to
+    `snapshot_id`, and a caller handing over a chain for an id that does not exist is a bug."""
+    with pytest.raises(ValueError, match="no snapshot with id=999"):
+        compute_and_store(
+            999,
+            session_factory=session_factory,
+            data_dir=tmp_path,
+            snapshot=_oi_mixed_snapshot(),
+        )

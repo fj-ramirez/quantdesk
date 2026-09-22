@@ -37,6 +37,7 @@ from sqlalchemy.orm import Session, sessionmaker
 
 from app.core.db import get_engine, get_sessionmaker
 from app.modules.gex.gex.engine import ExpiryFilter, compute_all, to_frame
+from app.modules.gex.models.chain import ChainSnapshot
 from app.modules.gex.models.db import GexByStrike, GexLevel, Snapshot
 from app.modules.gex.storage.parquet import read_snapshot, resolve_snapshot_path
 
@@ -77,6 +78,7 @@ def compute_and_store(
     session_factory: sessionmaker[Session] | None = None,
     data_dir: str | Path | None = None,
     filters: Sequence[ExpiryFilter] = DEFAULT_FILTERS,
+    snapshot: ChainSnapshot | None = None,
 ) -> tuple[GexLevel, ...]:
     """Compute GEX levels for `snapshot_id` under `filters` and persist them.
 
@@ -91,6 +93,10 @@ def compute_and_store(
             `app.modules.gex.jobs.capture`'s capture hook, pass an explicit factory.
         data_dir: Forwarded to Parquet path resolution; defaults to `settings.DATA_DIR`.
         filters: Which expiry filters to compute. Defaults to `DEFAULT_FILTERS`.
+        snapshot: T87. The chain this call would otherwise re-read from disk. The caller
+            passes it **only when it just wrote that Parquet file itself** -- see the note
+            below. `None`, the default, keeps the read: that is what `app.modules.gex.gex.backfill`
+            does, having nothing but a `snapshot_id` to work from.
 
     Returns:
         The persisted `GexLevel` rows, one per filter, in the order of `filters`.
@@ -106,8 +112,19 @@ def compute_and_store(
         if row is None:
             raise ValueError(f"no snapshot with id={snapshot_id}")
 
-        path = resolve_snapshot_path(row, data_dir)
-        snapshot = read_snapshot(path)
+        # T87. A capture materializes ~63,000 Pydantic contract models per cycle, and before
+        # this shortcut it materialized them twice: once from the vendor payload, then again
+        # here from the file it had just written, with the first set still alive for the T19
+        # publish. The caller hands over the object it already has.
+        #
+        # **`snapshot` must be the chain that was written to this snapshot's Parquet file.**
+        # A snapshot's levels being reproducible from its stored Parquet is what makes
+        # `app.modules.gex.gex.backfill` a valid repair tool at all, so the capture path
+        # passes this only on a fresh write and keeps reading from disk on the duplicate
+        # path, where `row.id` points at an *earlier* snapshot's file.
+        if snapshot is None:
+            path = resolve_snapshot_path(row, data_dir)  # invariant 5
+            snapshot = read_snapshot(path)
         frame = to_frame(snapshot)
 
         stored: list[GexLevel] = []
