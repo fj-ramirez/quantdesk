@@ -32,6 +32,8 @@ import os
 import time
 from dataclasses import dataclass
 
+import pyarrow
+
 __all__ = ["MALLOC_TRIM_AVAILABLE", "ReleaseResult", "read_rss", "release_allocator"]
 
 logger = logging.getLogger("app.modules.gex.jobs.memory")
@@ -120,14 +122,19 @@ def release_allocator() -> ReleaseResult:
     release, and an Arrow that raises does not cost the trim. Never raises -- it is called
     from a scheduler listener, where an exception would be logged by APScheduler and
     understood by nobody.
+
+    **`pyarrow` is imported at module level, and that is part of the instrument.** A lazy
+    import inside this function would be paid on the first call, between the two RSS reads:
+    measured in the production image on 2026-09-21, a cold process reported `freed: -44 MB`
+    and `514 ms` for what was almost entirely `import pyarrow`. The worker has always
+    imported it long before any job runs, so the lazy form measured something that never
+    happens in the only place this code runs.
     """
     started = time.monotonic()
     rss_before = read_rss()
 
     arrow_released = False
     try:
-        import pyarrow
-
         pyarrow.default_memory_pool().release_unused()
         arrow_released = True
     except Exception:  # pragma: no cover - pyarrow is a hard dependency; guard is for safety

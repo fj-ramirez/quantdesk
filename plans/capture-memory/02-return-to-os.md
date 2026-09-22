@@ -161,3 +161,20 @@ rather than a staircase. **A trim that gives back almost nothing is a result, no
 it would say the retention is heap fragmentation rather than arena hoarding, which rules out
 the cheap fix and points at the next lever (jemalloc or tcmalloc via `LD_PRELOAD`, both
 explicitly out of scope here). Whichever it turns out to be gets recorded here.
+
+### Checked in the production image — 2026-09-21
+
+`malloc_trim` resolves on the homeserver (`MALLOC_TRIM_AVAILABLE: True`), `/proc/self/statm`
+reads, and both halves run. The first reading was also a lesson:
+
+```
+trimmed: True  arrow: True  freed: -43958272  ms: 514.141
+```
+
+A *negative* 44 MB freed and half a second spent. Neither is the release: the call was made in
+a cold `python -c` process, and `import pyarrow` sat inside `release_allocator`, between the
+two RSS reads. The instrument was measuring its own import. The import is now at module level
+-- the worker has always imported pyarrow long before any job runs, so the lazy form measured
+something that cannot happen where this code actually lives.
+
+The real numbers come from the listener's own log line on a session's jobs.
