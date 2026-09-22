@@ -10,6 +10,23 @@ as "lacking levels" only when it does not already carry a `gex_levels` row for e
 pending and writes nothing at all -- no rows deleted, none re-inserted, counts unchanged. This
 is what makes the T09 acceptance run's "run backfill twice, counts don't move" demonstration
 possible without special-casing anything here.
+
+**`--recompute` exists because that selection rule cannot see a change in the engine** (T101).
+"Lacking levels" answers "was this snapshot ever processed", not "was it processed by the
+current code", so after an engine change every stored snapshot looks up to date and the pass
+writes nothing -- which is exactly wrong when the point is to propagate the change. Two such
+changes landed on 2026-09-21: T99 put a sign and magnitude test on the walls, so stored rows
+still name walls the engine would now refuse, and T101 added the expiry dimension, which no
+existing row has at all.
+
+`--recompute` is safe rather than merely permitted: `compute_and_store` deletes the existing
+`(snapshot_id, filter)` slice before reinserting, so reprocessing replaces rather than
+accumulates. It is **not** the default, because it reopens every Parquet file on disk -- run it
+outside capture hours, since nothing may risk the 16:20 capture.
+
+It rewrites derived rows only. `gex.decisions` is append-only and is never touched here: the
+track record depends on a recorded level being the level that was actually suggested at the
+time, wrong ones included.
 """
 
 from __future__ import annotations
@@ -51,8 +68,12 @@ def backfill(
     *,
     session_factory: sessionmaker[Session] | None = None,
     data_dir: str | Path | None = None,
+    recompute: bool = False,
 ) -> dict[str, int]:
     """Compute and store levels for every snapshot lacking them. Never raises.
+
+    With `recompute=True`, processes **every** snapshot rather than only those lacking levels
+    -- the way to propagate an engine change into stored rows. See the module docstring.
 
     One snapshot's failure (a missing or corrupt Parquet file, a bad row) is logged and
     skipped rather than aborting the whole pass -- the same priority order as the T09 capture
@@ -64,7 +85,12 @@ def backfill(
     """
     factory = session_factory or get_session_factory()
     with factory() as session:
-        pending = _snapshots_lacking_levels(session, expected_filters=len(DEFAULT_FILTERS))
+        if recompute:
+            pending = list(
+                session.execute(select(Snapshot.id).order_by(Snapshot.id)).scalars().all()
+            )
+        else:
+            pending = _snapshots_lacking_levels(session, expected_filters=len(DEFAULT_FILTERS))
         total = session.execute(select(func.count()).select_from(Snapshot)).scalar_one()
 
     processed = 0
@@ -90,10 +116,18 @@ def backfill(
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.parse_args(argv)
+    parser.add_argument(
+        "--recompute",
+        action="store_true",
+        help=(
+            "Reprocess every snapshot, not just those lacking levels. Use after an engine "
+            "change; reopens every Parquet file, so run it outside capture hours."
+        ),
+    )
+    args = parser.parse_args(argv)
     logging.basicConfig(level=logging.INFO, format="%(message)s")
 
-    summary = backfill()
+    summary = backfill(recompute=args.recompute)
     print(
         f"backfill: total={summary['total']} processed={summary['processed']} "
         f"failed={summary['failed']} skipped_up_to_date={summary['skipped_up_to_date']}"

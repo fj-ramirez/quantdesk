@@ -38,7 +38,7 @@ from sqlalchemy.orm import Session, sessionmaker
 from app.core.db import get_engine, get_sessionmaker
 from app.modules.gex.gex.engine import ExpiryFilter, compute_all, to_frame
 from app.modules.gex.models.chain import ChainSnapshot
-from app.modules.gex.models.db import GexByStrike, GexLevel, Snapshot
+from app.modules.gex.models.db import GexByExpiry, GexByStrike, GexLevel, Snapshot
 from app.modules.gex.storage.parquet import read_snapshot, resolve_snapshot_path
 
 __all__ = ["DEFAULT_FILTERS", "compute_and_store", "get_session_factory"]
@@ -146,6 +146,11 @@ def compute_and_store(
                     GexByStrike.snapshot_id == snapshot_id, GexByStrike.filter == f.value
                 )
             )
+            session.execute(
+                delete(GexByExpiry).where(
+                    GexByExpiry.snapshot_id == snapshot_id, GexByExpiry.filter == f.value
+                )
+            )
 
             level_row = GexLevel(
                 snapshot_id=snapshot_id,
@@ -177,8 +182,33 @@ def compute_and_store(
                             "call_gex": s.call_gex,
                             "put_gex": s.put_gex,
                             "net_gex": s.net_gex,
+                            # T101. Null (not zero) if this frame predates the horizon split.
+                            "net_gex_0dte": s.net_gex_0dte,
+                            "net_gex_this_week": s.net_gex_this_week,
+                            "net_gex_next_30d": s.net_gex_next_30d,
+                            "net_gex_beyond_30d": s.net_gex_beyond_30d,
                         }
                         for s in result.by_strike
+                    ],
+                )
+            if result.by_expiry:
+                # T101: one row per expiry per filter. Cheap -- it does not multiply by strike.
+                session.execute(
+                    insert(GexByExpiry),
+                    [
+                        {
+                            "snapshot_id": snapshot_id,
+                            "filter": f.value,
+                            "expiry": e.expiry,
+                            "dte": e.dte,
+                            "call_gex": e.call_gex,
+                            "put_gex": e.put_gex,
+                            "net_gex": e.net_gex,
+                            "abs_gex": e.abs_gex,
+                            "contracts": e.contracts,
+                            "open_interest": e.open_interest,
+                        }
+                        for e in result.by_expiry
                     ],
                 )
             stored.append(level_row)

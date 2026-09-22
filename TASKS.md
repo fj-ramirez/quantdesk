@@ -1627,8 +1627,15 @@ renderer that raised `TypeError` on the first null.
 
 The expiry dimension, written at capture time. On 09-21 the QQQ 740 wall was +662mn and the
 desk could not say what fraction survived that Friday -- the first thing anyone asks about a
-wall. A rollup, not a per-contract table: invariant 5 holds. Spec:
+wall. A rollup, not a per-contract table: invariant 5 holds. Spec and result:
 [plans/desk-integrity/02-expiry-and-session.md](plans/desk-integrity/02-expiry-and-session.md).
+
+**Done 2026-09-21.** 1,219 backend tests green (7 added), 408 frontend, both linters clean.
+The shape was decided by measurement: a full strike-by-expiry table would have written ~2.61M
+rows on 09-21 alone against the 266,050 this database holds in total, so the split is four
+horizon columns on `gex_by_strike` (zero new rows) plus a `gex_by_expiry` table (~5.2k/day).
+`backfill --recompute` added, which is also the mechanism T99's outstanding recompute needed.
+Migration applied to the homeserver and the backfill run are both still pending a write seat.
 
 ## T102 · Sonnet · T101
 

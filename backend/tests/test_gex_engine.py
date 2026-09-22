@@ -988,3 +988,74 @@ def test_t100_empty_zero_dte_and_unmeasurable_chain_are_the_same_shape():
     field the capture path does not record yet -- see plans/desk-integrity/02-expiry-and-session.md.
     """
     assert _levels_from([]).net_gex is None
+
+
+# --------------------------------------------------------------------------------------
+# T101: the expiry dimension. Horizons partition a strike exactly.
+# --------------------------------------------------------------------------------------
+
+
+def test_t101_horizons_partition_every_strike_exactly(chain):
+    """The load-bearing property. If the four horizons do not sum to `net_gex`, every
+    downstream "how much expires Friday" answer is wrong by the gap, silently."""
+    result = E.compute_all(chain)
+    assert result.by_strike
+    for row in result.by_strike:
+        parts = [
+            row.net_gex_0dte,
+            row.net_gex_this_week,
+            row.net_gex_next_30d,
+            row.net_gex_beyond_30d,
+        ]
+        assert all(p is not None for p in parts), f"strike {row.strike} has an unfilled horizon"
+        assert sum(parts) == pytest.approx(row.net_gex, abs=1e-6), (
+            f"strike {row.strike}: horizons sum to {sum(parts)}, net_gex is {row.net_gex}"
+        )
+
+
+def test_t101_horizons_are_disjoint(chain):
+    """Exhaustive *and* disjoint: a contract counted in two buckets would still sum correctly
+    at some strikes, so summing alone does not prove the partition."""
+    frame = E.to_frame(chain)
+    zero = frame["zero_dte"].to_numpy(dtype=bool)
+    week = frame["this_week"].to_numpy(dtype=bool)
+    dte = frame["dte"].to_numpy(dtype=float)
+    rest = ~zero & ~week
+    masks = [zero, week & ~zero, rest & (dte <= 30), rest & (dte > 30)]
+    counts = sum(m.astype(int) for m in masks)
+    assert (counts == 1).all(), "every contract must land in exactly one horizon"
+
+
+def test_t101_zero_dte_filter_puts_everything_in_the_0dte_horizon(chain):
+    """Self-consistency between the filter and the decomposition: under ZERO_DTE every
+    admitted contract expires today, so the other three horizons must be empty."""
+    result = E.compute_all(chain, E.ExpiryFilter.ZERO_DTE)
+    for row in result.by_strike:
+        assert row.net_gex_0dte == pytest.approx(row.net_gex)
+        assert row.net_gex_this_week == pytest.approx(0.0)
+        assert row.net_gex_next_30d == pytest.approx(0.0)
+        assert row.net_gex_beyond_30d == pytest.approx(0.0)
+
+
+def test_t101_the_wall_question_is_answerable(chain):
+    """F5's headline: "how much of this wall expires Friday" -- the first thing anyone asks
+    about a wall, and unanswerable from storage before T101."""
+    result = E.compute_all(chain)
+    wall = result.levels.call_wall or result.levels.put_wall
+    assert wall is not None
+    row = next(r for r in result.by_strike if r.strike == wall)
+    surviving = row.net_gex_next_30d + row.net_gex_beyond_30d
+    expiring_this_week = row.net_gex_0dte + row.net_gex_this_week
+    assert surviving + expiring_this_week == pytest.approx(row.net_gex, abs=1e-6)
+
+
+def test_t101_horizons_absent_from_an_older_frame_are_null_not_zero(chain):
+    """A Parquet round-trip of a pre-T101 capture yields a frame with no horizon columns.
+    `_row` must report that as unknown, not as a strike with no near-dated gamma (T100's rule,
+    applied to T101's columns)."""
+    strikes = E.by_strike(E.to_frame(chain), spot=SPOT)
+    legacy = strikes.drop(columns=[f"net_gex_{h}" for h in E.STRIKE_HORIZONS])
+    row = E._row(legacy.iloc[0])
+    assert row.net_gex_0dte is None
+    assert row.net_gex_beyond_30d is None
+    assert row.net_gex is not None

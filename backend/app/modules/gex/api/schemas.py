@@ -29,6 +29,7 @@ __all__ = [
     "ContractOut",
     "DealerPositioningOut",
     "ExpiryGexOut",
+    "ExpiryHistoryRowOut",
     "GexDiagnosticsOut",
     "GexResultOut",
     "IvRegimeOut",
@@ -51,7 +52,29 @@ __all__ = [
 
 
 class StrikeGexOut(BaseModel):
+    """Mirrors `engine.StrikeGex.to_dict()`.
+
+    The four `net_gex_*` fields (T101) decompose `net_gex` by time to expiry and sum back to
+    it exactly, so a client can answer "how much of this wall expires Friday" without a second
+    request. Null on rows computed before T101, which is not zero.
+    """
+
     strike: float
+    call_gex: float
+    put_gex: float
+    net_gex: float
+    abs_gex: float
+    contracts: int
+    open_interest: int
+    net_gex_0dte: float | None = None
+    net_gex_this_week: float | None = None
+    net_gex_next_30d: float | None = None
+    net_gex_beyond_30d: float | None = None
+
+
+class ExpiryGexOut(BaseModel):
+    expiry: dt.date
+    dte: int
     call_gex: float
     put_gex: float
     net_gex: float
@@ -60,7 +83,20 @@ class StrikeGexOut(BaseModel):
     open_interest: int
 
 
-class ExpiryGexOut(BaseModel):
+class ExpiryHistoryRowOut(BaseModel):
+    """`GET /gex/{underlying}/expiry/history` row -- read straight from `gex_by_expiry` joined
+    to `snapshots`, never from Parquet (T101).
+
+    One row per expiry per snapshot: the term structure of dealer gamma as it stood at each
+    capture. `dte` is calendar days from the snapshot's New York date.
+    """
+
+    model_config = ConfigDict(from_attributes=True)
+
+    snapshot_id: int
+    captured_at: dt.datetime
+    is_eod: bool
+    filter: str
     expiry: dt.date
     dte: int
     call_gex: float

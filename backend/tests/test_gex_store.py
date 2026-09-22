@@ -20,7 +20,7 @@ from app.core.db import get_engine, get_sessionmaker
 from app.modules.gex.gex.engine import ExpiryFilter
 from app.modules.gex.gex.store import compute_and_store
 from app.modules.gex.models.chain import ChainSnapshot, OptionContract, Underlying
-from app.modules.gex.models.db import Base, GexByStrike, GexLevel
+from app.modules.gex.models.db import Base, GexByExpiry, GexByStrike, GexLevel
 from app.modules.gex.storage.parquet import write_snapshot
 from app.modules.gex.storage.repository import SnapshotRepository
 
@@ -311,3 +311,64 @@ def test_in_memory_snapshot_still_requires_the_snapshot_row(tmp_path, session_fa
             data_dir=tmp_path,
             snapshot=_oi_mixed_snapshot(),
         )
+
+
+def test_t101_horizons_and_expiry_rollup_are_persisted(tmp_path, session_factory, snapshot_row):
+    """T101: the expiry dimension reaches Postgres. `engine.by_expiry` has computed the term
+    structure since T08 and it was discarded at persist, so no question about a *past* term
+    structure could be answered at any price short of reopening the chain."""
+    compute_and_store(snapshot_row, session_factory=session_factory, data_dir=tmp_path)
+
+    with session_factory() as session:
+        strikes = session.execute(
+            select(GexByStrike).where(
+                GexByStrike.snapshot_id == snapshot_row, GexByStrike.filter == "ALL"
+            )
+        ).scalars().all()
+        expiries = session.execute(
+            select(GexByExpiry)
+            .where(GexByExpiry.snapshot_id == snapshot_row, GexByExpiry.filter == "ALL")
+            .order_by(GexByExpiry.expiry)
+        ).scalars().all()
+
+    assert strikes, "no strike rows persisted"
+    for row in strikes:
+        parts = [
+            row.net_gex_0dte,
+            row.net_gex_this_week,
+            row.net_gex_next_30d,
+            row.net_gex_beyond_30d,
+        ]
+        assert all(p is not None for p in parts)
+        assert sum(parts) == pytest.approx(row.net_gex, abs=1e-6)
+
+    assert expiries, "no expiry rows persisted"
+    assert [e.expiry for e in expiries] == sorted(e.expiry for e in expiries)
+    # The term structure sums to the same book the per-strike rollup describes.
+    assert sum(e.net_gex for e in expiries) == pytest.approx(
+        sum(s.net_gex for s in strikes), abs=1e-6
+    )
+
+
+def test_t101_recompute_replaces_rather_than_accumulates(tmp_path, session_factory, snapshot_row):
+    """`--recompute` is how an engine change reaches stored rows, so it runs against snapshots
+    that already have them. `compute_and_store` deletes the `(snapshot, filter)` slice first;
+    if it did not, a second pass would double every row."""
+    compute_and_store(snapshot_row, session_factory=session_factory, data_dir=tmp_path)
+    with session_factory() as session:
+        first = session.execute(
+            select(func.count()).select_from(GexByExpiry).where(
+                GexByExpiry.snapshot_id == snapshot_row
+            )
+        ).scalar_one()
+
+    compute_and_store(snapshot_row, session_factory=session_factory, data_dir=tmp_path)
+    with session_factory() as session:
+        second = session.execute(
+            select(func.count()).select_from(GexByExpiry).where(
+                GexByExpiry.snapshot_id == snapshot_row
+            )
+        ).scalar_one()
+
+    assert first > 0
+    assert second == first

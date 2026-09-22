@@ -152,3 +152,99 @@ Paths: `backend/app/modules/gex/models/db.py`, `backend/app/modules/gex/jobs/cap
 - Distinguishing "no contracts in this bucket" from "contracts existed but none were usable" —
   inherited from `T100` decision 3. If the expiry rollup makes it natural to record *why* a
   bucket is empty, take it; if not, leave the note.
+
+
+---
+
+## Result — T101, 2026-09-21
+
+**Done. 1,219 backend tests green (7 added), 408 frontend, both linters clean, `tsc` clean,
+migration generates and reverses.** Three items need a write seat on the homeserver; see
+*Outstanding*.
+
+### The shape decision, settled by measurement
+
+This file offered two shapes and said to size them first. The measurement killed one of them
+outright and produced a third.
+
+| shape | rows on 2026-09-21 | vs. `gex_by_strike` that day |
+|---|---|---|
+| strike x expiry, all filters | **~2,614,587** | **18.6x** |
+| per-expiry only | ~5,184 | 0.04x |
+| per-strike horizon **columns** | **0 new rows** | -- |
+
+`gex_by_strike` holds **266,050 rows for the project's entire history**. The cross product
+would have written nearly ten times that in a single session and become the largest object in
+the database inside a week. It is not viable at 15-minute capture cadence and the file should
+not have listed it as a live option without this number attached.
+
+But per-expiry alone does not answer `F5`. The review's actual question -- "how much of the QQQ
+740 wall survives Friday" -- is per-strike *and* per-horizon, and summing across strikes
+discards exactly the half that matters. So:
+
+- **Four `net_gex_*` horizon columns on `gex_by_strike`**, which add no rows at all and answer
+  the wall question for *every* strike, not just the walls;
+- **`gex_by_expiry`**, ~5.2k rows a day, for the exact-expiry term structure that horizons
+  necessarily blur.
+
+Horizons reuse the frame's existing `zero_dte` / `this_week` / `dte` flags rather than
+inventing boundaries, so "this week" means what `ExpiryFilter.THIS_WEEK` already means
+everywhere else.
+
+### The load-bearing property is the partition
+
+The four horizons are exhaustive and disjoint, and sum back to the strike's own `net_gex`
+exactly. Both halves are tested: summing alone would not catch a contract counted twice, so
+there is a separate mask-level check that every contract lands in exactly one bucket. If that
+partition ever drifts, every "expires Friday" answer is wrong by the gap, silently.
+
+Verified on the SPX fixture -- and the decomposition immediately earns itself. Strike 5000
+carries **-634mn** net, which is **-660mn of 0DTE** plus **+25.9mn** surviving into the next 30
+days. The sign of what is left flips. That is invisible in the stored data as it existed
+yesterday.
+
+### `--recompute`, and why the existing backfill could not do this
+
+`gex/backfill.py` selects snapshots "lacking levels", which answers *was this ever processed*,
+not *was it processed by the current code*. After an engine change every stored snapshot looks
+up to date and the pass writes nothing -- precisely wrong when propagating the change is the
+point. Two changes now need exactly that: `T99`'s wall sign/magnitude test, and this task's
+expiry dimension, which no existing row has at all.
+
+`--recompute` processes every snapshot instead. Safe rather than merely permitted, because
+`compute_and_store` deletes the `(snapshot_id, filter)` slice before reinserting -- pinned by a
+test that a second pass leaves the row count unmoved. It is not the default: it reopens every
+Parquet file on disk, so it runs outside capture hours. It rewrites derived rows only and never
+touches `gex.decisions`.
+
+This is the mechanism `T99`'s outstanding item was waiting for, so one run now settles both.
+
+### Read path
+
+`GET /api/gex/gex/{underlying}/expiry/history` reads `gex_by_expiry` JOIN `snapshots` and
+**never opens Parquet**, so a term structure from months ago costs what today's costs. That is
+the entire argument for rolling up at capture time: `engine.by_expiry` has computed this since
+T08 and thrown it away at persist, so until now no question about a *past* term structure could
+be answered at any price short of reopening the chain.
+
+`StrikeGexOut` and the frontend `StrikeGex` carry the horizon fields, both nullable -- rows
+written before this migration have no split and cannot get one without reopening Parquet. Null
+means "not computed for this row", never zero.
+
+### Outstanding
+
+1. **The migration has not been applied.** It generates and reverses correctly offline; it has
+   not run against the homeserver.
+2. **The backfill has not run.** `--recompute` exists and is tested, but reprocessing every
+   stored snapshot needs a write seat, the Parquet directory, and a window outside capture
+   hours.
+3. **Acceptance 1 is demonstrated, not measured on the real row.** The capability is proven
+   against the SPX fixture and the partition is tested; quoting the actual QQQ 740 split for
+   2026-09-21 requires that snapshot's Parquet file, which is on the homeserver. Once the
+   backfill runs, the number is one query away -- and it belongs in this section.
+
+Also noted while working, not fixed here: `alembic heads` fails standalone, because two frozen
+pre-T75 revisions do `import app.models.db` and the `sys.modules` alias that rescues them lives
+in `alembic/env.py`, which `heads` does not load. `upgrade` and `downgrade` both work, so this
+is a papercut in an introspection command rather than a broken migration path -- but the next
+person to run `alembic heads` will think the migrations are broken, as I did.

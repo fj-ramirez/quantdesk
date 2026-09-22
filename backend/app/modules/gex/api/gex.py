@@ -32,11 +32,15 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.core.db import get_session_factory
-from app.modules.gex.api.schemas import GexResultOut, LevelHistoryRowOut
+from app.modules.gex.api.schemas import (
+    ExpiryHistoryRowOut,
+    GexResultOut,
+    LevelHistoryRowOut,
+)
 from app.modules.gex.gex.engine import ExpiryFilter, compute_all
 from app.modules.gex.jobs.calendar import effective_data_time
 from app.modules.gex.models.chain import Underlying
-from app.modules.gex.models.db import GexLevel, Snapshot
+from app.modules.gex.models.db import GexByExpiry, GexLevel, Snapshot
 from app.modules.gex.storage.parquet import read_snapshot, resolve_snapshot_path
 
 __all__ = ["router"]
@@ -267,4 +271,66 @@ def get_levels_history(
             computed_at=level.computed_at,
         )
         for level, snap in rows
+    ]
+
+
+@router.get("/{underlying}/expiry/history", response_model=list[ExpiryHistoryRowOut])
+def get_expiry_history(
+    underlying: str,
+    filter_: Annotated[
+        str, Query(alias="filter", description="One persisted ExpiryFilter name.")
+    ] = ExpiryFilter.ALL.value,
+    snapshot_id: Annotated[
+        int | None, Query(description="One snapshot; omit for the latest capture.")
+    ] = None,
+) -> list[ExpiryHistoryRowOut]:
+    """The term structure of dealer gamma: `gex_by_expiry` for one snapshot (T101).
+
+    Reads `gex_by_expiry` JOIN `snapshots` only -- **never** opens Parquet -- so it costs the
+    same whether the snapshot is today's or from months ago. That is the whole point of rolling
+    this up at capture time: `engine.by_expiry` has computed it since T08, but until T101 it
+    was discarded at persist, so no question about a *past* term structure could be answered at
+    any price short of reopening the chain.
+
+    Ascending by expiry, which is the order a term structure is read in.
+    """
+    canonical = _canonical_underlying(underlying)
+    parsed_filter = _parse_history_filter(filter_)
+
+    stmt = (
+        select(GexByExpiry, Snapshot)
+        .join(Snapshot, GexByExpiry.snapshot_id == Snapshot.id)
+        .where(Snapshot.underlying == canonical, GexByExpiry.filter == parsed_filter.value)
+    )
+    if snapshot_id is not None:
+        stmt = stmt.where(GexByExpiry.snapshot_id == snapshot_id)
+    else:
+        latest = (
+            select(Snapshot.id)
+            .where(Snapshot.underlying == canonical)
+            .order_by(Snapshot.captured_at.desc())
+            .limit(1)
+        )
+        stmt = stmt.where(GexByExpiry.snapshot_id == latest.scalar_subquery())
+    stmt = stmt.order_by(GexByExpiry.expiry)
+
+    with get_session_factory()() as session:
+        rows = session.execute(stmt).all()
+
+    return [
+        ExpiryHistoryRowOut(
+            snapshot_id=row.snapshot_id,
+            captured_at=snap.captured_at,
+            is_eod=snap.is_eod,
+            filter=row.filter,
+            expiry=row.expiry,
+            dte=row.dte,
+            call_gex=row.call_gex,
+            put_gex=row.put_gex,
+            net_gex=row.net_gex,
+            abs_gex=row.abs_gex,
+            contracts=row.contracts,
+            open_interest=row.open_interest,
+        )
+        for row, snap in rows
     ]

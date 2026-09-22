@@ -253,6 +253,21 @@ class GexByStrike(Base):
     only gets a row when it actually had admitted contracts contributing to it, so a filter
     that admits nothing (`ZERO_DTE` after the close) simply writes zero rows for that filter
     rather than rows full of nulls.
+
+    **The four `net_gex_*` horizon columns (T101) decompose `net_gex` by time to expiry** and
+    sum back to it exactly. They exist because the desk could not answer "how much of this
+    wall expires Friday" -- the first thing anyone asks about a wall -- and on 2026-09-21 the
+    QQQ 740 wall was +662mn with nothing stored saying what survived the week.
+
+    They are **columns, not a `(strike, expiry)` table**, and the ratio is the argument.
+    Measured against the stored 2026-09-21 session, a full strike-by-expiry cross product is
+    ~2.61 million rows *for that day*, against the 266,050 rows this table holds for the
+    project's entire history -- 18.6x the per-strike rollup, daily. Four columns add no rows
+    at all. `GexByExpiry` answers the exact-expiry question instead, without multiplying by
+    strike.
+
+    Nullable because rows written before T101 have no horizon split and cannot get one without
+    reopening their Parquet file. Null here means "not computed for this row", never zero.
     """
 
     __tablename__ = "gex_by_strike"
@@ -264,6 +279,10 @@ class GexByStrike(Base):
     call_gex: Mapped[float] = mapped_column(Float, nullable=False)
     put_gex: Mapped[float] = mapped_column(Float, nullable=False)
     net_gex: Mapped[float] = mapped_column(Float, nullable=False)
+    net_gex_0dte: Mapped[float | None] = mapped_column(Float, nullable=True)
+    net_gex_this_week: Mapped[float | None] = mapped_column(Float, nullable=True)
+    net_gex_next_30d: Mapped[float | None] = mapped_column(Float, nullable=True)
+    net_gex_beyond_30d: Mapped[float | None] = mapped_column(Float, nullable=True)
 
     __table_args__ = (
         UniqueConstraint(
@@ -278,6 +297,55 @@ class GexByStrike(Base):
         return (
             f"<GexByStrike snapshot_id={self.snapshot_id} filter={self.filter!r} "
             f"strike={self.strike!r} net_gex={self.net_gex!r}>"
+        )
+
+
+class GexByExpiry(Base):
+    """Per-expiry dollar GEX for one (snapshot, filter) -- `engine.by_expiry`'s output (T101).
+
+    The engine has computed this since T08 and the API has returned it for a live snapshot
+    since T11; it was simply never persisted, so the only expiry slicing anywhere in Postgres
+    was the `ZERO_DTE` / `EX_ZERO_DTE` filter and no historical question about a term structure
+    could be answered at all.
+
+    **Cheap because it does not multiply by strike.** One row per expiry per filter is ~5.2k
+    rows a day across the whole universe, against the ~140k `gex_by_strike` writes on the same
+    day. The strike-by-expiry cross product that would answer both questions at once is ~2.61
+    million rows a day and is not worth it -- `GexByStrike`'s horizon columns cover the
+    per-strike half at zero row cost.
+
+    `dte` is calendar days from the snapshot's New York date, carried so a consumer does not
+    have to recompute a business-day convention to sort a term structure. Note one calendar
+    date can carry both an AM-settled SPX series and a PM-settled SPXW series: they share a row
+    here, because the row is keyed on the date a consumer would name, and the gamma was
+    computed against each contract's own settlement instant before the sum.
+    """
+
+    __tablename__ = "gex_by_expiry"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    snapshot_id: Mapped[int] = mapped_column(Integer, ForeignKey("snapshots.id"), nullable=False)
+    filter: Mapped[str] = mapped_column(String(32), nullable=False)
+    expiry: Mapped[dt.date] = mapped_column(Date, nullable=False)
+    dte: Mapped[int] = mapped_column(Integer, nullable=False)
+    call_gex: Mapped[float] = mapped_column(Float, nullable=False)
+    put_gex: Mapped[float] = mapped_column(Float, nullable=False)
+    net_gex: Mapped[float] = mapped_column(Float, nullable=False)
+    abs_gex: Mapped[float] = mapped_column(Float, nullable=False)
+    contracts: Mapped[int] = mapped_column(Integer, nullable=False)
+    open_interest: Mapped[int] = mapped_column(Integer, nullable=False)
+
+    __table_args__ = (
+        UniqueConstraint(
+            "snapshot_id", "filter", "expiry", name="uq_gex_by_expiry_snapshot_filter_expiry"
+        ),
+        Index("ix_gex_by_expiry_snapshot_filter", "snapshot_id", "filter"),
+    )
+
+    def __repr__(self) -> str:  # pragma: no cover - debugging aid only
+        return (
+            f"<GexByExpiry snapshot_id={self.snapshot_id} filter={self.filter!r} "
+            f"expiry={self.expiry!r} net_gex={self.net_gex!r}>"
         )
 
 

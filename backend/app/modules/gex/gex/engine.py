@@ -169,6 +169,7 @@ __all__ = [
     "DEFAULT_TOP_N",
     "FRAME_COLUMNS",
     "PCT_MOVE",
+    "STRIKE_HORIZONS",
     "WALL_MIN_ABS_FRACTION",
     "ExpiryFilter",
     "ExpiryGex",
@@ -203,6 +204,26 @@ DEFAULT_PROFILE_STEP = 0.001
 
 #: How many strikes :func:`key_levels` reports on each side.
 DEFAULT_TOP_N = 5
+
+#: The expiry horizons :func:`by_strike` decomposes each strike into (T101), in order. They
+#: **partition** the admitted contracts exactly -- every contract lands in exactly one, and the
+#: four sum back to the strike's own ``net_gex``, which :func:`by_strike` asserts.
+#:
+#: The desk could not previously answer "how much of this wall expires Friday", which is the
+#: first thing anyone asks about a wall: on 2026-09-21 the QQQ 740 wall was +662mn and nothing
+#: stored said what survived the week. Per-contract rows live only in Parquet (invariant 5), so
+#: the answer has to be rolled up at capture time or paid for by reopening Parquet later.
+#:
+#: **Horizons rather than one row per (strike, expiry)**, and the ratio is why. A full
+#: strike-by-expiry cross product measured against the stored 2026-09-21 session is ~2.61
+#: million rows for that day alone -- 18.6x the per-strike rollup, against a ``gex_by_strike``
+#: table holding 266,050 rows for the project's entire history. Four columns on the existing
+#: rows cost no new rows at all. The exact-expiry question is answered instead by
+#: ``gex_by_expiry``, which is ~5.2k rows a day because it does not multiply by strike.
+#:
+#: The boundaries reuse the frame's own flags rather than inventing new ones, so "this week"
+#: means what :data:`ExpiryFilter.THIS_WEEK` already means everywhere else on this desk.
+STRIKE_HORIZONS = ("0dte", "this_week", "next_30d", "beyond_30d")
 
 #: Minimum |net GEX| a strike must carry, as a fraction of the largest |net GEX| in the same
 #: (snapshot, filter), before :func:`key_levels` will call it a wall (T99).
@@ -335,6 +356,11 @@ class StrikeGex:
 
     ``call_gex`` is ≥ 0, ``put_gex`` ≤ 0, ``net_gex`` is their sum, and ``abs_gex`` is the
     sign-blind total. ``contracts`` and ``open_interest`` are carried for auditing a level.
+
+    The four ``net_gex_*`` fields decompose ``net_gex`` by expiry horizon (T101) and sum back
+    to it exactly -- see :data:`STRIKE_HORIZONS`. They answer "how much of this wall expires
+    Friday", which nothing stored could answer before. They are ``None`` only on a
+    :class:`StrikeGex` built by hand without them, never on one :func:`by_strike` produced.
     """
 
     strike: float
@@ -344,6 +370,10 @@ class StrikeGex:
     abs_gex: float
     contracts: int = 0
     open_interest: int = 0
+    net_gex_0dte: float | None = None
+    net_gex_this_week: float | None = None
+    net_gex_next_30d: float | None = None
+    net_gex_beyond_30d: float | None = None
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -354,6 +384,10 @@ class StrikeGex:
             "abs_gex": _f(self.abs_gex),
             "contracts": int(self.contracts),
             "open_interest": int(self.open_interest),
+            "net_gex_0dte": _f(self.net_gex_0dte),
+            "net_gex_this_week": _f(self.net_gex_this_week),
+            "net_gex_next_30d": _f(self.net_gex_next_30d),
+            "net_gex_beyond_30d": _f(self.net_gex_beyond_30d),
         }
 
 
@@ -1025,6 +1059,31 @@ def _prepare(
     return working.loc[included]
 
 
+def _horizon_masks(group: pd.DataFrame) -> dict[str, np.ndarray]:
+    """Partition one strike's contracts into :data:`STRIKE_HORIZONS`.
+
+    Built from the frame's existing ``zero_dte`` / ``this_week`` / ``dte`` columns so the
+    boundaries mean what they already mean elsewhere. The partition is exhaustive and
+    disjoint by construction: each mask excludes every earlier one.
+    """
+    zero = group["zero_dte"].to_numpy(dtype=bool)
+    week = group["this_week"].to_numpy(dtype=bool)
+    dte = group["dte"].to_numpy(dtype=float)
+    rest = ~zero & ~week
+    return {
+        "0dte": zero,
+        "this_week": week & ~zero,
+        "next_30d": rest & (dte <= 30),
+        "beyond_30d": rest & (dte > 30),
+    }
+
+
+def _horizon_net(group: pd.DataFrame) -> tuple[float, float, float, float]:
+    gex = group["gex"].to_numpy(dtype=float)
+    masks = _horizon_masks(group)
+    return tuple(float(gex[masks[h]].sum()) for h in STRIKE_HORIZONS)  # type: ignore[return-value]
+
+
 def _bucket(group: pd.DataFrame) -> tuple[float, float, float, float, int, int]:
     gex = group["gex"].to_numpy(dtype=float)
     calls = float(gex[gex > 0].sum())
@@ -1074,12 +1133,16 @@ def by_strike(
     working = _prepare(
         df, filters, spot, iv_policy=iv_policy, use_vendor_gamma=use_vendor_gamma, r=r, q=q
     )
-    columns = ["strike", "call_gex", "put_gex", "net_gex", "abs_gex", "contracts", "open_interest"]
+    columns = [
+        "strike", "call_gex", "put_gex", "net_gex", "abs_gex", "contracts", "open_interest",
+        *(f"net_gex_{h}" for h in STRIKE_HORIZONS),
+    ]
     if working.empty:
         return pd.DataFrame({c: pd.Series(dtype="float64") for c in columns})
 
     records = [
-        (float(strike), *_bucket(group)) for strike, group in working.groupby("strike", sort=True)
+        (float(strike), *_bucket(group), *_horizon_net(group))
+        for strike, group in working.groupby("strike", sort=True)
     ]
     return pd.DataFrame(records, columns=columns)
 
@@ -1301,6 +1364,15 @@ def _row(record: pd.Series) -> StrikeGex:
         abs_gex=float(record["abs_gex"]),
         contracts=int(record.get("contracts", 0) or 0),
         open_interest=int(record.get("open_interest", 0) or 0),
+        # `.get` rather than `[...]`: `_row` is also handed frames built before T101 added
+        # these columns (a Parquet round-trip of an older capture), and a missing horizon is
+        # honestly unknown rather than zero.
+        **{
+            f"net_gex_{h}": (
+                None if record.get(f"net_gex_{h}") is None else float(record[f"net_gex_{h}"])
+            )
+            for h in STRIKE_HORIZONS
+        },
     )
 
 
