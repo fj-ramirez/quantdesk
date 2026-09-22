@@ -1609,7 +1609,11 @@ positive-gamma strike is a magnet, not a wall -- scored in its own right. Spec a
 **Done 2026-09-21.** 1,207 backend tests green (19 added), 408 frontend (1 added), both
 linters clean. `WALL_MIN_ABS_FRACTION` landed at 1e-4 rather than the 1e-2 first proposed --
 measured against 859 stored rows, where 1e-2 would have nulled a real $44.8mn 0DTE wall. The
-historic `gex.gex_levels` recompute still needs a write seat on the homeserver.
+historic `gex.gex_levels` recompute is done.
+
+**Deployed 2026-09-22.** QQQ `ZERO_DTE` now has zero level rows with
+`|put_wall_gex| < 1000`, where it previously named walls carrying -1.87, -5.48e-37 and
+-2.17e-20 dollars; 13 rows correctly report no put wall at all. No full-chain wall was lost.
 
 ## T100 · Opus · T99
 
@@ -1635,7 +1639,10 @@ The shape was decided by measurement: a full strike-by-expiry table would have w
 rows on 09-21 alone against the 266,050 this database holds in total, so the split is four
 horizon columns on `gex_by_strike` (zero new rows) plus a `gex_by_expiry` table (~5.2k/day).
 `backfill --recompute` added, which is also the mechanism T99's outstanding recompute needed.
-Migration applied to the homeserver and the backfill run are both still pending a write seat.
+
+**Deployed 2026-09-22.** Migration applied, backfill swept back to the oldest snapshot in
+the database. Measured on the real row: the QQQ 740 wall of +661.9mn was **28.2% expiring that
+Friday, 71.8% surviving** -- the sentence F5 says the desk could not produce at any price.
 
 ## T102 · Sonnet · T101
 
@@ -1647,7 +1654,9 @@ prose. Spec and result:
 **Done 2026-09-21.** 1,227 backend tests green (8 added), 408 frontend, both linters clean.
 Unlike T101's columns this one is a pure function of `captured_at` and the trading calendar, so
 the migration backfills all 346 existing rows itself -- no Parquet reopened, no separate pass.
-Snapshot 178, the Sunday capture, now reads its true session of Friday 09-18.
+
+**Deployed 2026-09-22.** 346 of 346 rows filled. Snapshot 178, the Sunday capture, now reads
+its true session of Friday 09-18, and `session_date` is on the wire.
 
 ## T103 · Sonnet · —
 
