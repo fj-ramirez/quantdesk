@@ -1686,8 +1686,14 @@ question whose answer is three rows. Latest-per-symbol by default, multi-symbol,
 Two MCP tools: desk status (the freshness check the skill mandates and hand-writes every
 session) and track record (per key, with the standard error beside the mean, and the key list
 derived from the data -- `T99` adds `GAMMA_PIN` in parallel). Retires the hardcoded block that
-`T107` deletes. Spec:
+`T107` deletes. Spec and result:
 [plans/desk-integrity/05-mcp-ergonomics.md](plans/desk-integrity/05-mcp-ergonomics.md).
+
+**Done 2026-09-22.** Both tools land. `gex_track_record` derives its keys with
+`GROUP BY ROLLUP(key)` and scores on `result_r IS NOT NULL`, both pinned by tests that read its
+own source -- so T99's `GAMMA_PIN` appears without a code change and the denominator cannot
+silently double. `desk_status` carries the three freshness rules beside the numbers they
+qualify. The call-count measurement still needs a working connector.
 
 ## T107 · Sonnet · T106
 
