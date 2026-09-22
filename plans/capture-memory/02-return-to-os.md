@@ -113,3 +113,51 @@ triggers exactly one call.
 Switching allocators (`LD_PRELOAD` of jemalloc or tcmalloc), `gc.freeze()`, tuning
 `MALLOC_TRIM_THRESHOLD_`, and any periodic timer-driven trim independent of the job schedule.
 All are reasonable next levers if this task under-delivers; none should be bundled into it.
+
+---
+
+## Result — T88
+
+**Done 2026-09-21.** 1,164 backend tests green (6 added), ruff clean. Not yet deployed.
+
+`app/modules/gex/jobs/memory.py`: `release_allocator()` calls
+`pyarrow.default_memory_pool().release_unused()` and then `malloc_trim(0)` through `ctypes`,
+each independently guarded, and returns a `ReleaseResult` with RSS either side. The scheduler
+registers `release_memory_listener` for `EVENT_JOB_EXECUTED | EVENT_JOB_ERROR` in
+`build_scheduler()`, so every job the worker runs is covered and a test can assert the
+registration without starting a process. `app/workers/gex_capture.py` builds its scheduler
+through that same function, so the hook is live wherever the worker is.
+
+**Arrow first, then the trim, and the order is load-bearing.** `release_unused()` frees
+Arrow's blocks *through* malloc, so trimming before it would walk the arenas just ahead of the
+frees it was meant to collect and leave exactly those pages for the next cycle to find.
+
+Three decisions beyond the spec:
+
+* **`freed_bytes` is `None`, never `0`, where RSS is unreadable.** Invariant 3's discipline
+  applied to an instrument: "could not measure" and "measured nothing" are different facts,
+  and a Windows run reporting `0` would read as a trim that failed rather than an absent
+  `/proc`. The log line carries `null` and there is a test for it.
+* **`duration_ms` is logged.** This file's own "likely first-contact failures" warns that the
+  listener runs on the event loop and that the remedy — moving it into `asyncio.to_thread` —
+  should be triggered by a measurement rather than a worry. Now there is one, in the same
+  line as the delta. Tens of milliseconds is the threshold to act on.
+* **`ctypes.util.find_library("c")` is tried before `libc.so.6`.** It gives musl and unusual
+  sonames a chance; it also shells out to `gcc`/`ldconfig` and returns `None` on a slim image
+  that has neither, which is why the literal name follows it rather than replacing it.
+
+`read_rss()` reads `/proc/self/statm` rather than adding a `psutil` dependency for one log
+line.
+
+**The suite passes on the Windows dev host, where `MALLOC_TRIM_AVAILABLE` is `False`** — which
+is the real test of the fallback, and the reason the assertions are `result.trimmed is
+MALLOC_TRIM_AVAILABLE` rather than a hardcoded `True`.
+
+### Not yet measured
+
+Everything this task is actually for. On the homeserver: the INFO line once per job with a
+non-`None` delta, and `scripts/mem-sample.sh --report` over a full session showing a sawtooth
+rather than a staircase. **A trim that gives back almost nothing is a result, not a failure** —
+it would say the retention is heap fragmentation rather than arena hoarding, which rules out
+the cheap fix and points at the next lever (jemalloc or tcmalloc via `LD_PRELOAD`, both
+explicitly out of scope here). Whichever it turns out to be gets recorded here.

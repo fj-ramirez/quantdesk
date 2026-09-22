@@ -1412,6 +1412,12 @@ APScheduler job-executed listener so it fires between cycles and covers every jo
 a no-op fallback for the Windows dev host. Spec:
 [plans/capture-memory/02-return-to-os.md](plans/capture-memory/02-return-to-os.md).
 
+**Done 2026-09-21 (code; deploy pending).** 1,164 backend tests green (6 added), ruff clean.
+`app/modules/gex/jobs/memory.py` plus a listener on `EVENT_JOB_EXECUTED | EVENT_JOB_ERROR`,
+logging RSS either side, the delta (`null`, never `0`, where unreadable) and how long the call
+took -- the last so the "is this blocking the event loop" question has a measurement. Whether
+it produces a sawtooth or only a lower staircase needs a session on the homeserver.
+
 ## T89 · Sonnet · gate
 
 **Conditional -- only on the leak branch.** `tracemalloc` diffing consecutive cycles, plus

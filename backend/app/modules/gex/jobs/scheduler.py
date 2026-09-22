@@ -16,6 +16,7 @@ import json
 import logging
 from zoneinfo import ZoneInfo
 
+from apscheduler.events import EVENT_JOB_ERROR, EVENT_JOB_EXECUTED
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.cron import CronTrigger
 
@@ -28,6 +29,7 @@ from app.modules.gex.jobs.catchup import catch_up_missed_eod
 from app.modules.gex.jobs.decisions import record_decisions_job
 from app.modules.gex.jobs.flows import update_flows_job
 from app.modules.gex.jobs.intraday_bars import update_intraday_bars
+from app.modules.gex.jobs.memory import release_allocator
 from app.modules.gex.jobs.retention import prune_intraday_strike_detail
 
 __all__ = [
@@ -52,6 +54,7 @@ __all__ = [
     "decisions_update_job",
     "flows_update_job",
     "intraday_bars_job",
+    "release_memory_listener",
     "retention_prune_job",
 ]
 
@@ -346,6 +349,42 @@ async def retention_prune_job() -> None:
         logger.exception("retention_prune_job: unexpected top-level failure")
 
 
+def release_memory_listener(event) -> None:
+    """T88. After every job, ask Arrow and glibc to hand back what the job has already freed.
+
+    On the scheduler rather than inside `capture_all_symbols`, for two reasons. It covers
+    every job this worker runs -- capture, extended capture, bars, flows, decisions, intraday,
+    retention -- instead of only the one that was investigated; and it fires *between* pieces
+    of work by construction, rather than between symbols inside the fifteen minutes a capture
+    has to complete in.
+
+    `EVENT_JOB_ERROR` as well as `EVENT_JOB_EXECUTED`: a job that died partway has usually
+    allocated the most and freed it on the way out, which is exactly when the arenas are worth
+    walking.
+
+    The INFO line is the point as much as the release is. This whole initiative exists because
+    the growth was invisible until someone sampled the cgroup by hand, and a number in
+    `docker compose logs` beside the job that produced it is the cheapest possible version of
+    that instrument. `rss_delta_bytes` is `null` where RSS is unreadable (the Windows dev
+    host) -- "not measured", never `0`.
+    """
+    result = release_allocator()
+    logger.info(
+        json.dumps(
+            {
+                "event": "release_allocator",
+                "job_id": getattr(event, "job_id", None),
+                "rss_before_bytes": result.rss_before,
+                "rss_after_bytes": result.rss_after,
+                "rss_delta_bytes": result.freed_bytes,
+                "arrow_released": result.arrow_released,
+                "malloc_trimmed": result.trimmed,
+                "duration_ms": round(result.duration_ms, 3),
+            }
+        )
+    )
+
+
 def build_scheduler() -> AsyncIOScheduler:
     """Construct (but do not start) the scheduler with `capture_eod` registered.
 
@@ -534,4 +573,10 @@ def build_scheduler() -> AsyncIOScheduler:
         max_instances=1,
         replace_existing=True,
     )
+
+    # T88. Registered here rather than in `app/workers/gex_capture.py` so that a test can
+    # assert it without starting a process, and so every scheduler built from this function
+    # carries it -- the listener is part of what this scheduler *is*, not part of how the
+    # worker happens to run it.
+    scheduler.add_listener(release_memory_listener, EVENT_JOB_EXECUTED | EVENT_JOB_ERROR)
     return scheduler
