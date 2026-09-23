@@ -52,6 +52,10 @@ export interface VizPalette {
   levelResistance: string;
   /** T40 semantic role: a support level. See `levelResistance`. */
   levelSupport: string;
+  /** T122 semantic role: a strike straddling spot (gamma concentrated on both sides), neither
+   * support nor resistance. Blue, the palette's neutral data hue, so it reads as "a level,
+   * with no side" rather than as either of the red/green pair. */
+  levelStraddling: string;
 }
 
 export const VIZ_PALETTE_LIGHT: VizPalette = {
@@ -67,6 +71,7 @@ export const VIZ_PALETTE_LIGHT: VizPalette = {
   divergingNegative: '#e34948',
   levelResistance: '#e34948',
   levelSupport: '#1f7a3d',
+  levelStraddling: '#2a78d6',
 };
 
 export const VIZ_PALETTE_DARK: VizPalette = {
@@ -88,6 +93,7 @@ export const VIZ_PALETTE_DARK: VizPalette = {
   divergingNegative: '#e66767',
   levelResistance: '#e66767',
   levelSupport: '#4aad68',
+  levelStraddling: '#3987e5',
 };
 
 export function vizPaletteFor(theme: 'light' | 'dark'): VizPalette {

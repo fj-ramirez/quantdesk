@@ -1640,9 +1640,34 @@ code {
 
 /* Tabs (T122): in-section tabs, one block visible at a time. */
 .ui-tabs { display: flex; flex-direction: column; gap: var(--space-3); min-width: 0; }
+.ui-tabs__bar {
+  display: flex; align-items: flex-end; justify-content: space-between; gap: var(--space-3);
+  border-bottom: 1px solid var(--border-default);
+}
 .ui-tabs__list {
-  display: flex; gap: var(--space-1); border-bottom: 1px solid var(--border-default);
+  display: flex; gap: var(--space-1); flex: 1 1 auto; min-width: 0;
   overflow-x: auto; scrollbar-width: thin;
+}
+.ui-tabs__actions {
+  display: flex; align-items: center; gap: var(--space-3); flex-wrap: wrap; justify-content: flex-end;
+  padding-bottom: var(--space-1);
+}
+/* On a phone the actions take their own line above the tabs, so they never squeeze the
+   tab strip into a sliver; the tabs stay directly on top of the panel they control. */
+@media (max-width: 640px) {
+  .ui-tabs__bar { flex-wrap: wrap; row-gap: var(--space-2); }
+  .ui-tabs__list { flex-basis: 100%; }
+  .ui-tabs__actions { order: -1; justify-content: flex-start; padding-bottom: 0; }
+}
+/* Pinned under the (also sticky) context bar, whose measured height ContextBar publishes.
+   Desktop only: on a phone a pinned row would take a fixed slice of a small screen. */
+@media (min-width: 901px) {
+  .ui-tabs--sticky > .ui-tabs__bar {
+    position: sticky;
+    top: var(--context-bar-height, 0px);
+    z-index: 9;
+    background: var(--surface-app);
+  }
 }
 .ui-tabs__tab {
   font: inherit; font-size: 13px; cursor: pointer; white-space: nowrap;
@@ -1718,15 +1743,98 @@ code {
   padding-left: 10px;
 }
 
-.report-summary-cards { display: flex; flex-wrap: wrap; gap: var(--space-3); }
-.report-summary-card { flex: 1 1 220px; min-width: 220px; }
-.report-summary-card .metric-card__value { font-size: 26px; }
-.report-summary-card__line { display: block; }
-.report-summary-card__subvalue { display: block; font-size: 15px; color: var(--text-default); }
 .report-iv-label { display: block; color: var(--text-strong); }
 .report-iv-label--muted { color: var(--text-muted); }
 .report-positioning-label { display: block; font-size: 14px; font-weight: 600; color: var(--text-strong); }
-.report-positioning-desc { display: block; font-size: 12px; color: var(--text-default); }
+.report-positioning-desc { display: block; font-size: 13px; color: var(--text-default); }
+
+/* T122 -- dense report layout. Price and volatility sit in the page header's right slot as
+   compact blocks; market structure and sentiment share one row; nothing is a full-width band. */
+.report-headline { display: flex; align-items: stretch; min-width: 0; max-width: 100%; }
+.report-headline__metric + .report-headline__metric,
+.report-headline__metric:first-child {
+  border-left: 1px solid var(--border-default); padding-left: var(--space-5); margin-left: var(--space-5);
+}
+.report-headline__metric { display: flex; flex-direction: column; gap: 1px; max-width: 34ch; min-width: 0; line-height: 1.45; }
+.report-headline__line--clip { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.report-headline__value {
+  font-family: var(--mono); font-size: 24px; line-height: 1.1; font-weight: 600; color: var(--text-strong);
+}
+.report-headline__label {
+  font-size: 10.5px; text-transform: uppercase; letter-spacing: 0.08em; color: var(--text-muted);
+}
+.report-headline__line { font-size: 12px; color: var(--text-default); }
+.report-headline .report-iv-label { font-size: 11.5px; }
+
+.report-overview {
+  display: grid; grid-template-columns: minmax(0, 3fr) minmax(0, 2fr); gap: var(--space-3); align-items: stretch;
+}
+.report-panel-title {
+  margin: 0 0 var(--space-2); font-size: 12px; font-weight: 700; text-transform: uppercase;
+  letter-spacing: 0.08em; color: var(--text-strong);
+}
+.report-structure, .report-sentiment { padding: var(--space-3) var(--space-4); }
+.report-level-row {
+  display: grid; grid-template-columns: 124px minmax(0, 1fr); gap: var(--space-2); align-items: baseline;
+  padding: var(--space-1) 0;
+}
+.report-level-row + .report-level-row { border-top: 1px solid var(--border-default); }
+.report-level-row__label {
+  margin: 0; font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em;
+  color: var(--text-strong);
+}
+/* Same hues as the chips, mixed toward the strong text colour so the small label keeps text
+   contrast in both themes (the raw red fails 4.5:1 on the light surface). */
+.report-level-row__label--resistance { color: color-mix(in srgb, var(--status-negative) 75%, var(--text-strong)); }
+.report-level-row__label--support { color: color-mix(in srgb, var(--status-positive) 75%, var(--text-strong)); }
+.report-level-row__label--straddling { color: color-mix(in srgb, var(--status-info) 75%, var(--text-strong)); }
+.report-level-row__body { display: flex; flex-direction: column; gap: var(--space-1); min-width: 0; }
+.report-level-row__note { margin: 0; font-size: 11.5px; color: var(--text-muted); }
+.report-sentiment { display: flex; flex-direction: column; gap: var(--space-1); line-height: 1.45; }
+.report-structure { line-height: 1.45; }
+.report-sentiment__value {
+  font-family: var(--mono); font-size: 30px; line-height: 1.1; font-weight: 600; color: var(--text-strong);
+}
+.report-positioning-pill {
+  align-self: flex-start; margin: var(--space-1) 0; padding: 2px 12px; border-radius: 999px;
+  border: 1px solid var(--border-default); font-size: 13px; font-weight: 700; letter-spacing: 0.04em;
+  color: var(--text-strong);
+}
+.report-positioning-pill--positive {
+  color: color-mix(in srgb, var(--status-positive) 75%, var(--text-strong));
+  border-color: var(--status-positive);
+  background: color-mix(in srgb, var(--status-positive) 12%, transparent);
+}
+.report-positioning-pill--caution {
+  color: color-mix(in srgb, var(--status-caution) 75%, var(--text-strong));
+  border-color: var(--status-caution);
+  background: color-mix(in srgb, var(--status-caution) 12%, transparent);
+}
+
+.report-summary { padding: var(--space-3) var(--space-4); }
+.report-summary__head { display: flex; justify-content: space-between; align-items: center; gap: var(--space-3); }
+.report-summary__head .report-panel-title { margin: 0; }
+.report-summary__lines { margin: var(--space-2) 0 0; padding-left: 18px; }
+.report-summary__lines li { font-size: 13px; line-height: 1.6; color: var(--text-default); max-width: 120ch; }
+.report-summary__lines li::marker { color: var(--status-info); }
+
+@media (max-width: 900px) {
+  .report-overview { grid-template-columns: 1fr; }
+  .report-headline { gap: var(--space-4); }
+}
+@media (max-width: 900px) {
+  .report-page .page-header { flex-wrap: wrap; }
+  .report-page .page-header__main { flex: 1 1 100%; }
+  .report-page .page-header__actions { flex: 1 1 100%; min-width: 0; }
+}
+@media (max-width: 640px) {
+  .report-headline { flex-wrap: wrap; row-gap: var(--space-2); }
+  .report-headline__metric,
+  .report-headline__metric + .report-headline__metric,
+  .report-headline__metric:first-child { border-left: none; padding-left: 0; margin-left: 0; max-width: 100%; }
+  .report-headline { column-gap: var(--space-5); }
+  .report-level-row { grid-template-columns: 1fr; }
+}
 
 .report-section { margin-top: var(--space-4); }
 /* T68: was `<h3>` with nothing else on the page above `h2` -- every one of these sections
@@ -1739,20 +1847,20 @@ code {
 .report-muted--spaced { margin: 0 0 8px; font-size: 13px; color: var(--text-muted); }
 .report-muted-inline { color: var(--text-muted); }
 
-.report-level-chips { display: flex; flex-wrap: wrap; gap: var(--space-2); margin: 0; padding: 0; }
+.report-level-chips { display: flex; flex-wrap: wrap; gap: var(--space-1) var(--space-2); margin: 0; padding: 0; }
 .report-level-chip {
   display: inline-flex;
   align-items: baseline;
   gap: var(--space-2);
   border: 1px solid;
   border-radius: 999px;
-  padding: 4px 12px;
+  padding: 2px 10px;
   background: var(--surface-raised);
   color: var(--text-strong);
   list-style: none;
 }
 .report-level-chip__dot { width: 8px; height: 8px; border-radius: 50%; align-self: center; }
-.report-level-chip__strike { font-size: 15px; }
+.report-level-chip__strike { font-size: 14px; }
 .report-level-chip__distance { font-size: 12px; color: var(--text-default); }
 .report-level-chip__gex { font-size: 12px; color: var(--text-muted); }
 .report-level-chip__cfd { font-size: 12px; color: var(--text-muted); }

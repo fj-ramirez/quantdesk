@@ -30,9 +30,24 @@ export interface TabsProps<T extends string> {
   /** Renders the active panel. Only the active tab's content is mounted. */
   children: ReactNode;
   className?: string;
+  /** Compact controls for the tab row itself, right-aligned (e.g. the report's full-text
+   * button). They belong to the page, not to any one tab, so they stay put when tabs change. */
+  actions?: ReactNode;
+  /** Pin the tab row under the frame's sticky context bar while the page scrolls (desktop
+   * widths only -- see `.ui-tabs--sticky`). */
+  sticky?: boolean;
 }
 
-export function Tabs<T extends string>({ label, tabs, active, onChange, children, className }: TabsProps<T>) {
+export function Tabs<T extends string>({
+  label,
+  tabs,
+  active,
+  onChange,
+  children,
+  className,
+  actions,
+  sticky,
+}: TabsProps<T>) {
   const baseId = useId();
   const tabRefs = useRef<(HTMLButtonElement | null)[]>([]);
   const activeIndex = Math.max(
@@ -59,7 +74,8 @@ export function Tabs<T extends string>({ label, tabs, active, onChange, children
   const panelId = `${baseId}-panel`;
 
   return (
-    <div className={className ? `ui-tabs ${className}` : 'ui-tabs'}>
+    <div className={['ui-tabs', sticky ? 'ui-tabs--sticky' : '', className ?? ''].filter(Boolean).join(' ')}>
+      <div className="ui-tabs__bar">
       <div role="tablist" aria-label={label} className="ui-tabs__list">
         {tabs.map((tab, i) => {
           const selected = i === activeIndex;
@@ -84,6 +100,8 @@ export function Tabs<T extends string>({ label, tabs, active, onChange, children
             </button>
           );
         })}
+      </div>
+      {actions != null && <div className="ui-tabs__actions">{actions}</div>}
       </div>
       <div role="tabpanel" id={panelId} aria-labelledby={tabId(activeIndex)} className="ui-tabs__panel">
         {children}

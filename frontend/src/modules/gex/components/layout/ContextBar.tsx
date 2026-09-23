@@ -20,6 +20,7 @@
  * `AssetSelector`, a single dropdown trigger that opens a grouped listbox on click. Same
  * underlying data and `setSymbol` contract; only the presentation changed.
  */
+import { useEffect, useRef } from 'react';
 import { useLocation } from 'react-router-dom';
 import { EXPIRY_FILTERS, EXPIRY_FILTER_LABELS, type Underlying } from '../../api/types';
 import { useGexResult, useSnapshots } from '../../api/queries';
@@ -162,9 +163,27 @@ export function ContextBar() {
   const location = useLocation();
   const { symbol, filter, snapshotId, setSymbol, setFilter, setSnapshotId } = useDashboardParams();
 
+  // T122: the bar is sticky and wraps to a variable height, so it publishes that height as
+  // `--context-bar-height` for anything that pins itself just below it (the Report page's
+  // sticky tab row). Re-run per path: the scan family renders a different, shorter bar.
+  const barRef = useRef<HTMLElement>(null);
+  useEffect(() => {
+    const el = barRef.current;
+    if (!el) return;
+    const root = document.documentElement;
+    const publish = () => root.style.setProperty('--context-bar-height', `${el.offsetHeight}px`);
+    publish();
+    const observer = new ResizeObserver(publish);
+    observer.observe(el);
+    return () => {
+      observer.disconnect();
+      root.style.removeProperty('--context-bar-height');
+    };
+  }, [location.pathname]);
+
   if (SCAN_FAMILY_PATHS.has(location.pathname)) {
     return (
-      <header className="context-bar context-bar--scan">
+      <header ref={barRef} className="context-bar context-bar--scan">
         <ModuleBadge moduleKey="gex" />
         <BarsFreshness />
         <div className="topbar-meta">
@@ -175,7 +194,7 @@ export function ContextBar() {
   }
 
   return (
-    <header className="context-bar">
+    <header ref={barRef} className="context-bar">
       <ModuleBadge moduleKey="gex" />
       <SymbolTabs symbol={symbol} onChange={setSymbol} />
       <AssetSelector symbol={symbol} onChange={setSymbol} />

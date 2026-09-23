@@ -17,6 +17,7 @@ import { server } from '../../../mocks/server';
 import { ThemeProvider } from '../../../theme/ThemeContext';
 import { ContextBar } from '../components/layout/ContextBar';
 import { Report } from './Report';
+import reportGldFixture from '../mocks/fixtures/report-gld.json';
 
 // T67: the page-body symbol/expiry `<select>`s this test used to drive directly are gone --
 // `/report` isn't in `ContextBar`'s `SCAN_FAMILY_PATHS`, so it renders the same
@@ -62,8 +63,8 @@ async function awaitReportLoaded(symbol: string) {
  * offered when the symbol has alerts, and GLD's fixture has none. */
 const TAB_REGIONS = [
   ['Summary', 'Executive summary'],
-  ['Gamma exposure', 'Gamma exposure'],
-  ['Premium screen', 'Premium selling screen'],
+  ['Gamma Exposure', 'Gamma exposure'],
+  ['Premium Screen', 'Premium selling screen'],
   ['Playbook', 'Playbook'],
 ] as const;
 
@@ -161,7 +162,7 @@ describe('Report page', () => {
     renderReport('/report?symbol=GLD');
     await awaitReportLoaded('GLD');
 
-    fireEvent.click(screen.getByRole('tab', { name: 'Premium screen' }));
+    fireEvent.click(screen.getByRole('tab', { name: 'Premium Screen' }));
     const premium = screen.getByRole('region', { name: 'Premium selling screen' });
     expect(premium.textContent).toMatch(/not a recommendation/);
     expect(premium.textContent).toMatch(/never routes an order/);
@@ -248,7 +249,7 @@ describe('Report page sections as tabs (T122, was the T69 density pass)', () => 
     expect(screen.getByRole('region', { name: 'Playbook' })).toBeInTheDocument();
 
     fireEvent.keyDown(playbookTab, { key: 'ArrowLeft' });
-    expect(screen.getByRole('tab', { name: 'Premium screen' })).toHaveFocus();
+    expect(screen.getByRole('tab', { name: 'Premium Screen' })).toHaveFocus();
     expect(screen.getByRole('region', { name: 'Premium selling screen' })).toBeInTheDocument();
   });
 
@@ -256,8 +257,8 @@ describe('Report page sections as tabs (T122, was the T69 density pass)', () => 
     renderReport('/report?symbol=DIA');
     await awaitReportLoaded('DIA');
 
-    const alertsTab = screen.getByRole('tab', { name: /Risk alerts/ });
-    const count = Number(alertsTab.textContent?.replace('Risk alerts', ''));
+    const alertsTab = screen.getByRole('tab', { name: /Risk Alerts/ });
+    const count = Number(alertsTab.textContent?.replace('Risk Alerts', ''));
     expect(count).toBeGreaterThan(0);
 
     fireEvent.click(alertsTab);
@@ -268,25 +269,37 @@ describe('Report page sections as tabs (T122, was the T69 density pass)', () => 
   it('does not offer a Risk alerts tab when the symbol has no alerts', async () => {
     renderReport('/report?symbol=GLD');
     await awaitReportLoaded('GLD');
-    expect(screen.queryByRole('tab', { name: /Risk alerts/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole('tab', { name: /Risk Alerts/ })).not.toBeInTheDocument();
   });
 
-  it('Levels straddling spot and the three summary cards stay outside the tabs -- always visible', async () => {
+  it('puts price and volatility in the header, then the tabs, then market structure and sentiment inside Summary', async () => {
     renderReport('/report?symbol=DIA');
     await awaitReportLoaded('DIA');
 
-    const panel = screen.getByRole('tabpanel');
-    for (const label of ['Current price', 'Volatility', 'Market sentiment', 'Levels straddling spot']) {
+    // Price and volatility belong to the page, not a tab: in the header, above the tab strip.
+    const tablist = screen.getByRole('tablist', { name: 'Report sections' });
+    const header = screen.getByRole('heading', { name: 'DIA Analysis Results', level: 1 }).closest('header')!;
+    for (const label of ['Current price', 'Volatility']) {
       const region = screen.getByRole('region', { name: label });
-      expect(panel.contains(region)).toBe(false);
+      expect(header.contains(region)).toBe(true);
+      expect(region.compareDocumentPosition(tablist) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     }
+
+    // Nothing sits between the header and the tabs: the level rows and sentiment are the
+    // Summary tab's content, in one Market structure panel beside Market sentiment.
+    const panel = screen.getByRole('tabpanel');
+    const structure = within(panel).getByRole('region', { name: 'Market structure' });
+    for (const label of ['Top resistance levels', 'Top support levels', 'Levels straddling spot']) {
+      expect(structure.contains(screen.getByRole('region', { name: label }))).toBe(true);
+    }
+    expect(within(panel).getByRole('region', { name: 'Market sentiment' })).toBeInTheDocument();
   });
 
   it('the load-bearing disclaimer strings still appear verbatim in their tabs (T67 regression check)', async () => {
     renderReport('/report?symbol=GLD');
     await awaitReportLoaded('GLD');
 
-    fireEvent.click(screen.getByRole('tab', { name: 'Premium screen' }));
+    fireEvent.click(screen.getByRole('tab', { name: 'Premium Screen' }));
     const premium = screen.getByRole('region', { name: 'Premium selling screen' });
     expect(premium.textContent).toContain('Screening output');
     expect(premium.textContent).toMatch(/not a recommendation/);
@@ -309,10 +322,14 @@ describe('CFD level translation (T41)', () => {
   });
 
   it('T47: a symbol with no CFD_INSTRUMENTS entry (an extended ETF) shows "No CFD mapping" instead of a broken "undefined spot" input', async () => {
+    // T122: the CFD control now sits in the report's tab row, which renders once a report
+    // exists. The mocks record no XLK chain, so serve GLD's body under XLK -- in production
+    // an extended ETF gets a real report (T47); only the CFD mapping is missing.
+    server.use(http.get('*/api/gex/report/XLK', () => HttpResponse.json(reportGldFixture)));
     renderReport('/report?symbol=XLK');
     await awaitReportLoaded('XLK');
 
-    expect(screen.getByText('No CFD mapping for XLK')).toBeInTheDocument();
+    expect(await screen.findByText('No CFD mapping for XLK')).toBeInTheDocument();
     expect(screen.queryByLabelText(/spot$/)).not.toBeInTheDocument();
 
     // Switching back to a mapped symbol restores the normal input -- the degrade is per
