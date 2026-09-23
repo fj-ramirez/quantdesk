@@ -1763,7 +1763,7 @@ Overview: Tape stays on top; continuation / fading / open now / regime are tabs;
 became a compact table (it was one card per event). Opportunities: ranked / no trade / track
 record are tabs; ranked and the ledger page at 15. Scan: compact regime strip, Breakouts/Trend
 as tabs over the existing `view` param, tables at 20. Regime, Rotation, Flows, terminal Board
-and Graph tables page at 20; the research leaderboard already paged server-side. `DetailDrawer`
+and Graph tables page at 20; the research leaderboard already paged server-side. Report: its five collapsed disclosures became tabs (Summary first; Risk alerts carries its count and is only offered when there are alerts), and the full text opens in a wide `DetailDrawer`. `DetailDrawer`
 is now a modal side sheet at every width — it was already `aria-modal` with a focus trap but
 rendered inline at desktop. Metric cards cap at 280px. Page heights at 1440px: Overview
 4363→943, Opportunities 3470→1429, Scan 3053→1665. Tests that asserted "one row per record"

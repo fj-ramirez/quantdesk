@@ -1611,6 +1611,7 @@ code {
   box-shadow: var(--elevation-2);
   border-left: 1px solid var(--border-default);
 }
+.detail-drawer--wide { width: min(980px, 96vw); }
 .detail-drawer__head {
   display: flex; justify-content: space-between; align-items: baseline; gap: var(--space-3);
   position: sticky; top: calc(-1 * var(--space-4)); background: var(--surface-app);
@@ -1726,17 +1727,6 @@ code {
 .report-iv-label--muted { color: var(--text-muted); }
 .report-positioning-label { display: block; font-size: 14px; font-weight: 600; color: var(--text-strong); }
 .report-positioning-desc { display: block; font-size: 12px; color: var(--text-default); }
-
-/* T69 -- Gamma exposure/Premium selling screen/Playbook/Risk alerts/Summary become native
-   <details> disclosures, collapsed by default (Levels-straddling-spot and the three top
-   summary cards stay outside this, always visible). Same minimal "style cursor/colour only"
-   treatment `.rotation-info` already established -- no bespoke focus-trap code, `<details>`
-   is natively keyboard-operable. The heading lives inside `<summary>` (an h2, so heading-order
-   navigation is unaffected), so it never repeats once the section is opened. */
-.report-disclosure { margin-top: var(--space-4); }
-.report-disclosure > summary { cursor: pointer; list-style: revert; }
-.report-disclosure > summary .report-section-title { display: inline; margin: 0; }
-.report-disclosure .report-section { margin-top: var(--space-3); }
 
 .report-section { margin-top: var(--space-4); }
 /* T68: was `<h3>` with nothing else on the page above `h2` -- every one of these sections
@@ -3843,3 +3833,8 @@ code {
   border-top: 1px solid var(--border-default);
   margin: var(--space-5) 0;
 }
+
+/* T122: the report's full-text trigger sits above its tabs, right-aligned. */
+.report-fullreport { display: flex; justify-content: flex-end; }
+/* Inside the sheet the sheet itself scrolls, so the text no longer needs its own capped box. */
+.detail-drawer .report-fulltext { max-height: none; overflow: visible; }

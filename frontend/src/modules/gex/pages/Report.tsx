@@ -49,6 +49,17 @@
  * -order navigation for assistive tech is unaffected; only its visible position changed (from
  * inside the region to the clickable row above it). No value, disclaimer string, CFD logic, or
  * the capture-now flow changed -- this only moves existing JSX into disclosure wrappers.
+ *
+ * **T122 -- tabs and an overlay full report.** Five collapsed disclosures read as a row of
+ * closed doors, and opening them all ran the page past two and a half screens. They are now
+ * in-section tabs (`?tab=`, URL state) -- Summary first, as the concise read, then Gamma
+ * exposure, Premium screen, Playbook, Risk alerts. The Risk alerts tab carries its count, so an
+ * alert is announced on the tab strip even while its panel is closed; a collapsed `<details>`
+ * never said whether it held anything. A tab whose section would be empty (no summary lines,
+ * no alerts) is not offered, the same "render nothing" rule as before. The full text report
+ * opens in a wide `DetailDrawer` from a button above the tabs instead of expanding at the foot
+ * of the page, and still fetches only once opened. No value, disclaimer, CFD logic or the
+ * capture-now flow changed.
  */
 import { useCallback, useMemo, useState } from 'react';
 import { ApiError } from '../api/client';
@@ -81,6 +92,9 @@ import { DataTableFrame } from '../../../components/ui/DataTableFrame';
 import { MetricCard } from '../../../components/ui/MetricCard';
 import { PageHeader } from '../../../components/ui/PageHeader';
 import { Surface } from '../../../components/ui/Surface';
+import { DetailDrawer } from '../../../components/ui/DetailDrawer';
+import { Tabs, type TabDef } from '../../../components/ui/Tabs';
+import { useTabParam } from '../../../components/ui/useTabParam';
 
 const DASH = '—';
 
@@ -322,36 +336,35 @@ function FullReportPanel({
   }, [data]);
 
   return (
-    <Surface as="section" aria-label="Full report" className="report-section" bordered={false} padded={false}>
-      <button type="button" aria-expanded={open} onClick={() => setOpen((previous) => !previous)}>
-        {open ? 'Hide full report' : 'View full report'}
+    <Surface as="section" aria-label="Full report" className="report-fullreport" level="app" bordered={false} padded={false}>
+      <button type="button" className="scan-toolbar__btn" aria-expanded={open} onClick={() => setOpen(true)}>
+        View full report
       </button>
-
-      {open && (
-        <div className="report-section">
-          {isLoading && <p aria-live="polite">Loading the full report…</p>}
-          {isError && (
-            <p role="alert">
-              Could not load the full report: {error instanceof ApiError ? error.message : 'unexpected error'}
-            </p>
-          )}
-          {data && (
-            <>
-              <div className="report-fulltext-actions">
-                <button type="button" onClick={() => void onCopy()}>
-                  Copy to clipboard
-                </button>
-                <span aria-live="polite" className="report-fulltext-copy-status">
-                  {copyState === 'copied' ? 'Copied.' : copyState === 'failed' ? 'Copying is not available in this browser context.' : ''}
-                </span>
-              </div>
-              <pre data-testid="report-text" className="report-fulltext">
-                {data}
-              </pre>
-            </>
-          )}
-        </div>
-      )}
+      {/* T122: an overlay rather than an inline expansion at the foot of the page. Always
+          mounted -- DetailDrawer's caller contract -- so focus returns to the button. */}
+      <DetailDrawer open={open} onClose={() => setOpen(false)} title={`${symbol} full report`} wide>
+        {isLoading && <p aria-live="polite">Loading the full report…</p>}
+        {isError && (
+          <p role="alert">
+            Could not load the full report: {error instanceof ApiError ? error.message : 'unexpected error'}
+          </p>
+        )}
+        {data && (
+          <>
+            <div className="report-fulltext-actions">
+              <button type="button" onClick={() => void onCopy()}>
+                Copy to clipboard
+              </button>
+              <span aria-live="polite" className="report-fulltext-copy-status">
+                {copyState === 'copied' ? 'Copied.' : copyState === 'failed' ? 'Copying is not available in this browser context.' : ''}
+              </span>
+            </div>
+            <pre data-testid="report-text" className="report-fulltext">
+              {data}
+            </pre>
+          </>
+        )}
+      </DetailDrawer>
     </Surface>
   );
 }
@@ -392,6 +405,16 @@ function NoDataYet({ symbol }: { symbol: Underlying }) {
 // Page
 // ---------------------------------------------------------------------------------------
 
+const REPORT_TABS = ['summary', 'gamma', 'premium', 'playbook', 'alerts'] as const;
+type ReportTab = (typeof REPORT_TABS)[number];
+const REPORT_TAB_LABELS: Record<ReportTab, string> = {
+  summary: 'Summary',
+  gamma: 'Gamma exposure',
+  premium: 'Premium screen',
+  playbook: 'Playbook',
+  alerts: 'Risk alerts',
+};
+
 function ReportBody({
   report,
   symbol,
@@ -412,6 +435,22 @@ function ReportBody({
     return map;
   }, [cfd]);
   const cfdStraddlingByStrike = useMemo(() => cfdLevelIndex(cfd?.straddling), [cfd]);
+
+  // T122: only offer a tab whose section has something in it -- the same "render nothing"
+  // rule the old disclosures followed for an empty summary or no alerts.
+  const tabDefs = useMemo(
+    () =>
+      REPORT_TABS.filter((t) => (t === 'summary' ? summary.length > 0 : t === 'alerts' ? alerts.length > 0 : true)).map(
+        (value): TabDef<ReportTab> => ({
+          value,
+          label: REPORT_TAB_LABELS[value],
+          count: value === 'alerts' ? alerts.length : null,
+        }),
+      ),
+    [summary.length, alerts.length],
+  );
+  const tabValues = useMemo(() => tabDefs.map((d) => d.value), [tabDefs]);
+  const [tab, setTab] = useTabParam<ReportTab>('tab', tabValues);
 
   return (
     <>
@@ -527,10 +566,10 @@ function ReportBody({
         </Surface>
       )}
 
-      <details className="report-disclosure">
-        <summary className="report-disclosure__summary">
-          <h2 className="report-section-title">Gamma exposure</h2>
-        </summary>
+      <FullReportPanel symbol={symbol} filter={filter} cfdSpot={cfdSpot} />
+
+      <Tabs label="Report sections" tabs={tabDefs} active={tab} onChange={setTab}>
+      {tab === 'gamma' && (
         <Surface as="section" aria-label="Gamma exposure" className="report-section">
         <table>
           <tbody>
@@ -580,12 +619,9 @@ function ReportBody({
           </tbody>
         </table>
         </Surface>
-      </details>
+      )}
 
-      <details className="report-disclosure">
-        <summary className="report-disclosure__summary">
-          <h2 className="report-section-title">Premium selling screen</h2>
-        </summary>
+      {tab === 'premium' && (
         <Surface as="section" aria-label="Premium selling screen" className="report-section">
         <ScreeningNotice>
           Screening output computed from the current chain, not a recommendation. These are the
@@ -602,12 +638,9 @@ function ReportBody({
         />
         {premium.note && <p className="report-muted">{premium.note}</p>}
         </Surface>
-      </details>
+      )}
 
-      <details className="report-disclosure">
-        <summary className="report-disclosure__summary">
-          <h2 className="report-section-title">Playbook</h2>
-        </summary>
+      {tab === 'playbook' && (
         <Surface as="section" aria-label="Playbook" className="report-section">
         <ScreeningNotice>
           Screening output, not a recommendation. Every trigger, target and invalidation below
@@ -637,13 +670,9 @@ function ReportBody({
           </p>
         )}
         </Surface>
-      </details>
+      )}
 
-      {alerts.length > 0 && (
-        <details className="report-disclosure">
-          <summary className="report-disclosure__summary">
-            <h2 className="report-section-title">Risk alerts</h2>
-          </summary>
+      {tab === 'alerts' && (
           <Surface as="section" aria-label="Risk alerts" className="report-section" bordered={false} padded={false}>
             <ul className="report-alerts">
               {alerts.map((alert) => (
@@ -653,14 +682,9 @@ function ReportBody({
               ))}
             </ul>
           </Surface>
-        </details>
       )}
 
-      {summary.length > 0 && (
-        <details className="report-disclosure">
-          <summary className="report-disclosure__summary">
-            <h2 className="report-section-title">Summary</h2>
-          </summary>
+      {tab === 'summary' && (
           <Surface as="section" aria-label="Executive summary" className="report-section" bordered={false} padded={false}>
             {summary.map((line) => (
               <p key={line} className="report-muted--spaced">
@@ -668,10 +692,8 @@ function ReportBody({
               </p>
             ))}
           </Surface>
-        </details>
       )}
-
-      <FullReportPanel symbol={symbol} filter={filter} cfdSpot={cfdSpot} />
+      </Tabs>
     </>
   );
 }
