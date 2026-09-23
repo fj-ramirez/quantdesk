@@ -16,6 +16,7 @@ import { Flows } from './Flows';
 import { formatBarsThrough } from '../../../lib/time';
 import flows20Fixture from '../mocks/fixtures/scan/flows_20.json';
 import flows60Fixture from '../mocks/fixtures/scan/flows_60.json';
+import { expectPagedRows } from '../../../test/pagination';
 
 // Same reasoning as `Rotation.test.tsx`: jsdom has no real <canvas>, and FlowBars/FlowSparkline
 // each already have their own dedicated option-building unit tests.
@@ -104,7 +105,7 @@ describe('Flows page -- window toolbar and deep links', () => {
     ).toHaveAttribute('aria-pressed', 'true');
     expect(screen.getByText(/Net flow, percent of AUM \(60d\)/)).toBeInTheDocument();
     const table = screen.getByRole('table', { name: /flow percent and trend/i });
-    expect(within(table).getAllByRole('row')).toHaveLength(flows60Fixture.symbols.length + 1);
+    expectPagedRows(table, flows60Fixture.symbols.length, 20, 'funds');
   });
 
   it('falls back to the default window instead of throwing on an invalid ?window=', async () => {

@@ -14,6 +14,7 @@ import { ThemeProvider } from '../../../theme/ThemeContext';
 import { Decisions } from './Decisions';
 import decisionsFixture from '../mocks/fixtures/scan/decisions.json';
 import type { DecisionsResponse } from '../api/types';
+import { expectPagedRows } from '../../../test/pagination';
 
 const fixture = decisionsFixture as DecisionsResponse;
 
@@ -42,8 +43,9 @@ describe('Decisions page', () => {
     renderDecisions();
     await awaitLoaded();
     const table = await screen.findByRole('table', { name: /ranked opportunities/i });
+    // T122: fifteen a page, with the full count stated in the pager.
+    expectPagedRows(table, fixture.ranked.length, 15, 'opportunities');
     const bodyRows = within(table).getAllByRole('row').slice(1);
-    expect(bodyRows).toHaveLength(fixture.ranked.length);
     // API order: the first body row is the first ranked opportunity.
     expect(bodyRows[0]).toHaveTextContent(fixture.ranked[0].underlying);
     expect(bodyRows[0]).toHaveTextContent(fixture.ranked[0].grade);
@@ -51,7 +53,7 @@ describe('Decisions page', () => {
   });
 
   it('lists every no-trade symbol with its first reason verbatim', async () => {
-    renderDecisions();
+    renderDecisions('/decisions?tab=notrade');
     await awaitLoaded();
     const quiet = fixture.symbols.filter((s) => s.opportunities.length === 0);
     expect(quiet.length).toBeGreaterThan(0);
@@ -174,7 +176,11 @@ describe('Decisions page', () => {
     renderDecisions();
     await awaitLoaded();
     expect(await screen.findByRole('region', { name: 'No opportunities at this threshold' })).toBeInTheDocument();
-    expect(screen.getByText(/No chain captured yet: SPX/)).toBeInTheDocument();
+    // The cause is one tab away, and the tab says how many symbols it holds.
+    const noTradeTab = screen.getByRole('tab', { name: /No trade/ });
+    expect(noTradeTab).toHaveTextContent('1');
+    fireEvent.click(noTradeTab);
+    expect(await screen.findByText(/No chain captured yet: SPX/)).toBeInTheDocument();
   });
 });
 
@@ -215,7 +221,7 @@ function resolvedVariant(): DecisionsHistoryResponse {
 
 describe('Decisions page -- track record', () => {
   it('renders the live all-pending recording with withheld rates and the scoring note', async () => {
-    renderDecisions();
+    renderDecisions('/decisions?tab=record');
     await awaitLoaded();
     const region = await screen.findByRole('region', { name: 'Track record' });
     expect(within(region).getByText(historyFixture.note)).toBeInTheDocument();
@@ -224,13 +230,14 @@ describe('Decisions page -- track record', () => {
     expect(all).toHaveTextContent(String(historyFixture.summary.overall.n));
     expect(within(all).getAllByText('n<5')).toHaveLength(2); // hit and win withheld
     const ledger = within(region).getByRole('table', { name: 'Recorded opportunities' });
-    expect(within(ledger).getAllByRole('row')).toHaveLength(historyFixture.records.length + 1);
-    expect(within(ledger).getAllByText('pending')).toHaveLength(historyFixture.records.length);
+    // T122: the ledger pages at fifteen; the summary above still covers every record.
+    expectPagedRows(ledger, historyFixture.records.length, 15, 'recorded opportunities');
+    expect(within(ledger).getAllByText('pending')).toHaveLength(Math.min(historyFixture.records.length, 15));
   });
 
   it('renders resolved rows with signed R and pending marks as unrealized', async () => {
     server.use(http.get('*/api/gex/decisions/history', () => HttpResponse.json(resolvedVariant())));
-    renderDecisions();
+    renderDecisions('/decisions?tab=record');
     await awaitLoaded();
     const region = await screen.findByRole('region', { name: 'Track record' });
     expect(within(region).getByText('+2.50R')).toBeInTheDocument();
@@ -241,7 +248,7 @@ describe('Decisions page -- track record', () => {
   });
 
   it('Record now posts, reports the counts, and never a raw body on failure', async () => {
-    renderDecisions();
+    renderDecisions('/decisions?tab=record');
     await awaitLoaded();
     const region = await screen.findByRole('region', { name: 'Track record' });
     fireEvent.click(within(region).getByRole('button', { name: 'Record now' }));
@@ -259,7 +266,7 @@ describe('Decisions page -- track record', () => {
         HttpResponse.json({ ...historyFixture, records: [], summary: { ...historyFixture.summary, overall: { ...historyFixture.summary.overall, n: 0 } } }),
       ),
     );
-    renderDecisions();
+    renderDecisions('/decisions?tab=record');
     await awaitLoaded();
     expect(await screen.findByRole('region', { name: 'Nothing recorded yet' })).toBeInTheDocument();
   });

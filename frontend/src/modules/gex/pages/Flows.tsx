@@ -197,6 +197,8 @@ export function Flows() {
               onSort={onSort}
               rowKey={(row) => row.symbol}
               caption="Per-fund flow percent and trend across the three supported windows"
+              pageSize={20}
+              pageNoun="funds"
             />
           </DataTableFrame>
         </>

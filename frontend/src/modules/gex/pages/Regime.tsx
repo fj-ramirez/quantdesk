@@ -96,6 +96,7 @@ export function Regime() {
             sort={effectiveSort}
             dir={dir}
             onSort={onSort}
+            pageSize={20}
           />
         </DataTableFrame>
       )}

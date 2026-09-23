@@ -23,8 +23,9 @@ How to use this file:
   `context/decisions.md` if it settled a rule. A finished block does not stay here.
 - New work gets the next free ID and is filed here, never fixed silently.
 
-**Next free ID: T122.** (T108 was allocated retroactively — see the archive's addendum;
-T109–T114 were filed on 2026-09-22 from the task-history audit, T115–T121 from the logic audit.)
+**Next free ID: T123.** (T108 was allocated retroactively — see the archive's addendum;
+T109–T114 were filed on 2026-09-22 from the task-history audit, T115–T121 from the logic audit;
+T122 was filed and finished on 2026-09-23 — see the addendum.)
 
 ---
 

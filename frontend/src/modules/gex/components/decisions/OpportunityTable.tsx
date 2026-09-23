@@ -36,9 +36,11 @@ export interface OpportunityTableProps {
   onSort: (key: string) => void;
   selectedId: string | null;
   onSelect: (id: string) => void;
+  /** T122: rows per page, passed through to `ScanTable`. */
+  pageSize?: number;
 }
 
-export function OpportunityTable({ rows, filterSearch, sort, dir, onSort, selectedId, onSelect }: OpportunityTableProps) {
+export function OpportunityTable({ rows, filterSearch, sort, dir, onSort, selectedId, onSelect, pageSize }: OpportunityTableProps) {
   const columns: ColumnDef<OpportunityRow>[] = [
     { key: 'rank', header: '#', align: 'right', sortable: true, format: (v) => String(v) },
     {
@@ -115,6 +117,8 @@ export function OpportunityTable({ rows, filterSearch, sort, dir, onSort, select
       selectedKey={selectedId}
       onRowClick={(row) => onSelect(row.id)}
       caption="Ranked opportunities"
+      pageSize={pageSize}
+      pageNoun="opportunities"
     />
   );
 }

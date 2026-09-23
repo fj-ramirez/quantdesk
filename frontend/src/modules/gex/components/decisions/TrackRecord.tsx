@@ -14,10 +14,15 @@
  * "Record now" runs the 17:45 ET job on demand (`POST /api/gex/decisions/record`): it writes
  * today's opportunities if they are not stored yet and re-scores every pending row. The
  * button reports the run's counts inline; a failure message never echoes a raw body.
+ *
+ * T122: the ledger pages at fifteen rows (newest first, so page 1 is the latest decisions);
+ * the summary above it always covers every row, so paging never changes a rate.
  */
 import { useDecisionsHistory, useRecordDecisions } from '../../api/queries';
 import type { DecisionGroupStats, DecisionRecord } from '../../api/types';
 import { InfoTip } from '../../../../components/ui/InfoTip';
+import { Pagination } from '../../../../components/ui/Pagination';
+import { DEFAULT_PAGE_SIZE, usePagination } from '../../../../components/ui/usePagination';
 import { formatPrice } from '../../../../lib/format';
 import { EmptyState } from '../EmptyState';
 import { ErrorState } from '../ErrorState';
@@ -87,6 +92,8 @@ export interface TrackRecordProps {
 export function TrackRecord({ filterSearch }: TrackRecordProps) {
   const history = useDecisionsHistory();
   const run = useRecordDecisions();
+  const records = history.data?.records ?? [];
+  const ledger = usePagination(records, DEFAULT_PAGE_SIZE, records.length);
 
   return (
     <section className="track-record" aria-label="Track record">
@@ -196,7 +203,7 @@ export function TrackRecord({ filterSearch }: TrackRecordProps) {
                     </tr>
                   </thead>
                   <tbody>
-                    {history.data.records.map((record) => (
+                    {ledger.pageRows.map((record) => (
                       <tr key={record.id}>
                         <td>{record.decided_on}</td>
                         <td>
@@ -223,6 +230,14 @@ export function TrackRecord({ filterSearch }: TrackRecordProps) {
                   </tbody>
                 </table>
               </div>
+              <Pagination
+                page={ledger.page}
+                pageCount={ledger.pageCount}
+                total={ledger.total}
+                pageSize={ledger.pageSize}
+                onPage={ledger.setPage}
+                noun="recorded opportunities"
+              />
             </>
           )}
         </>

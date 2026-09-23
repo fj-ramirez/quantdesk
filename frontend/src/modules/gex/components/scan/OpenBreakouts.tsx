@@ -9,6 +9,8 @@
  * shared `EmptyState` rather than an empty list, per the T37 rule.
  */
 import { EmptyState } from '../EmptyState';
+import { Pagination } from '../../../../components/ui/Pagination';
+import { usePagination } from '../../../../components/ui/usePagination';
 import { SymbolCell } from './SymbolCell';
 import { formatAtr, formatPrice } from '../../../../lib/format';
 import type { OpenBreakout } from '../../api/types';
@@ -19,9 +21,14 @@ export interface OpenBreakoutsProps {
    * rather than a bare count the reader has to remember the setting for. */
   k: number;
   onSelect?: (symbol: string) => void;
+  /** T122: rows per page; omitted shows every open event. */
+  pageSize?: number;
 }
 
-export function OpenBreakouts({ breakouts, k, onSelect }: OpenBreakoutsProps) {
+export function OpenBreakouts({ breakouts, k, onSelect, pageSize }: OpenBreakoutsProps) {
+  const sorted = [...breakouts].sort((a, b) => a.bars_elapsed - b.bars_elapsed);
+  const paged = usePagination(sorted, pageSize, `${k}|${breakouts.length}`);
+
   if (breakouts.length === 0) {
     return (
       <EmptyState heading="No open breakouts">
@@ -30,46 +37,67 @@ export function OpenBreakouts({ breakouts, k, onSelect }: OpenBreakoutsProps) {
     );
   }
 
-  const sorted = [...breakouts].sort((a, b) => a.bars_elapsed - b.bars_elapsed);
-
+  // T122: a compact table rather than one bordered card per event -- eighteen open events
+  // used to be eighteen stacked cards, the tallest thing on both Overview and Scan.
   return (
-    <ul className="open-breakouts">
-      {sorted.map((event) => (
-        <li className="open-breakouts__item" key={`${event.symbol}-${event.date}`}>
-          <div className="open-breakouts__head">
-            {onSelect ? (
-              <button
-                type="button"
-                className="open-breakouts__symbol"
-                onClick={() => onSelect(event.symbol)}
-              >
-                {event.symbol}
-              </button>
-            ) : (
-              <SymbolCell symbol={event.symbol} />
-            )}
-            <span
-              className={
-                event.direction === 'up'
-                  ? 'open-breakouts__dir open-breakouts__dir--up'
-                  : 'open-breakouts__dir open-breakouts__dir--down'
-              }
-            >
-              {event.direction === 'up' ? '↑ up' : '↓ down'}
-            </span>
-          </div>
-          <dl className="open-breakouts__meta">
-            <dt>Level</dt>
-            <dd>{formatPrice(event.level)}</dd>
-            <dt>Elapsed</dt>
-            <dd>
-              {event.bars_elapsed} of {k} bars
-            </dd>
-            <dt>Excursion</dt>
-            <dd>{formatAtr(event.excursion_atr)}</dd>
-          </dl>
-        </li>
-      ))}
-    </ul>
+    <>
+      <div className="scan-table-container" tabIndex={0}>
+        <table className="scan-table open-breakouts">
+          <caption className="scan-table__caption">Breakouts still inside their {k}-bar window</caption>
+          <thead>
+            <tr>
+              <th scope="col">Symbol</th>
+              <th scope="col">Dir</th>
+              <th scope="col" style={{ textAlign: 'right' }}>
+                Level
+              </th>
+              <th scope="col" style={{ textAlign: 'right' }}>
+                Elapsed
+              </th>
+              <th scope="col" style={{ textAlign: 'right' }}>
+                Excursion
+              </th>
+            </tr>
+          </thead>
+          <tbody>
+            {paged.pageRows.map((event) => (
+              <tr className="scan-table__row" key={`${event.symbol}-${event.date}`}>
+                <td>
+                  {onSelect ? (
+                    <button type="button" className="open-breakouts__symbol" onClick={() => onSelect(event.symbol)}>
+                      {event.symbol}
+                    </button>
+                  ) : (
+                    <SymbolCell symbol={event.symbol} />
+                  )}
+                </td>
+                <td
+                  className={
+                    event.direction === 'up'
+                      ? 'open-breakouts__dir open-breakouts__dir--up'
+                      : 'open-breakouts__dir open-breakouts__dir--down'
+                  }
+                >
+                  {event.direction === 'up' ? '↑ up' : '↓ down'}
+                </td>
+                <td style={{ textAlign: 'right' }}>{formatPrice(event.level)}</td>
+                <td style={{ textAlign: 'right' }}>
+                  {event.bars_elapsed} of {k} bars
+                </td>
+                <td style={{ textAlign: 'right' }}>{formatAtr(event.excursion_atr)}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      <Pagination
+        page={paged.page}
+        pageCount={paged.pageCount}
+        total={paged.total}
+        pageSize={paged.pageSize}
+        onPage={paged.setPage}
+        noun="open breakouts"
+      />
+    </>
   );
 }

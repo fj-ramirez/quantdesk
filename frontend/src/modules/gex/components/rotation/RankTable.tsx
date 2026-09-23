@@ -26,9 +26,11 @@ export interface RankTableProps {
   sort: string | null;
   dir: SortDir;
   onSort: (key: string) => void;
+  /** T122: rows per page, passed through to `ScanTable`; omitted shows every row. */
+  pageSize?: number;
 }
 
-export function RankTable({ symbols, sort, dir, onSort }: RankTableProps) {
+export function RankTable({ symbols, sort, dir, onSort, pageSize }: RankTableProps) {
   const rows = toRankRows(symbols);
 
   const columns: ColumnDef<RankRow>[] = [
@@ -83,6 +85,8 @@ export function RankTable({ symbols, sort, dir, onSort }: RankTableProps) {
       onSort={onSort}
       rowKey={(row) => row.symbol}
       caption="Relative return and current quadrant by symbol"
+      pageSize={pageSize}
+      pageNoun="symbols"
     />
   );
 }

@@ -140,6 +140,18 @@ state: `state/urlState.ts` exposes `useDashboardParams()` with `DEFAULT_SYMBOL =
 `DEFAULT_FILTER = 'ALL'`. Add new dashboard controls there rather than lifting another
 `useState` into a page.
 
+## Tabs, pagination and detail (T122)
+
+- **A crowded page splits into in-section tabs** (`components/ui/Tabs`). The active tab is URL
+  state via `useTabParam('tab', VALUES)`; the first value is the default and never written.
+  Only the active panel mounts, so a panel that owns a query fetches when opened.
+- **Long tables page** — `ScanTable`'s `pageSize` prop, or `usePagination` + `<Pagination>`
+  for a hand-built table. Paging happens after sorting, the page resets when the ordering
+  changes, and the pager always prints the full count. A test asserting something about *every*
+  row uses `test/pagination.ts`'s `forEveryPage`, never only page 1.
+- **Detail opens in `DetailDrawer`**, a modal side sheet (bottom sheet at ≤640px). Keep it
+  mounted outside any tab panel so a tab switch never unmounts it mid-focus-return.
+
 ## Theming
 
 `theme/ThemeContext.tsx` provides `ThemeProvider` / `useTheme()` over `'light' | 'dark'`.

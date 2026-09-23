@@ -1752,6 +1752,24 @@ never updated, because the trajectory is the evidence and last-writer-wins would
 decaying edge. `_insert_ignore` now takes its conflict target (hash is deliberately not unique
 there), and `forward_stats` reports `None`, not `0.0`, for a candidate too young to score.
 
+## T122 · Opus · T64, T69 (filed and finished 2026-09-23)
+
+**Tabs, pagination and an overlay detail sheet across the app.** The user found Overview and
+Opportunities crowded with oversized cards. New shared primitives in `components/ui/`: `Tabs`
+(WAI-ARIA tabs, only the active panel mounted) with `useTabParam` (`?tab=`, default kept out of
+the URL), and `Pagination` with `usePagination` (slices after sorting, resets to page 1 when the
+ordering changes, always prints "1–15 of 52"). `ScanTable` takes an optional `pageSize`.
+Overview: Tape stays on top; continuation / fading / open now / regime are tabs; open breakouts
+became a compact table (it was one card per event). Opportunities: ranked / no trade / track
+record are tabs; ranked and the ledger page at 15. Scan: compact regime strip, Breakouts/Trend
+as tabs over the existing `view` param, tables at 20. Regime, Rotation, Flows, terminal Board
+and Graph tables page at 20; the research leaderboard already paged server-side. `DetailDrawer`
+is now a modal side sheet at every width — it was already `aria-modal` with a focus trap but
+rendered inline at desktop. Metric cards cap at 280px. Page heights at 1440px: Overview
+4363→943, Opportunities 3470→1429, Scan 3053→1665. Tests that asserted "one row per record"
+now assert a full first page plus the pager's total; ones that assert over *every* row walk
+every page (`test/pagination.ts`).
+
 ## Status corrections
 
 - **Done, no Done marker above:** T00–T14, T16, T27, T29, T30, T34–T41, T59 (all merged, per

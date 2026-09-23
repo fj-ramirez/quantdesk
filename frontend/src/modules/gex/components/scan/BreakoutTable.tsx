@@ -47,6 +47,8 @@ export interface BreakoutTableProps {
   onSort: (key: string) => void;
   onRowClick: (row: SymbolBreakoutSummary) => void;
   selectedSymbol: string | null;
+  /** T122: rows per page, passed through to `ScanTable`; omitted shows every row. */
+  pageSize?: number;
 }
 
 export function BreakoutTable({
@@ -56,6 +58,7 @@ export function BreakoutTable({
   onSort,
   onRowClick,
   selectedSymbol,
+  pageSize,
 }: BreakoutTableProps) {
   const columns: ColumnDef<SymbolBreakoutSummary>[] = [
     {
@@ -130,6 +133,8 @@ export function BreakoutTable({
       rowKey={(row) => row.symbol}
       selectedKey={selectedSymbol}
       caption="Breakout continuation by symbol"
+      pageSize={pageSize}
+      pageNoun="symbols"
     />
   );
 }

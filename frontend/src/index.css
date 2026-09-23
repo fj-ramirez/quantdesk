@@ -917,22 +917,13 @@ code {
 .scan-legend { font-size: 12px; color: var(--text); opacity: 0.75; margin: 0 0 8px; max-width: 70ch; }
 .scan-cell--muted { color: var(--text); opacity: 0.55; font-family: var(--mono); }
 
-.open-breakouts { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
-.open-breakouts__item { border: 1px solid var(--border); border-radius: 3px; padding: 8px 10px; }
-.open-breakouts__head { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; }
 .open-breakouts__symbol {
-  font: inherit; font-family: var(--mono); font-weight: 600; cursor: pointer;
-  background: none; border: none; padding: 0; color: var(--text-h); text-decoration: underline;
+  font: inherit; font-family: var(--mono); cursor: pointer; background: none; border: none;
+  padding: 0; color: var(--accent); text-decoration: underline;
 }
 .open-breakouts__dir { font-size: 11px; font-family: var(--mono); }
 .open-breakouts__dir--up { color: var(--accent); }
 .open-breakouts__dir--down { color: var(--text); opacity: 0.8; }
-.open-breakouts__meta {
-  display: grid; grid-template-columns: auto 1fr; gap: 1px 10px; margin: 6px 0 0;
-  font-size: 12px; font-family: var(--mono);
-}
-.open-breakouts__meta dt { color: var(--text); opacity: 0.6; }
-.open-breakouts__meta dd { margin: 0; text-align: right; }
 
 .scan-excluded { font-size: 12px; color: var(--text); opacity: 0.8; }
 .scan-excluded summary { cursor: pointer; }
@@ -1459,6 +1450,8 @@ code {
 
 .metric-strip { display: flex; flex-wrap: wrap; gap: var(--space-3); }
 .metric-card { display: flex; flex-direction: column; gap: 4px; min-width: 140px; flex: 1 1 140px; }
+/* T122: a strip of four no longer stretches each card across a quarter of a wide screen. */
+.metric-strip > .metric-card { max-width: 280px; }
 .metric-card__label { font-size: 11px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--text-muted); }
 .metric-card__value {
   font-size: 22px; font-family: var(--mono); color: var(--text-strong); font-variant-numeric: tabular-nums;
@@ -1592,21 +1585,37 @@ code {
 }
 .data-table-frame__actions { display: flex; align-items: center; gap: var(--space-2); }
 
-/* DetailDrawer: docked in normal page flow at desktop (no scrim -- `.detail-drawer-scrim` is
- * an inert, non-positioned wrapper); a fixed, dimmed, full-viewport overlay sliding from the
- * bottom at or below 640px. The panel itself keeps identical focus/dialog semantics at every
- * width -- only its CSS position changes. */
-.detail-drawer-scrim { display: block; }
+/* DetailDrawer (T122): a modal side sheet at every width. It was docked in page flow at
+ * desktop, which pushed everything under the table down while it was open -- and it already
+ * carried `aria-modal` and a focus trap, so rendering it inline contradicted its own
+ * semantics. Now: dimmed scrim, sheet from the right on desktop, from the bottom at or below
+ * 640px. Focus/dialog behaviour is unchanged. */
+.detail-drawer-scrim {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.4);
+  z-index: 60;
+  display: flex;
+  justify-content: flex-end;
+  align-items: stretch;
+}
 .detail-drawer {
-  border-top: 1px solid var(--border-default);
-  margin-top: var(--space-2);
-  padding-top: var(--space-3);
+  width: min(560px, 92vw);
+  height: 100%;
+  overflow-y: auto;
+  padding: var(--space-4) var(--space-5);
   display: flex;
   flex-direction: column;
   gap: var(--space-3);
   background: var(--surface-app);
+  box-shadow: var(--elevation-2);
+  border-left: 1px solid var(--border-default);
 }
-.detail-drawer__head { display: flex; justify-content: space-between; align-items: baseline; gap: var(--space-3); }
+.detail-drawer__head {
+  display: flex; justify-content: space-between; align-items: baseline; gap: var(--space-3);
+  position: sticky; top: calc(-1 * var(--space-4)); background: var(--surface-app);
+  padding: var(--space-2) 0; border-bottom: 1px solid var(--border-default);
+}
 .detail-drawer__title {
   font-size: 12px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--text-strong); margin: 0;
 }
@@ -1617,26 +1626,47 @@ code {
 .detail-drawer__body { display: flex; flex-direction: column; gap: var(--space-3); }
 
 @media (max-width: 640px) {
-  .detail-drawer-scrim {
-    position: fixed;
-    inset: 0;
-    background: rgba(0, 0, 0, 0.4);
-    z-index: 60;
-    display: flex;
-    align-items: flex-end;
-    justify-content: center;
-  }
+  .detail-drawer-scrim { align-items: flex-end; justify-content: center; }
   .detail-drawer {
     width: 100%;
+    height: auto;
     max-height: 88vh;
-    overflow-y: auto;
-    border-top: none;
+    border-left: none;
     border-radius: var(--radius-lg) var(--radius-lg) 0 0;
-    box-shadow: var(--elevation-2);
     padding: var(--space-4);
-    margin-top: 0;
   }
 }
+
+/* Tabs (T122): in-section tabs, one block visible at a time. */
+.ui-tabs { display: flex; flex-direction: column; gap: var(--space-3); min-width: 0; }
+.ui-tabs__list {
+  display: flex; gap: var(--space-1); border-bottom: 1px solid var(--border-default);
+  overflow-x: auto; scrollbar-width: thin;
+}
+.ui-tabs__tab {
+  font: inherit; font-size: 13px; cursor: pointer; white-space: nowrap;
+  background: none; border: none; border-bottom: 2px solid transparent; margin-bottom: -1px;
+  padding: var(--space-2) var(--space-3); color: var(--text-default);
+  display: inline-flex; align-items: center; gap: var(--space-2);
+}
+.ui-tabs__tab:hover { color: var(--text-strong); }
+.ui-tabs__tab--active { color: var(--text-strong); border-bottom-color: var(--accent); font-weight: 600; }
+.ui-tabs__tab:focus-visible { outline: none; box-shadow: var(--focus-ring); border-radius: var(--radius-sm); }
+.ui-tabs__count {
+  font-family: var(--mono); font-size: 11px; font-weight: 400;
+  padding: 0 6px; border-radius: 999px; background: var(--accent-bg); color: var(--text-strong);
+}
+.ui-tabs__panel { min-width: 0; display: flex; flex-direction: column; gap: var(--space-3); }
+
+/* Pagination (T122). */
+.ui-pagination {
+  display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center;
+  gap: var(--space-2); padding: var(--space-2) 0; font-size: 12px;
+}
+.ui-pagination__range { color: var(--text-muted); font-family: var(--mono); }
+.ui-pagination__controls { display: flex; flex-wrap: wrap; gap: var(--space-1); align-items: center; }
+.ui-pagination__controls .scan-toolbar__btn:disabled { opacity: 0.4; cursor: default; }
+.ui-pagination__gap { color: var(--text-muted); padding: 0 var(--space-1); }
 
 /* Generic visually-hidden utility -- same recipe `.scan-table caption` and the collapsed
    rail's group title already use inline, named once so a new caller doesn't have to repeat

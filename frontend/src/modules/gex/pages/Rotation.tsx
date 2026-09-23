@@ -152,7 +152,7 @@ function RotationView({
       </section>
       <aside className="rotation-layout__side" aria-label="Rank table and breadth">
         <DataTableFrame title="Relative rotation ranking" readingCue="Sorted by 4-week relative return by default; click a header to sort by another window.">
-          <RankTable symbols={data.symbols} sort={sort} dir={dir} onSort={onSort} />
+          <RankTable symbols={data.symbols} sort={sort} dir={dir} onSort={onSort} pageSize={20} />
         </DataTableFrame>
         <Breadth breadth={data.breadth} />
       </aside>

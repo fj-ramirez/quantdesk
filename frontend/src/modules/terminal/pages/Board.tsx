@@ -19,6 +19,8 @@
  */
 import { useMemo, useState } from 'react';
 import { DataTableFrame } from '../../../components/ui/DataTableFrame';
+import { Pagination } from '../../../components/ui/Pagination';
+import { usePagination } from '../../../components/ui/usePagination';
 import { PageHeader } from '../../../components/ui/PageHeader';
 import { EmptyState } from '../../gex/components/EmptyState';
 import { ErrorState } from '../../gex/components/ErrorState';
@@ -52,6 +54,8 @@ export function Board() {
 
   const rows: BoardRow[] = board.data?.rows ?? [];
   const scored = rows.filter((r) => r.status === 'ok');
+  // T122: twenty rows a page, after the |z| ranking; a new as-of or class filter starts at page 1.
+  const scoredPage = usePagination(scored, 20, `${asOf}|${assetClass}|${scored.length}`);
   const unscored = rows.filter((r) => r.status !== 'ok');
 
   return (
@@ -117,6 +121,7 @@ export function Board() {
                 z-score needs. The rows below say which.
               </EmptyState>
             ) : (
+              <>
               <div className="terminal-table__scroll">
                 <table className="terminal-table">
                   <thead>
@@ -143,7 +148,7 @@ export function Board() {
                     </tr>
                   </thead>
                   <tbody>
-                    {scored.map((row) => (
+                    {scoredPage.pageRows.map((row) => (
                       <tr key={row.series_id}>
                         <td>
                           <span className="terminal-table__id">{row.series_id}</span>
@@ -179,6 +184,15 @@ export function Board() {
                   </tbody>
                 </table>
               </div>
+              <Pagination
+                page={scoredPage.page}
+                pageCount={scoredPage.pageCount}
+                total={scoredPage.total}
+                pageSize={scoredPage.pageSize}
+                onPage={scoredPage.setPage}
+                noun="series"
+              />
+              </>
             )}
           </DataTableFrame>
 

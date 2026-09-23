@@ -49,6 +49,7 @@ import { ErrorState } from '../components/ErrorState';
 import { LoadingState } from '../components/LoadingState';
 import { PageHeader } from '../../../components/ui/PageHeader';
 import { SegmentedControl, Toolbar } from '../../../components/ui/Toolbar';
+import { Tabs } from '../../../components/ui/Tabs';
 import { DataTableFrame } from '../../../components/ui/DataTableFrame';
 import { DetailDrawer } from '../../../components/ui/DetailDrawer';
 
@@ -85,23 +86,23 @@ export function Scan() {
       {/* T54's cross-asset strip. 07-ui.md renders it at the top of both `/scan` and
           `/regime`: it answers "what kind of tape is this" for everything at once, which is
           the context the per-symbol rows below are read against. It owns its own query and
-          its own loading/error/`n/a` states. */}
-      <RegimeStrip />
+          its own loading/error/`n/a` states. T122: compact (primary tiles, the rest behind a
+          disclosure), as on Overview -- `/regime` keeps the full strip. */}
+      <RegimeStrip compact />
 
-      <Toolbar>
-        <SegmentedControl
-          label="View"
-          values={SCAN_VIEWS}
-          active={view}
-          render={(value) => VIEW_LABEL[value]}
-          onChange={(next) => {
-            setView(next);
-            setSelected(null);
-          }}
-        />
-
+      {/* T122: the Breakouts/Trend view switch is now a tab strip over the same `view` URL
+          param; the breakout-only toggles moved inside the Breakouts panel they govern. */}
+      <Tabs
+        label="Scan view"
+        tabs={SCAN_VIEWS.map((value) => ({ value, label: VIEW_LABEL[value] }))}
+        active={view}
+        onChange={(next) => {
+          setView(next);
+          setSelected(null);
+        }}
+      >
         {view === 'breakouts' && (
-          <>
+          <Toolbar>
             <SegmentedControl label="N" values={SCAN_N_VALUES} active={n} render={String} onChange={setN} />
             <SegmentedControl label="k" values={SCAN_K_VALUES} active={k} render={String} onChange={setK} />
             <SegmentedControl
@@ -111,48 +112,48 @@ export function Scan() {
               render={String}
               onChange={setLookback}
             />
-          </>
+          </Toolbar>
         )}
-      </Toolbar>
 
-      {active.isError ? (
-        <ErrorState
-          message={
-            view === 'breakouts'
-              ? 'Could not load the breakout ledger.'
-              : 'Could not load the trend scorer.'
-          }
-        />
-      ) : active.isPending ? (
-        <LoadingState
-          message={
-            view === 'breakouts'
-              ? 'Scanning the universe for range breaks…'
-              : 'Scoring the universe… the trend scan reads every tracked option chain, so this takes a few seconds.'
-          }
-        />
-      ) : view === 'breakouts' ? (
-        <BreakoutsView
-          data={breakouts.data}
-          n={n}
-          k={k}
-          lookback={lookback}
-          sort={effectiveSort}
-          dir={dir}
-          onSort={onSort}
-          selected={selected}
-          onSelect={setSelected}
-        />
-      ) : (
-        <TrendView
-          rows={trend.data?.rows ?? []}
-          sort={effectiveSort}
-          dir={dir}
-          onSort={onSort}
-          selected={selected}
-          onSelect={setSelected}
-        />
-      )}
+        {active.isError ? (
+          <ErrorState
+            message={
+              view === 'breakouts'
+                ? 'Could not load the breakout ledger.'
+                : 'Could not load the trend scorer.'
+            }
+          />
+        ) : active.isPending ? (
+          <LoadingState
+            message={
+              view === 'breakouts'
+                ? 'Scanning the universe for range breaks…'
+                : 'Scoring the universe… the trend scan reads every tracked option chain, so this takes a few seconds.'
+            }
+          />
+        ) : view === 'breakouts' ? (
+          <BreakoutsView
+            data={breakouts.data}
+            n={n}
+            k={k}
+            lookback={lookback}
+            sort={effectiveSort}
+            dir={dir}
+            onSort={onSort}
+            selected={selected}
+            onSelect={setSelected}
+          />
+        ) : (
+          <TrendView
+            rows={trend.data?.rows ?? []}
+            sort={effectiveSort}
+            dir={dir}
+            onSort={onSort}
+            selected={selected}
+            onSelect={setSelected}
+          />
+        )}
+      </Tabs>
     </div>
   );
 }
@@ -201,12 +202,13 @@ function BreakoutsView({
                   onSort={onSort}
                   onRowClick={(row) => onSelect(row.symbol)}
                   selectedSymbol={selected}
+                  pageSize={20}
                 />
               </DataTableFrame>
             </div>
             <aside className="scan-layout__side" aria-label="Open breakouts">
               <h2 className="scan-layout__side-title">Open now</h2>
-              <OpenBreakouts breakouts={data.open_breakouts} k={k} onSelect={onSelect} />
+              <OpenBreakouts breakouts={data.open_breakouts} k={k} onSelect={onSelect} pageSize={10} />
             </aside>
           </div>
 
@@ -272,6 +274,7 @@ function TrendView({
             onSort={onSort}
             onRowClick={(row) => onSelect(row.symbol)}
             selectedSymbol={selected}
+            pageSize={20}
           />
         </DataTableFrame>
       )}
