@@ -214,7 +214,7 @@ curl -s localhost/health                                            # {"status":
 ```
 
 **`GET /health` reports each service separately, and that is the point.** Its `services` array
-carries one entry per container -- the API from its own environment, the three workers from
+carries one entry per container -- the API from its own environment, the four workers from
 files they write at boot -- each with a `label` in the form
 `backend: 2026-09-21T20:14:03-04:00 (cf59b11)`. The launcher at `/` shows the same list, with
 the frontend's own stamp compiled into the bundle. On 2026-09-21 a single `up -d --build`
@@ -307,7 +307,7 @@ cannot disagree with the compose file about which database they are touching.
 
 What `db-restore.sh` does beyond `pg_restore`:
 
-- **Stops `backend` and the three workers** for the duration and starts them again afterwards,
+- **Stops `backend` and the workers listed in `scripts/_common.sh`** for the duration and starts them again afterwards,
   including on failure. `--clean` drops every table, and a capture writing through that either
   blocks the drop on a lock or writes into a table that is about to vanish. `--no-stop` opts out.
 - **`--single-transaction`**, so a restore that fails half way leaves the database untouched.
@@ -421,7 +421,7 @@ different consumers:
    files. The services declare `environment:` and no `env_file:`, so a variable reaches a
    container only if a compose file names it. Adding a key nothing references does nothing.
 2. **A backend run natively on the host** (`cd backend && uv run uvicorn ...`), where
-   `app/config.py` reads a `.env` relative to the working directory — that is `backend/.env`,
+   `app/core/config.py` reads a `.env` relative to the working directory — that is `backend/.env`,
    a *different* file.
 
 `backend/.env` is host-only and is now firmly out of the production picture. Under the old
@@ -438,7 +438,7 @@ for them matters only for host-native runs.
 ### Timezones
 
 `TZ=America/New_York` on the backend is deliberate and load-bearing: the scheduler's cron
-triggers and `app/jobs/calendar.py`'s trading-day checks both read `settings.TZ`, and a host
+triggers and `app/modules/gex/jobs/calendar.py`'s trading-day checks both read `settings.TZ`, and a host
 left on UTC would fire every job at the wrong wall-clock hour while looking perfectly healthy.
 
 Postgres runs **UTC** separately. Every timestamp stored is tz-aware UTC enforced at the DB
@@ -467,7 +467,7 @@ Caddy — so the middleware never fires there. Removing it would break dev and g
 
 ### How the frontend finds the API
 
-`frontend/src/api/client.ts` resolves a base **origin**; every request path in that module is
+`frontend/src/lib/http.ts` resolves a base **origin**; every request path in that module is
 already absolute and already carries its own `/api` prefix. The production image builds with
 `VITE_API_BASE_URL` empty, so the bundle contains no hostname and resolves against whatever
 origin served the page — which is what lets the same image work as `homeserver.local` on the
@@ -488,7 +488,7 @@ uv run uvicorn app.main:app --reload --port 8001
 
 Serves on http://localhost:8001, health check at `/health`. Config is read from
 `backend/.env` (copy `.env.example` there, or set env vars directly) via
-`app/config.py`. Keys: `DATABASE_URL`, `DATA_DIR`, `PROVIDER`, `SYMBOLS`, `TZ`.
+`app/core/config.py`. Keys: `DATABASE_URL`, `DATA_DIR`, `PROVIDER`, `SYMBOLS`, `TZ`.
 
 ### Frontend
 

@@ -1,6 +1,6 @@
 # UI/UX refresh — a calmer market-analysis workbench
 
-**Status:** proposed, 2026-09-10
+**Status:** proposed 2026-09-10; **complete** (T62–T69 shipped in `9a410a9`) — see the *Result* section.
 
 **Scope:** frontend presentation and interaction only. No trading, order routing, new market-data source, or change to GEX/decision calculations.
 

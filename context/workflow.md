@@ -2,25 +2,33 @@
 
 ## How work is organized
 
-`PLAN.md` holds the architecture and the six-phase roadmap. `TASKS.md` breaks it into
-numbered, self-contained tasks (`T00`–`T56` so far) in `ID · Model · Depends on` form. Most
-of the build has been executed by delegating those blocks to agents.
+`PLAN.md` holds the architecture and the original phase roadmap. [`TASKS.md`](../TASKS.md)
+holds **only open work** — open, partial, blocked or conditional — as numbered, self-contained
+blocks in `ID · Model · Depends on` form, plus the next free ID. Finished tasks live in the
+frozen [archive](../docs/archive/TASKS-T00-T107.md), and the durable rules they settled are one
+line each in [`decisions.md`](decisions.md). Read that index, not the archive, to learn why
+something is the way it is; follow its link when you need the argument.
 
 Initiatives too big for one block get a folder under `plans/` (see `plans/README.md`): one
-file per tool, each carrying its tasks in the same block shape, verified facts, and likely
-first-contact failures. `TASKS.md` keeps a one-line pointer per task so IDs never collide.
-The first such initiative is `plans/continuation/` (T42–T56, 2026-09-09).
+file per tool, each carrying its tasks in the same block shape, verified facts, likely
+first-contact failures and, once landed, a *Result* heading. That heading is the evidence.
 
-Current position: Phases 0–3 are built (ingestion, engine, read API, dashboard). Phase 4
-(15-minute intraday polling + SSE) is next and is now planned in detail in
-`plans/continuous-feed/` — read that before touching T18–T20, and note that it gates them on
-T32, T71 and an always-on host (T70). Phase 5 (real-time) is blocked on a Tradier account.
-`docs/state-review-2026-09-05.md` §4 is the live prioritized list of what to do next and what
-is known-broken.
+Where things stand is a question for the data, not for this file: `desk_status` over the MCP
+connector for freshness, `TASKS.md` for open work, and the newest review under `docs/` (at
+present [`audit-2026-09-22.md`](../docs/audit-2026-09-22.md) and
+[`state-review-2026-09-21.md`](../docs/state-review-2026-09-21.md)) for known breakage. This
+section used to carry a "current position" paragraph; it went stale within days and was then
+repeated to the user as fact.
 
-When a review or a user report produces new work, **append it to `TASKS.md`** as a new
-numbered task with the same block shape rather than fixing it silently — that file is the
-project's memory of why things were done.
+When a review or a user report produces new work, **file it in `TASKS.md`** as a new numbered
+block rather than fixing it silently — the task history is the project's memory of why things
+were done. When a task lands:
+
+1. record the outcome under its plan file's *Result* heading (or in the block, if it has none);
+2. move the block out of `TASKS.md` and append it to the archive's addendum, dated;
+3. if it settled a rule a later task could plausibly undo, add one line to `decisions.md` —
+   the rule, why in a clause, and the task ID. Rules only: no counts, no test totals, no
+   "currently".
 
 ## Delegating a task
 

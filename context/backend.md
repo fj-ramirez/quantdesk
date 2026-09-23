@@ -111,7 +111,10 @@ it fails: nothing else in the stack needs the role, so it must never gate uvicor
 
 ### Tables
 
-Tables, all defined in `models/db.py` (the original three plus `daily_bars`, `etf_shares_outstanding`, `decisions`):
+GEX tables, all defined in `modules/gex/models/db.py` in the `gex` schema (the original three plus
+`gex_by_expiry` (T101), `daily_bars`, `intraday_bars` (T74), `etf_shares_outstanding` and
+`decisions`). Research's tables (`trials`, `paper_candidates`, `paper_scores`) are in
+`modules/research/models/db.py`; the terminal's six in `modules/terminal/tables.py`:
 
 - **`snapshots`** — index of Parquet files. Thin on purpose: anything queryable without
   opening the file (underlying, `captured_at`, source, spot, contract count, `is_eod`,
@@ -227,7 +230,7 @@ anything it cannot parse is a hard failure, never a `NULL`.
   — fetch, write Parquet, index, compute levels. **Never raises**; returns a `CaptureResult`
   with `ok=False` for provider *or* storage failure, having already emitted the structured log
   line (symbol, contract count, spot, duration, error).
-- `jobs/capture.capture_all_symbols` — shares one provider connection across all three symbols.
+- `jobs/capture.capture_all_symbols` — shares one provider connection across every symbol in `settings.symbols` (five by default).
 - `jobs/scheduler.build_scheduler()` — registers cron jobs on `AsyncIOScheduler`. **Since T75
   nothing in the API process calls it**; `app/workers/gex_capture.py` does, in its own
   container. `build_scheduler()` stays separate from starting it so tests can inspect
@@ -236,7 +239,7 @@ anything it cannot parse is a hard failure, never a `NULL`.
   `misfire_grace_time=None` (a capture hours late still beats one that never runs — the free
   Cboe source has no history), `coalesce=True`, `max_instances=1`.
 - `jobs/catchup.startup_catchup_job()` — fired by the worker via `asyncio.create_task`, not
-  awaited, so boot is not blocked behind up to three sequential Cboe fetches. Never raises.
+  awaited, so boot is not blocked behind one sequential Cboe fetch per core symbol. Never raises.
   (Before T75 this came from `main.py`'s lifespan.)
 - `jobs/calendar` — `is_trading_day`, `is_market_holiday`, `is_regular_session`,
   `effective_data_time(captured_at, delayed_minutes)`.

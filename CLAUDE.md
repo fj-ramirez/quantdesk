@@ -24,7 +24,7 @@ test suite still fail the deploy. Run it before pushing anything that changes a 
 Run one research cycle by hand (needs a reachable Postgres — there is no SQLite fallback):
 `uv run python -m app.modules.research.nightly --trials 50 --no-update`.
 
-Everything at once: `docker compose up` (postgres + backend + frontend + two workers) -- this reads
+Everything at once: `docker compose up` (postgres + backend + frontend + four workers) -- this reads
 `compose.yaml` **plus** `compose.override.yaml`, which is what supplies the dev bind mounts,
 hot reload and published ports. Production is the explicit opt-in and never loads the
 override: `docker compose -f compose.yaml -f compose.prod.yaml up -d`. See the README's
@@ -37,8 +37,8 @@ it is the container healthcheck's contract); capture freshness: `GET /api/gex/he
 Since T75 this repo is a **module host**: one API process, one React app, one compose stack,
 with GEX as `modules/gex` on both sides and every GEX URL carrying a `/gex` segment
 (`/dashboard` -> `/gex/dashboard`, `/api/snapshots` -> `/api/gex/snapshots`). `/` is the module
-launcher. Scheduled work runs in its own container per module (`gex-capture`, `research-search`); **the
-API process starts no background work at all.** See `plans/quantdesk/README.md`.
+launcher. Scheduled work runs in its own container (`gex-capture`, `research-search`, `terminal-ingest`,
+`capture-watch`); **the API process starts no background work at all.** See `plans/quantdesk/README.md`.
 
 ## Layout
 
@@ -46,12 +46,11 @@ API process starts no background work at all.** See `plans/quantdesk/README.md`.
 backend/app/
   core/        config.py (settings), db.py (engine + session factory), schemas.py (schema names)
   main.py      mounts each module's router under /api; no lifespan, starts nothing
-  workers/     gex_capture.py, research_search.py, terminal_ingest.py — one container each
-  config/      research.yaml — EdgeLab's search budget and cost model (T77)
-  scripts/     migrate_registry.py, migrate_xactx.py — one-shot data imports (T77, T79)
+  workers/     gex_capture.py, research_search.py, terminal_ingest.py, capture_watch.py (T104)
+               — one container each
   mcp/         the read-only MCP connector over all three schemas (T82)
   modules/terminal/   xactx, ported in T79; its screens are T80
-    api/         board, regime, edges, policy, brief, series — every one takes `as_of`
+    api/         board.py, edges.py — board, regime, edges, policy, brief, series; all take `as_of`
     store/db.py  the ONLY module that knows the engine — a DuckDB-shaped facade over psycopg
     tables.py    the six tables (named tables.py, not models/, because xactx owns models.py)
     analytics/ adapters/ brief.py graph.py policy.py derive.py — the science, carried over
@@ -66,14 +65,16 @@ backend/app/
     providers/   OptionChainProvider ABC + cboe.py (default), marketdata.py
     models/      chain.py (Pydantic wire/domain types), db.py (Base, UTCDateTime, tables)
     gex/         greeks.py, engine.py (pure math), store.py (persist), backfill.py (CLI)
-    scan/        pure scan modules: indicators, breakouts, trend, regime, rotation, decisions (T60)
-    jobs/        capture, scheduler (APScheduler), calendar, catchup
+    scan/        pure scan modules: indicators, breakouts, trend, regime, rotation, decisions (T60),
+                 outcomes (T61), factors (T93), flows, groups, cross_asset
+    jobs/        capture, scheduler (APScheduler), calendar, catchup, outage, retention, bars,
+                 intraday_bars, flows, decisions, memory (T88)
     storage/     parquet.py (raw chains), repository.py (snapshot index)
   modules/research/   EdgeLab, ported in T77 from projects/research
     registry.py  the trial registry, now Postgres — same interface, no SQLite fallback
     nightly.py   run_cycle() + the CLI; the worker calls the same function
     jobs/        scheduler (cron | interval | off, no catch-up)
-    models/db.py trials, paper_candidates
+    models/db.py trials, paper_candidates, paper_scores (T108)
     backtest.py strategies.py validation.py robustness.py xs.py paper.py report.py data.py
                  — the science, carried over essentially unchanged
 frontend/src/
@@ -86,14 +87,17 @@ frontend/src/
   lib/ theme/ components/ui/   shared by every module — formatting, time, theming, primitives,
                  and lib/http.ts (base URL, ApiError, apiFetch)
 context/       detailed docs — see the index below
-docs/          one-off reports (schema, validation, reviews)
-plans/quantdesk/  the module-host initiative (T75–T82)
+docs/          one-off reports (schema, validation, reviews); docs/archive/ holds frozen history
+plans/         one folder per multi-task initiative — see plans/README.md
 ```
 
 ## Invariants — do not violate without reading the linked doc
 
 1. `app/modules/gex/gex/engine.py` and `greeks.py` are **pure**: no HTTP, DB, filesystem or logging.
-2. The dealer sign (+calls / −puts) is applied **exactly once**, in `contract_gex`.
+2. The dealer sign (+calls / −puts) is **attached once**, as the `sign` column `to_frame`
+   builds, and every signed number multiplies by that column exactly once: `contract_gex` (via
+   `_notional`), `gamma_profile` and the excluded-contract diagnostics. Nothing re-signs a
+   value that is already signed, and nothing derives the sign another way.
    `greeks.gamma()` and `OptionContract.gamma` are unsigned.
 3. Open interest `None` means *unknown* → contract excluded. `0` means zero → included.
    Never collapse the two.
@@ -109,6 +113,9 @@ plans/quantdesk/  the module-host initiative (T75–T82)
    declared once on the module's `Base` via `MetaData(schema=...)` — never per model. `public`
    holds nothing but `alembic_version`. Postgres connections pin `search_path` to `public`, so
    a table is found because it was named, not because `$user` happened to match a schema.
+   **One deliberate exception:** the terminal facade (`modules/terminal/store/db.py`) sets
+   `search_path` to `terminal` on its own connections, because xactx's ported SQL is
+   unqualified and was kept character for character (T79).
 9. (T77) EdgeLab's honesty rules are the product and travel with it: the noise ceiling, the
    doubled-cost gate, the walk-forward gate and the futures roll-gap caveat. A leaderboard that
    drops the noise ceiling is worse than none, because it looks authoritative. And there is
@@ -131,6 +138,7 @@ Read the file whose trigger matches; don't load them all.
 | [context/backend.md](context/backend.md) | editing API routes, DB models, migrations, jobs, backend tests |
 | [context/frontend.md](context/frontend.md) | editing React components, queries, URL state, theming, MSW mocks |
 | [context/data-and-ops.md](context/data-and-ops.md) | dealing with capture schedule, Parquet layout, env vars, Docker, CI |
+| [context/decisions.md](context/decisions.md) | about to change behaviour an earlier task settled — the one-line rules and where each was argued |
 | [context/workflow.md](context/workflow.md) | planning work, delegating to agents, writing commits, picking the next task |
 | [context/mcp-connector.md](context/mcp-connector.md) | touching the MCP server, its tools, or the read-only role it uses |
 
@@ -139,9 +147,11 @@ Reference documents (long, load deliberately):
 | Document | Contents |
 |---|---|
 | [PLAN.md](PLAN.md) | architecture decisions, data-source survey with costs, phase roadmap |
-| [TASKS.md](TASKS.md) | the numbered task list agents execute (T00–T37); status of every phase |
+| [TASKS.md](TASKS.md) | **open** work only — open, partial, blocked, conditional — and the next free ID |
+| [docs/archive/TASKS-T00-T107.md](docs/archive/TASKS-T00-T107.md) | frozen full history T00–T107 (plus its 2026-09-22 addendum); code comments citing "TASKS.md Txx" for a finished task mean this file |
 | [docs/schema.md](docs/schema.md) | normalized chain schema: the five conventions, OCC parsing, settlement |
 | [docs/validation.md](docs/validation.md) | engine validated against public vendor GEX figures; every difference attributed |
 | [docs/supervision-report.md](docs/supervision-report.md) | retrospective on the agent-delegated build |
-| [docs/state-review-2026-09-05.md](docs/state-review-2026-09-05.md) | current known gaps and the prioritized fix list |
-| [plans/README.md](plans/README.md) | per-tool design plans for multi-task initiatives; `continuation/` T42–T56, `ui-ux-refresh/` T62–T69, `continuous-feed/` T70–T72 (and the re-specs of T18–T23, T32) |
+| [docs/state-review-2026-09-21.md](docs/state-review-2026-09-21.md) + [its verification](docs/state-review-2026-09-21-verification.md) | the latest data-level review, and which of its inferred causes the code overturned (the 09-05 review is older history) |
+| [docs/audit-2026-09-22.md](docs/audit-2026-09-22.md) | logic audit across all three modules; its findings are filed as tasks in `TASKS.md` |
+| [plans/README.md](plans/README.md) | one folder per multi-task initiative, each with a *Result* heading per task — the evidence `context/decisions.md` links to |

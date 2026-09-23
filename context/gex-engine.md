@@ -1,6 +1,6 @@
 # The GEX engine
 
-`backend/app/gex/engine.py` is the product — every number the dashboard shows is computed
+`backend/app/modules/gex/gex/engine.py` is the product — every number the dashboard shows is computed
 there. Its module docstring is the authoritative long-form reference; this file is the map to
 it. `greeks.py` is the Black-Scholes/Black-76 layer beneath it.
 
