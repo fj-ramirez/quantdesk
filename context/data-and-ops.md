@@ -120,14 +120,14 @@ across, but the trap is silent -- the rows look fine until something opens the P
 also the origin of the "orphaned files under `backend/data/`" item in the state review.
 
 `data/` is gitignored. `DATA_DIR` is a bind mount in Docker (`./data` → `/data`) so captures
-survive container restarts and stay inspectable from the host. Note there are currently
-orphaned Parquet files under `backend/data/` from early runs — see
-`docs/state-review-2026-09-05.md`.
+survive container restarts and stay inspectable from the host. (The orphaned Parquet files
+under `backend/data/` that `docs/state-review-2026-09-05.md` lists were merged back and the
+directory removed on 2026-09-20 — see above.)
 
 ## Environment
 
 Copy `.env.example` → `.env` (root, for Docker) and/or `backend/.env` (for running uvicorn on
-the host). Keys, all read by `app/config.py`:
+the host). Keys, all read by `app/core/config.py`:
 
 | Key | Default | Notes |
 |---|---|---|
@@ -142,19 +142,27 @@ the host). Keys, all read by `app/config.py`:
 | `INTRADAY_ENABLED` | `false` | T18. Turns on 15-minute polling. Off by default because the scheduler only fires while the process is alive and a missed slot is unrecoverable |
 | `INTRADAY_STRIKE_RETENTION_DAYS` | `30` | T32. Days of `gex_by_strike` detail kept for **non-EOD** snapshots; `0` disables. EOD strike detail, `gex_levels` and Parquet are never pruned |
 
+The table covers the core GEX keys only. `app/core/config.py` is the authority and groups every
+other key by the task that added it, with its reasoning: `EXTENDED_SYMBOLS`,
+`INTRADAY_BARS_*` (T74), `RESEARCH_*` (T77), the `XA_*` terminal keys (T79),
+`DATABASE_URL_RO` / `QUANTDESK_RO_PASSWORD` (T76, T82), and `TELEGRAM_BOT_TOKEN` /
+`TELEGRAM_CHAT_ID` / `CAPTURE_WATCH_INTERVAL_MINUTES` (T104). Read it rather than extending
+this table.
+
 `Settings` uses `extra="ignore"`, so an unknown key in `.env` is silently dropped rather than
 crashing boot — spell keys carefully.
 
 **Compose does not read the root `.env` into the container.** The `backend` service declares an
 explicit `environment:` block and no `env_file:`, so the root `.env` is used only for
-*substitution into* `docker-compose.yml`. A setting added to `app/config.py` must also be added
-to that block (as `KEY: ${KEY:-default}`) or the container will never see it. Combined with the
+*substitution into* `compose.yaml`. A setting added to `app/core/config.py` must also be added
+to the shared environment block (as `KEY: ${KEY:-default}`) or the container will never see it. Combined with the
 `extra="ignore"` rule above, a misspelled key in the root `.env` fails twice over in complete
 silence -- which is exactly what happened to `INTRADAY_ENABLE` (missing `D`) on 2026-09-11.
 
 ## Docker
 
-`docker compose up` → postgres:16 (named volume `pgdata`), backend (8001), frontend (5173).
+`docker compose up` → postgres:16 (named volume `pgdata`), backend (8001), frontend (5173),
+and the four workers: `gex-capture`, `research-search`, `terminal-ingest`, `capture-watch`.
 `docker compose down -v` also drops the Postgres volume, which returns the app to the
 never-captured empty state — a useful way to exercise the T37 empty states.
 
@@ -164,12 +172,14 @@ changes rather than assuming the bind mount covered it.
 
 ## CI
 
-`.github/workflows/ci.yml`, on every push and PR, three parallel jobs with
+`.github/workflows/ci.yml`, on every push and PR, four parallel jobs with
 cancel-in-progress concurrency:
 
 1. **backend** — `uv sync --locked --all-groups`, `ruff check .`, `pytest`.
 2. **frontend** — `npm ci`, `npm run lint`, `npm test` (Node 22).
 3. **docker-build** — buildx builds both images with GHA layer caching, no push.
+4. **compose-config** — the dev and prod compose configs parse, prod refuses to render without
+   its credentials, and prod publishes no host ports.
 
 `uv sync --locked` means `backend/uv.lock` must be committed in step with `pyproject.toml`.
 

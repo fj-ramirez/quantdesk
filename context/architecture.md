@@ -3,8 +3,8 @@
 ## Shape, since T75
 
 This repository is a **module host**: one FastAPI process, one React app, one Postgres, one
-compose stack, with selectable modules underneath. `gex` is the only module that exists today;
-`research` (T77) and `terminal` (T79) land as siblings. Read
+compose stack, with three modules underneath: `gex`, `research` (EdgeLab, T77) and `terminal`
+(xactx, T79), each with its own Postgres schema. Read
 `plans/quantdesk/README.md` for the model and `plans/quantdesk/00-monorepo-skeleton.md` for
 what T75 moved.
 
@@ -14,8 +14,9 @@ Two rules from that task are load-bearing everywhere below:
   `router.py` by name; `frontend/src/App.tsx` imports each module's `routes.tsx`. A missing
   module is an import error at boot, not a silently absent route.
 - **The split is request path vs. background work, not module vs. module.** The API process
-  starts nothing. Anything clock-bound is a worker in `app/workers/` with its own container --
-  today just `gex-capture`.
+  starts nothing. Anything clock-bound is a worker in `app/workers/` with its own container:
+  `gex-capture`, `research-search`, `terminal-ingest` and `capture-watch` (T104, which watches
+  the capture and alerts on a universe-wide gap).
 
 ## The one-paragraph version
 
@@ -34,11 +35,12 @@ Cboe delayed JSON  ──providers/cboe.py──▶  ChainSnapshot (models/chain
                                                 ├─▶ storage/repository.add          → snapshots row
                                                 └─▶ gex/store.compute_and_store
                                                           │ gex/engine.compute_all
-                                                          └─▶ gex_levels, gex_by_strike
+                                                          └─▶ gex_levels, gex_by_strike,
+                                                              gex_by_expiry (T101)
                                                                      │
                                               modules/gex/api/gex.py │ api/chains.py
                                                                      ▼
-                                                    frontend/src/api → pages/Dashboard
+                                  frontend/src/modules/gex/api → modules/gex/pages/Dashboard
 ```
 
 ## Layer rules
@@ -59,8 +61,9 @@ Cboe delayed JSON  ──providers/cboe.py──▶  ChainSnapshot (models/chain
   (`store.py`) and a CLI (`backfill.py`). The purity of `engine.py` is what makes it reusable
   from the capture job, the API and a future backtest loop.
 - **`api/`** — FastAPI routers, composed by the module's `router.py` into one
-  `APIRouter(prefix="/gex")` that `main.py` mounts at `/api`. Each keeps its own sub-prefix
-  (`/snapshots`, `/health`, `/gex`, `/chains`). Routes read stored rows; they do not recompute
+  `APIRouter(prefix="/gex")` that `main.py` mounts at `/api`. It composes ten routers, each with its own sub-prefix
+  (`snapshots`, `health`, `gex`, `chains`, `report`, `bars`, `scan`, `symbols`, `decisions`,
+  `stream` — see `modules/gex/router.py`). Routes read stored rows; they do not recompute
   the engine.
 - **`jobs/`** — APScheduler wiring and the capture orchestration. Since T75 the only caller of
   `scheduler.start()` is `app/workers/gex_capture.py`, in its own container;
@@ -83,14 +86,15 @@ hosts. Write side: `storage.parquet.to_data_dir_relative_path`. Read side:
 
 ## Deployment shape
 
-Four services: `postgres:16`, `backend` (the API — runs `alembic upgrade head`, then uvicorn),
-`gex-capture` (the scheduler and startup catch-up, same Dockerfile and target as `backend`,
-different command and its own image *tag* — two building services cannot share one tag without
-racing the export), and `frontend`. `compose.yaml` is the shared base;
+Seven services: `postgres:16`, `backend` (the API — runs `alembic upgrade head`, then uvicorn),
+`frontend`, and four workers — `gex-capture` (the scheduler and startup catch-up),
+`research-search`, `terminal-ingest` and `capture-watch`. The workers use the same Dockerfile and
+target as `backend` with a different command and their own image *tag* — two building services
+cannot share one tag without racing the export. `compose.yaml` is the shared base;
 `compose.override.yaml` (loaded automatically) adds the dev bind mounts, published ports and
 hot reload; `compose.prod.yaml` is the explicit opt-in that hardens it. The backend container
-overrides `DATABASE_URL` to the `postgres` hostname and `DATA_DIR` to `/data`, and the worker
-shares that environment through a YAML anchor so the two cannot drift; `.env.example` uses
+overrides `DATABASE_URL` to the `postgres` hostname and `DATA_DIR` to `/data`, and the workers
+share that environment through a YAML anchor so the two cannot drift; `.env.example` uses
 `localhost` and `./data` for running on the host directly.
 
 CORS allows exactly one origin, `http://localhost:5173`. Single-user app, no auth, no

@@ -1,8 +1,8 @@
 # Normalized chain schema
 
 The data contract shared by every provider, the storage layer, the Greeks module and the GEX
-engine. Defined in [`backend/app/models/chain.py`](../backend/app/models/chain.py); the
-provider interface is in [`backend/app/providers/base.py`](../backend/app/providers/base.py).
+engine. Defined in [`backend/app/models/chain.py`](../backend/app/modules/gex/models/chain.py); the
+provider interface is in [`backend/app/providers/base.py`](../backend/app/modules/gex/providers/base.py).
 
 Field-level documentation lives in the module docstrings. This page is the reference for
 **units and conventions** — the things a later task can get wrong without any test failing.

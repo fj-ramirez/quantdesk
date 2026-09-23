@@ -35,7 +35,7 @@ For another client (LM Studio, Goose, Cline), give it that same command with `tr
 To run against the **local** stack instead — offline, or when the homeserver is down — swap the
 command for `uv run --directory backend python -m app.mcp` with
 `DATABASE_URL_RO=postgresql://quantdesk_ro:<password>@localhost:5432/gex` in its env. Register
-one or the other, not both: two servers put two sets of nine identically-named tools in front of
+one or the other, not both: two servers put two sets of identically-named tools in front of
 the model and make it guess which desk it is looking at.
 
 > The Claude CLI expands `${VAR}` in `.mcp.json` from the **process environment only** — not
@@ -81,15 +81,19 @@ a malicious one.
 
 | tool | answers |
 |---|---|
-| `gex_levels(symbol, date?)` | flip point, walls, net gamma for a symbol |
-| `gex_decisions(symbol?, since?)` | the decision log and its resolved outcomes |
-| `research_leaderboard(market?, top_n?)` | survivors, **with the noise ceiling** |
+| `desk_status()` | is the desk fresh? — newest capture, session, observation, trial, decision, with the three freshness rules (T106). **Call first.** |
+| `gex_levels(symbol?, date?, history?, limit?)` | flip point, walls, net gamma — latest per symbol by default; `history` for one symbol's series (T105) |
+| `gex_decisions(symbol?, key?, since?, thesis?, limit?)` | the decision log and its resolved outcomes |
+| `gex_track_record(key?, since?)` | per-key record with the standard error beside every mean (T106) |
+| `research_leaderboard(market?, top_n?, min_trades_oos?)` | survivors, **with the noise ceiling** |
 | `research_trial(hash)` | one trial, params and both splits |
-| `research_paper()` | the forward-tracking watchlist |
-| `terminal_board(as_of?)` | the cross-asset board, point-in-time |
-| `terminal_series(series_id, as_of?)` | one series as known at a moment |
-| `terminal_edges(conflicts_only?)` | transmission graph and sign conflicts |
+| `research_paper(limit?)` | the forward-tracking watchlist |
+| `terminal_board(as_of?, limit?)` | the cross-asset board, point-in-time |
+| `terminal_series(series_id, as_of?, limit?)` | one series as known at a moment |
+| `terminal_edges(conflicts_only?, limit?)` | transmission graph and sign conflicts |
 | `query_sql(sql, limit?)` | anything else, read-only, row-capped |
+
+`app/mcp/server.py` is the authority for signatures; this table is the map.
 
 Plus a `quantdesk://schema` resource: column names read live from the database (so it cannot
 drift) with the meanings that a column name does not carry — what `as_of_basis` is, why
