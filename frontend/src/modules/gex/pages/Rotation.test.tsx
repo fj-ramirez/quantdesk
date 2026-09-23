@@ -54,7 +54,9 @@ describe('Rotation page -- default view (sectors/SPY)', () => {
     expect(screen.getByRole('img', { name: /Relative rotation graph/ })).toBeInTheDocument();
     const table = await screen.findByRole('table', { name: /relative return and current quadrant/i });
     expect(within(table).getAllByRole('row')).toHaveLength(rotationSectorsFixture.symbols.length + 1);
-    expect(screen.getByText('sector-level breadth')).toBeInTheDocument();
+    // T123: breadth sits in the page header, beside the title, not under the rank table.
+    const breadth = screen.getByRole('region', { name: 'sector-level breadth' });
+    expect(breadth.closest('header')).not.toBeNull();
   });
 
   it('states the approximation and never claims parity with the proprietary JdK indicator', async () => {

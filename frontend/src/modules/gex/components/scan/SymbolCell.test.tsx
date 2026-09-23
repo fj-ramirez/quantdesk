@@ -30,7 +30,7 @@ describe('SymbolCell', () => {
     renderCell('RSP');
     expect(screen.queryByRole('link')).not.toBeInTheDocument();
     const cell = screen.getByText('RSP');
-    expect(cell).toHaveAttribute('title', 'no option chain tracked');
+    expect(cell).toHaveAttribute('title', 'S&P 500 equal weight — no option chain tracked');
   });
 
   it('a non-chain symbol including ^VIX renders as plain text', () => {
@@ -46,5 +46,25 @@ describe('SymbolCell', () => {
     const params = new URLSearchParams(href.split('?')[1]);
     expect(params.get('symbol')).toBe('SPY');
     expect(params.get('filter')).toBe('ZERO_DTE');
+  });
+
+  it("names the symbol in a tooltip without changing the link's accessible name", () => {
+    renderCell('XLRE');
+    expect(screen.getByRole('link', { name: 'XLRE' })).toHaveAttribute('title', 'Real estate');
+  });
+
+  it('prints the name under the ticker with showName, outside the link', () => {
+    render(
+      <MemoryRouter>
+        <SymbolCell symbol="KRE" showName />
+      </MemoryRouter>,
+    );
+    expect(screen.getByRole('link', { name: 'KRE' })).toBeInTheDocument();
+    expect(screen.getByText('Regional banks')).toBeInTheDocument();
+  });
+
+  it('renders a symbol the name map does not know as the bare ticker, never a guessed name', () => {
+    renderCell('ZZZZ');
+    expect(screen.getByText('ZZZZ')).toHaveAttribute('title', 'no option chain tracked');
   });
 });

@@ -1770,6 +1770,21 @@ rendered inline at desktop. Metric cards cap at 280px. Page heights at 1440px: O
 now assert a full first page plus the pager's total; ones that assert over *every* row walk
 every page (`test/pagination.ts`).
 
+## T123 · Opus · T51, T122 (filed and finished 2026-09-23)
+
+**Rotation fits one viewport; symbols carry their names.** The user found `/rotation` needed
+scrolling and had to look tickers up. Breadth moved from under the rank table into the page
+header as four label-over-value readings; on desktop the RRG takes the height left under the
+header and toolbar (floor 440px) instead of a square; the side column widened 360→500px (the
+stacking breakpoint moved 1150→1290px to keep T68's arithmetic) and the rank table runs a
+notch tighter, so no column is clipped. The chart's axis ends printed raw floats
+(`104.26498373766198`) and ECharts reserved their width even when hidden — they are now hidden
+and formatted, and the y-axis name runs along the axis. New `lib/symbolNames.ts`: a static
+symbol → exposure/company map over the default `SCAN_UNIVERSE`; unknown symbols return `null`
+and render as the bare ticker. `SymbolCell` puts the name in every symbol's tooltip and prints
+it under the ticker with `showName` (the rank table); the RRG tooltip names the symbol too.
+At 1440×900 and 1810×870 the page no longer scrolls.
+
 ## Status corrections
 
 - **Done, no Done marker above:** T00–T14, T16, T27, T29, T30, T34–T41, T59 (all merged, per

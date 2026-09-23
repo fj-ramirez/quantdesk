@@ -972,8 +972,11 @@ code {
    (comfortably above the 856px floor plus the rail/padding this app's shell reserves) is the
    same one-property fix `/scan`'s never-overflowed layout uses -- no fixed floor above the
    breakpoint it can't satisfy, single column stacking below it, same as always. */
-.rotation-layout { display: grid; grid-template-columns: minmax(480px, 1fr) 360px; gap: 16px; align-items: start; }
-@media (max-width: 1150px) { .rotation-layout { grid-template-columns: 1fr; } }
+.rotation-layout { display: grid; grid-template-columns: minmax(480px, 1fr) 500px; gap: 16px; align-items: start; }
+/* T123: the side column widened from 360px to 500px so the rank table (now with names under
+   the tickers) fits without its own horizontal scroll -- the single-column breakpoint moves up
+   by 140px to keep T68's "no floor above the breakpoint" arithmetic. */
+@media (max-width: 1290px) { .rotation-layout { grid-template-columns: 1fr; } }
 /* T68, second half of the same finding: squeezing the RRG chart itself below 480px (which a
    naive `min-width: min(480px, 100%)` here would do below the breakpoint) doesn't just shrink
    it -- ECharts' axis labels and quadrant text aren't designed to reflow at that size and
@@ -987,6 +990,12 @@ code {
 .rotation-layout__side { min-width: 0; display: flex; flex-direction: column; gap: 16px; }
 .rotation-chart-scroll { overflow-x: auto; max-width: 100%; }
 .rotation-chart-box { min-width: 480px; aspect-ratio: 1; }
+/* T123: on a desktop the chart takes the height left under the header and toolbar rather
+   than a square, so the page never scrolls; 440px is the floor under which the quadrant
+   labels start colliding. Below the breakpoint it stacks and goes back to a square. */
+@media (min-width: 1291px) {
+  .rotation-chart-box { aspect-ratio: auto; height: max(440px, calc(100vh - 262px)); }
+}
 
 .rotation-chart-head { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; }
 
@@ -995,14 +1004,33 @@ code {
 .rotation-info p { max-width: 60ch; margin: 6px 0 0; opacity: 0.85; }
 .rotation-info code { font-family: var(--mono); font-size: 11px; }
 
-.rotation-breadth__title { font-size: 12px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--text-h); margin: 0 0 8px; }
+/* T123: breadth lives in the page header -- four readings side by side, label over value. */
+.rotation-breadth { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.rotation-breadth__title { font-size: 11px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--text-muted); margin: 0; }
 .rotation-breadth__info { cursor: help; opacity: 0.7; }
 .rotation-breadth__list {
-  display: grid; grid-template-columns: auto 1fr; gap: 2px 10px; margin: 0;
-  font-size: 12px; font-family: var(--mono);
+  display: grid; grid-auto-flow: column; grid-template-rows: auto auto; gap: 0 20px; margin: 0;
+  font-size: 12px;
 }
-.rotation-breadth__list dt { color: var(--text); opacity: 0.6; }
-.rotation-breadth__list dd { margin: 0; text-align: right; }
+.rotation-breadth__list dt { color: var(--text-muted); font-size: 11px; white-space: nowrap; }
+.rotation-breadth__list dd { margin: 0; font-family: var(--mono); font-size: 15px; color: var(--text-strong); }
+@media (max-width: 900px) {
+  .rotation-page .page-header { flex-wrap: wrap; }
+  .rotation-page .page-header__actions { flex: 1 1 100%; min-width: 0; }
+}
+@media (max-width: 640px) {
+  .rotation-breadth__list { grid-auto-flow: row; grid-template-rows: none; grid-template-columns: auto auto; gap: 2px 12px; }
+}
+
+/* T123: the rank table has at most twelve rows (one fixed group) and sits beside the chart,
+   so it runs a notch tighter than the app's default table to finish inside the viewport. */
+.rotation-layout__side .scan-table th,
+.rotation-layout__side .scan-table td { padding: 5px 8px; }
+.rotation-layout__side .status-chip { padding: 1px 8px; }
+
+/* T123: a name under the ticker, for tables the reader scans rather than hovers. */
+.symbol-cell-named { display: flex; flex-direction: column; line-height: 1.25; min-width: 0; }
+.symbol-cell-named__name { font-size: 11px; color: var(--text-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 22ch; }
 
 /* ---------------------------------------------------------------------------
    T49 -- /regime page. Same token discipline as /scan and /rotation above: no

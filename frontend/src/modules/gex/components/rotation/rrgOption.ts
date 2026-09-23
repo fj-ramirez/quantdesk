@@ -16,6 +16,7 @@ import type { EChartsOption } from 'echarts';
 import type { RotationSymbol } from '../../api/types';
 import { formatSignedPct } from '../../../../lib/format';
 import type { VizPalette } from '../../../../theme/vizPalette';
+import { symbolName } from '../../../../lib/symbolNames';
 
 interface TrailPointDatum {
   value: [number, number];
@@ -74,6 +75,11 @@ function quadrantFill(name: 'leading' | 'weakening' | 'lagging' | 'improving', p
 export interface BuildRrgOptionParams {
   symbols: RotationSymbol[];
   palette: VizPalette;
+}
+
+/** Axis tick text: whole numbers as they are, anything else to one decimal. */
+function axisTick(value: number): string {
+  return Number.isInteger(value) ? String(value) : value.toFixed(1);
 }
 
 export function buildRrgOption({ symbols, palette }: BuildRrgOptionParams): EChartsOption {
@@ -244,7 +250,9 @@ export function buildRrgOption({ symbols, palette }: BuildRrgOptionParams): ECha
         const value = params.data?.value;
         if (!value) return '';
         const [x, y] = value;
-        const lines = [`<strong>${params.seriesName ?? ''}</strong>`];
+        const symbol = params.seriesName ?? '';
+        const name = symbolName(symbol);
+        const lines = [`<strong>${symbol}</strong>${name ? ` · ${name}` : ''}`];
         if (params.data?.date) lines.push(params.data.date);
         lines.push(`RS-ratio (approx.): ${x.toFixed(2)}`);
         lines.push(`RS-momentum (approx.): ${y.toFixed(2)}`);
@@ -262,7 +270,10 @@ export function buildRrgOption({ symbols, palette }: BuildRrgOptionParams): ECha
       nameLocation: 'middle',
       nameGap: 28,
       nameTextStyle: { color: palette.textSecondary },
-      axisLabel: { color: palette.textSecondary },
+// T123: min/max are data-driven floats; ECharts prints them in full at the axis ends
+      // ("104.26498373766198") and reserves their width even when hidden, so they are both
+      // hidden and formatted. The round ticks between carry the scale.
+      axisLabel: { color: palette.textSecondary, showMinLabel: false, showMaxLabel: false, formatter: axisTick },
       axisLine: { lineStyle: { color: palette.gridline } },
       splitLine: { show: false },
     },
@@ -271,8 +282,14 @@ export function buildRrgOption({ symbols, palette }: BuildRrgOptionParams): ECha
       min: yMin,
       max: yMax,
       name: 'RS-momentum (approx.)',
+      // T123: along the axis, not above it, so it no longer crowds the legend.
+      nameLocation: 'middle',
+      nameGap: 36,
       nameTextStyle: { color: palette.textSecondary },
-      axisLabel: { color: palette.textSecondary },
+// T123: min/max are data-driven floats; ECharts prints them in full at the axis ends
+      // ("104.26498373766198") and reserves their width even when hidden, so they are both
+      // hidden and formatted. The round ticks between carry the scale.
+      axisLabel: { color: palette.textSecondary, showMinLabel: false, showMaxLabel: false, formatter: axisTick },
       axisLine: { lineStyle: { color: palette.gridline } },
       splitLine: { lineStyle: { color: palette.gridline } },
     },

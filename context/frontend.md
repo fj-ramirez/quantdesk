@@ -151,6 +151,9 @@ state: `state/urlState.ts` exposes `useDashboardParams()` with `DEFAULT_SYMBOL =
   row uses `test/pagination.ts`'s `forEveryPage`, never only page 1.
 - **Detail opens in `DetailDrawer`**, a modal side sheet (bottom sheet at ≤640px). Keep it
   mounted outside any tab panel so a tab switch never unmounts it mid-focus-return.
+- **Symbol names** (T123) come from `lib/symbolNames.ts`, a static map; `SymbolCell` shows the
+  name as a tooltip everywhere and under the ticker with `showName`. A symbol the map does not
+  know renders as the bare ticker — add it to the map when `SCAN_UNIVERSE` grows.
 
 ## Theming
 

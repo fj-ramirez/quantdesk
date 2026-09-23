@@ -38,7 +38,8 @@ export function RankTable({ symbols, sort, dir, onSort, pageSize }: RankTablePro
       key: 'symbol',
       header: 'Symbol',
       sortable: true,
-      format: (_value, row) => <SymbolCell symbol={row.symbol} />,
+      // T123: the name under the ticker -- "XLRE" alone sends the reader off to look it up.
+      format: (_value, row) => <SymbolCell symbol={row.symbol} showName />,
     },
     {
       key: 'return_5',
