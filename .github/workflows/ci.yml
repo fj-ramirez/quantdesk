@@ -115,6 +115,7 @@ jobs:
           POSTGRES_USER: ci
           POSTGRES_PASSWORD: ci
           POSTGRES_DB: ci
+          QUANTDESK_RO_PASSWORD: ci  # required in prod since the MCP read-only role (T82)
         run: docker compose -f compose.yaml -f compose.prod.yaml config --quiet
 
       - name: Prod refuses to start without credentials
@@ -130,6 +131,7 @@ jobs:
           POSTGRES_USER: ci
           POSTGRES_PASSWORD: ci
           POSTGRES_DB: ci
+          QUANTDESK_RO_PASSWORD: ci  # required in prod since the MCP read-only role (T82)
         run: |
           if docker compose -f compose.yaml -f compose.prod.yaml config | grep -qE '^\s*published:'; then
             echo "::error::a service publishes a host port in the production config"
