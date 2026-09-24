@@ -26,9 +26,11 @@ export interface RankTableProps {
   sort: string | null;
   dir: SortDir;
   onSort: (key: string) => void;
+  /** T122: rows per page, passed through to `ScanTable`; omitted shows every row. */
+  pageSize?: number;
 }
 
-export function RankTable({ symbols, sort, dir, onSort }: RankTableProps) {
+export function RankTable({ symbols, sort, dir, onSort, pageSize }: RankTableProps) {
   const rows = toRankRows(symbols);
 
   const columns: ColumnDef<RankRow>[] = [
@@ -36,7 +38,8 @@ export function RankTable({ symbols, sort, dir, onSort }: RankTableProps) {
       key: 'symbol',
       header: 'Symbol',
       sortable: true,
-      format: (_value, row) => <SymbolCell symbol={row.symbol} />,
+      // T123: the name under the ticker -- "XLRE" alone sends the reader off to look it up.
+      format: (_value, row) => <SymbolCell symbol={row.symbol} showName />,
     },
     {
       key: 'return_5',
@@ -83,6 +86,8 @@ export function RankTable({ symbols, sort, dir, onSort }: RankTableProps) {
       onSort={onSort}
       rowKey={(row) => row.symbol}
       caption="Relative return and current quadrant by symbol"
+      pageSize={pageSize}
+      pageNoun="symbols"
     />
   );
 }

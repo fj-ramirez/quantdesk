@@ -17,6 +17,7 @@ import { server } from '../../../mocks/server';
 import { ThemeProvider } from '../../../theme/ThemeContext';
 import { ContextBar } from '../components/layout/ContextBar';
 import { Report } from './Report';
+import reportGldFixture from '../mocks/fixtures/report-gld.json';
 
 // T67: the page-body symbol/expiry `<select>`s this test used to drive directly are gone --
 // `/report` isn't in `ContextBar`'s `SCAN_FAMILY_PATHS`, so it renders the same
@@ -58,6 +59,15 @@ async function awaitReportLoaded(symbol: string) {
   await waitFor(() => expect(screen.queryByText(/Loading the/)).not.toBeInTheDocument());
 }
 
+/** T122: each report tab and the region it renders. Risk alerts is omitted -- it is only
+ * offered when the symbol has alerts, and GLD's fixture has none. */
+const TAB_REGIONS = [
+  ['Summary', 'Executive summary'],
+  ['Gamma Exposure', 'Gamma exposure'],
+  ['Premium Screen', 'Premium selling screen'],
+  ['Playbook', 'Playbook'],
+] as const;
+
 describe('Report page', () => {
   it('deep link ?symbol=GLD renders every section end to end', async () => {
     renderReport('/report?symbol=GLD');
@@ -70,13 +80,14 @@ describe('Report page', () => {
       'Market sentiment',
       'Top resistance levels',
       'Top support levels',
-      'Gamma exposure',
-      'Premium selling screen',
-      'Playbook',
-      'Executive summary',
       'Full report',
     ]) {
       expect(screen.getByRole('region', { name: label })).toBeInTheDocument();
+    }
+    // T122: the detail sections are tabs; each one renders when its tab is chosen.
+    for (const [tab, region] of TAB_REGIONS) {
+      fireEvent.click(screen.getByRole('tab', { name: tab }));
+      expect(await screen.findByRole('region', { name: region })).toBeInTheDocument();
     }
   });
 
@@ -151,10 +162,12 @@ describe('Report page', () => {
     renderReport('/report?symbol=GLD');
     await awaitReportLoaded('GLD');
 
+    fireEvent.click(screen.getByRole('tab', { name: 'Premium Screen' }));
     const premium = screen.getByRole('region', { name: 'Premium selling screen' });
     expect(premium.textContent).toMatch(/not a recommendation/);
     expect(premium.textContent).toMatch(/never routes an order/);
 
+    fireEvent.click(screen.getByRole('tab', { name: 'Playbook' }));
     const playbook = screen.getByRole('region', { name: 'Playbook' });
     expect(playbook.textContent).toMatch(/not a recommendation/);
   });
@@ -192,73 +205,108 @@ describe('Report page', () => {
     expect(screen.getByTestId('positioning-label')).toHaveTextContent('NOISE-DOMINATED');
   });
 
-  it('expands the full report panel and shows the backend-rendered text', async () => {
+  it('opens the full report in an overlay panel with the backend-rendered text, and closes back to its button', async () => {
     renderReport('/report?symbol=GLD');
     await awaitReportLoaded('GLD');
 
     // Fetched lazily: nothing is requested until the panel is opened.
     expect(screen.queryByTestId('report-text')).not.toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole('button', { name: 'View full report' }));
+    const trigger = screen.getByRole('button', { name: 'View full report' });
+    trigger.focus();
+    fireEvent.click(trigger);
 
-    await waitFor(() => expect(screen.getByTestId('report-text')).toBeInTheDocument());
-    expect(screen.getByTestId('report-text').textContent).toMatch(/GLD OPTIONS INTELLIGENCE/);
-    expect(screen.getByRole('button', { name: 'Copy to clipboard' })).toBeInTheDocument();
+    const dialog = await screen.findByRole('dialog', { name: 'GLD full report' });
+    await waitFor(() => expect(within(dialog).getByTestId('report-text')).toBeInTheDocument());
+    expect(within(dialog).getByTestId('report-text').textContent).toMatch(/GLD OPTIONS INTELLIGENCE/);
+    expect(within(dialog).getByRole('button', { name: 'Copy to clipboard' })).toBeInTheDocument();
+
+    fireEvent.keyDown(document, { key: 'Escape' });
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    expect(trigger).toHaveFocus();
   });
 });
 
-describe('Report page density pass (T69)', () => {
-  it('Gamma exposure, Premium selling screen, Playbook and Summary are collapsed <details> by default', async () => {
+describe('Report page sections as tabs (T122, was the T69 density pass)', () => {
+  it('opens on Summary, with the other sections not rendered until their tab is chosen', async () => {
     renderReport('/report?symbol=GLD');
     await awaitReportLoaded('GLD');
 
-    for (const label of ['Gamma exposure', 'Premium selling screen', 'Playbook', 'Executive summary']) {
-      const region = screen.getByRole('region', { name: label });
-      const details = region.closest('details') as HTMLDetailsElement | null;
-      expect(details).not.toBeNull();
-      expect(details!.open).toBe(false);
+    const tablist = screen.getByRole('tablist', { name: 'Report sections' });
+    expect(within(tablist).getByRole('tab', { name: 'Summary' })).toHaveAttribute('aria-selected', 'true');
+    expect(screen.getByRole('region', { name: 'Executive summary' })).toBeInTheDocument();
+    for (const label of ['Gamma exposure', 'Premium selling screen', 'Playbook']) {
+      expect(screen.queryByRole('region', { name: label })).not.toBeInTheDocument();
     }
   });
 
-  it('clicking a disclosure summary opens it, keyboard-operable via the native <details> element', async () => {
-    renderReport('/report?symbol=GLD');
+  it('deep-links a section with ?tab= and moves between tabs by keyboard', async () => {
+    renderReport('/report?symbol=GLD&tab=playbook');
     await awaitReportLoaded('GLD');
 
-    const region = screen.getByRole('region', { name: 'Playbook' });
-    const details = region.closest('details') as HTMLDetailsElement;
-    expect(details.open).toBe(false);
+    const playbookTab = screen.getByRole('tab', { name: 'Playbook' });
+    expect(playbookTab).toHaveAttribute('aria-selected', 'true');
+    expect(screen.getByRole('region', { name: 'Playbook' })).toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole('heading', { name: 'Playbook', level: 2 }));
-    expect(details.open).toBe(true);
+    fireEvent.keyDown(playbookTab, { key: 'ArrowLeft' });
+    expect(screen.getByRole('tab', { name: 'Premium Screen' })).toHaveFocus();
+    expect(screen.getByRole('region', { name: 'Premium selling screen' })).toBeInTheDocument();
   });
 
-  it('Risk alerts is also a collapsed <details> when the symbol has any alerts', async () => {
+  it('announces risk alerts on the tab strip with their count, so they are never silently collapsed', async () => {
     renderReport('/report?symbol=DIA');
     await awaitReportLoaded('DIA');
 
+    const alertsTab = screen.getByRole('tab', { name: /Risk Alerts/ });
+    const count = Number(alertsTab.textContent?.replace('Risk Alerts', ''));
+    expect(count).toBeGreaterThan(0);
+
+    fireEvent.click(alertsTab);
     const region = screen.getByRole('region', { name: 'Risk alerts' });
-    const details = region.closest('details') as HTMLDetailsElement;
-    expect(details).not.toBeNull();
-    expect(details.open).toBe(false);
+    expect(within(region).getAllByRole('listitem')).toHaveLength(count);
   });
 
-  it('Levels straddling spot and the three summary cards are never wrapped in a <details> -- always visible', async () => {
+  it('does not offer a Risk alerts tab when the symbol has no alerts', async () => {
+    renderReport('/report?symbol=GLD');
+    await awaitReportLoaded('GLD');
+    expect(screen.queryByRole('tab', { name: /Risk Alerts/ })).not.toBeInTheDocument();
+  });
+
+  it('puts price and volatility in the header, then the tabs, then market structure and sentiment inside Summary', async () => {
     renderReport('/report?symbol=DIA');
     await awaitReportLoaded('DIA');
 
-    for (const label of ['Current price', 'Volatility', 'Market sentiment', 'Levels straddling spot']) {
+    // Price and volatility belong to the page, not a tab: in the header, above the tab strip.
+    const tablist = screen.getByRole('tablist', { name: 'Report sections' });
+    const header = screen.getByRole('heading', { name: 'DIA Analysis Results', level: 1 }).closest('header')!;
+    for (const label of ['Current price', 'Volatility']) {
       const region = screen.getByRole('region', { name: label });
-      expect(region.closest('details')).toBeNull();
+      expect(header.contains(region)).toBe(true);
+      expect(region.compareDocumentPosition(tablist) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     }
+
+    // Nothing sits between the header and the tabs: the level rows and sentiment are the
+    // Summary tab's content, in one Market structure panel beside Market sentiment.
+    const panel = screen.getByRole('tabpanel');
+    const structure = within(panel).getByRole('region', { name: 'Market structure' });
+    for (const label of ['Top resistance levels', 'Top support levels', 'Levels straddling spot']) {
+      expect(structure.contains(screen.getByRole('region', { name: label }))).toBe(true);
+    }
+    expect(within(panel).getByRole('region', { name: 'Market sentiment' })).toBeInTheDocument();
   });
 
-  it('the three load-bearing disclaimer strings still appear verbatim after the disclosure rewrite (T67 regression check)', async () => {
+  it('the load-bearing disclaimer strings still appear verbatim in their tabs (T67 regression check)', async () => {
     renderReport('/report?symbol=GLD');
     await awaitReportLoaded('GLD');
 
-    expect(document.body.textContent).toContain('Screening output');
-    expect(document.body.textContent).toMatch(/not a recommendation/);
-    expect(document.body.textContent).toMatch(/never routes an order/);
+    fireEvent.click(screen.getByRole('tab', { name: 'Premium Screen' }));
+    const premium = screen.getByRole('region', { name: 'Premium selling screen' });
+    expect(premium.textContent).toContain('Screening output');
+    expect(premium.textContent).toMatch(/not a recommendation/);
+    expect(premium.textContent).toMatch(/never routes an order/);
+
+    fireEvent.click(screen.getByRole('tab', { name: 'Playbook' }));
+    expect(screen.getByRole('region', { name: 'Playbook' }).textContent).toContain('Screening output');
   });
 });
 
@@ -274,10 +322,14 @@ describe('CFD level translation (T41)', () => {
   });
 
   it('T47: a symbol with no CFD_INSTRUMENTS entry (an extended ETF) shows "No CFD mapping" instead of a broken "undefined spot" input', async () => {
+    // T122: the CFD control now sits in the report's tab row, which renders once a report
+    // exists. The mocks record no XLK chain, so serve GLD's body under XLK -- in production
+    // an extended ETF gets a real report (T47); only the CFD mapping is missing.
+    server.use(http.get('*/api/gex/report/XLK', () => HttpResponse.json(reportGldFixture)));
     renderReport('/report?symbol=XLK');
     await awaitReportLoaded('XLK');
 
-    expect(screen.getByText('No CFD mapping for XLK')).toBeInTheDocument();
+    expect(await screen.findByText('No CFD mapping for XLK')).toBeInTheDocument();
     expect(screen.queryByLabelText(/spot$/)).not.toBeInTheDocument();
 
     // Switching back to a mapped symbol restores the normal input -- the degrade is per
@@ -307,7 +359,7 @@ describe('CFD level translation (T41)', () => {
   });
 
   it('shows the converted call wall alongside the native one, never in its place', async () => {
-    renderReport('/report?symbol=GLD&cfd=4412.50');
+    renderReport('/report?symbol=GLD&cfd=4412.50&tab=gamma');
     await awaitReportLoaded('GLD');
 
     const gamma = screen.getByRole('region', { name: 'Gamma exposure' });

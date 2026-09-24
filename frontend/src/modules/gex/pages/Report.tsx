@@ -49,8 +49,26 @@
  * -order navigation for assistive tech is unaffected; only its visible position changed (from
  * inside the region to the clickable row above it). No value, disclaimer string, CFD logic, or
  * the capture-now flow changed -- this only moves existing JSX into disclosure wrappers.
+ *
+ * **T122 -- tabs and an overlay full report.** Five collapsed disclosures read as a row of
+ * closed doors, and opening them all ran the page past two and a half screens. They are now
+ * in-section tabs (`?tab=`, URL state) -- Summary first, as the concise read, then Gamma
+ * exposure, Premium screen, Playbook, Risk alerts. The Risk alerts tab carries its count, so an
+ * alert is announced on the tab strip even while its panel is closed; a collapsed `<details>`
+ * never said whether it held anything. A tab whose section would be empty (no summary lines,
+ * no alerts) is not offered, the same "render nothing" rule as before. The full text report
+ * opens in a wide `DetailDrawer` instead of expanding at the foot of the page, and still
+ * fetches only once opened. No value, disclaimer, CFD logic or the capture-now flow changed.
+ *
+ * **T122 -- dense layout (the user's own spec and mockup, 2026-09-23).** The three full-height
+ * cards and three full-width level bands pushed the tabs a screen down. Now: price and
+ * volatility are compact blocks in the page header's right slot (`HeadlineMetrics`); the tabs
+ * sit directly under the header, pinned under the context bar on desktop; the Summary tab holds
+ * one Market structure panel (resistance / support / straddling as label-and-chips rows,
+ * `LevelRow`) beside Market sentiment, then the summary lines with the full-report button. The
+ * CFD-spot input moved to the tab row. Every region keeps its accessible name.
  */
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useMemo, useState, type ReactNode } from 'react';
 import { ApiError } from '../api/client';
 import { useCaptureSnapshot, useReport, useReportText } from '../api/queries';
 import {
@@ -78,9 +96,11 @@ import { useDashboardParams } from '../state/urlState';
 import { useTheme } from '../../../theme/ThemeContext';
 import { vizPaletteFor } from '../../../theme/vizPalette';
 import { DataTableFrame } from '../../../components/ui/DataTableFrame';
-import { MetricCard } from '../../../components/ui/MetricCard';
 import { PageHeader } from '../../../components/ui/PageHeader';
 import { Surface } from '../../../components/ui/Surface';
+import { DetailDrawer } from '../../../components/ui/DetailDrawer';
+import { Tabs, type TabDef } from '../../../components/ui/Tabs';
+import { useTabParam } from '../../../components/ui/useTabParam';
 
 const DASH = '—';
 
@@ -136,7 +156,7 @@ function LevelChip({
   theme: 'light' | 'dark';
 }) {
   const palette = vizPaletteFor(theme);
-  const color = level.side === 'SUPPORT' ? palette.levelSupport : level.side === 'RESISTANCE' ? palette.levelResistance : palette.textMuted;
+  const color = level.side === 'SUPPORT' ? palette.levelSupport : level.side === 'RESISTANCE' ? palette.levelResistance : palette.levelStraddling;
   return (
     <li className="report-level-chip" style={{ borderColor: color }}>
       <span aria-hidden="true" className="report-level-chip__dot" style={{ background: color }} />
@@ -156,41 +176,107 @@ function LevelChip({
   );
 }
 
-function LevelChips({
+/**
+ * T122: one row of the Market structure panel -- a label column and its chips flowing
+ * horizontally beside it, where each side used to be its own full-width band. The row keeps
+ * the region name it had as a band ("Top resistance levels", ...), so a screen reader's
+ * landmark list is unchanged. `note` carries the straddling explanation.
+ */
+function LevelRow({
   heading,
+  regionLabel,
   levels,
-  cfdLevels,
+  cfdIndex,
   instrument,
   emptyMessage,
+  note,
+  tone,
   theme,
 }: {
   heading: string;
+  /** Colours the row label with the same semantic hue as its chips. */
+  tone: 'resistance' | 'support' | 'straddling';
+  regionLabel: string;
   levels: ReportLevel[];
-  cfdLevels?: CfdLevel[];
+  cfdIndex: Map<number, CfdLevel>;
   instrument?: string;
   emptyMessage: string;
+  note?: string | null;
   theme: 'light' | 'dark';
 }) {
-  const cfdIndex = useMemo(() => cfdLevelIndex(cfdLevels), [cfdLevels]);
   return (
-    <Surface as="section" aria-label={heading} className="report-section" bordered={false} padded={false}>
-      <h2 className="report-section-title">{heading}</h2>
-      {levels.length === 0 ? (
-        <p className="report-muted">{emptyMessage}</p>
-      ) : (
-        <ul className="report-level-chips">
-          {levels.map((level) => (
-            <LevelChip
-              key={`${level.side}-${level.strike}`}
-              level={level}
-              cfd={level.strike == null ? undefined : cfdIndex.get(level.strike)}
-              instrument={instrument}
-              theme={theme}
-            />
-          ))}
-        </ul>
-      )}
-    </Surface>
+    <section aria-label={regionLabel} className="report-level-row">
+      <h3 className={`report-level-row__label report-level-row__label--${tone}`}>{heading}</h3>
+      <div className="report-level-row__body">
+        {levels.length === 0 ? (
+          <p className="report-muted">{emptyMessage}</p>
+        ) : (
+          <ul className="report-level-chips">
+            {levels.map((level) => (
+              <LevelChip
+                key={`${level.side}-${level.strike}`}
+                level={level}
+                cfd={level.strike == null ? undefined : cfdIndex.get(level.strike)}
+                instrument={instrument}
+                theme={theme}
+              />
+            ))}
+          </ul>
+        )}
+        {note && <p className="report-level-row__note">{note}</p>}
+      </div>
+    </section>
+  );
+}
+
+/**
+ * T122: price and volatility as compact headline blocks in the page header's right slot,
+ * replacing two of the three full-height cards. Every line the cards carried is still here,
+ * including the IV-regime "insufficient history" answer -- a null label is the correct
+ * answer on a short history, never a band to substitute.
+ */
+function HeadlineMetrics({ report }: { report: ReportData }) {
+  const { iv_regime: iv, max_pain: maxPain, cfd } = report;
+  return (
+    <div className="report-headline">
+      <section aria-label="Current price" className="report-headline__metric">
+        <span className="report-headline__value">{formatPrice(report.spot)}</span>
+        <span className="report-headline__label">Price</span>
+        {cfd && (
+          <span className="report-headline__line">
+            {cfd.instrument} {formatPrice(cfd.cfd_spot)}
+          </span>
+        )}
+        <span className="report-headline__line">
+          Max pain {formatStrike(maxPain.strike)} · {formatPctValue(maxPain.distance_pct)}
+          {cfd?.max_pain?.strike != null && (
+            <span className="report-muted-inline"> [{cfd.instrument} {formatStrike(cfd.max_pain.strike)}]</span>
+          )}
+        </span>
+      </section>
+      <section aria-label="Volatility" className="report-headline__metric">
+        <span className="report-headline__value">{formatIv(iv.atm_iv)}</span>
+        <span className="report-headline__label">Volatility</span>
+        <span className="report-headline__line">
+          ATM ~{iv.target_dte}d
+          {iv.interpolated && iv.lower_dte != null && iv.upper_dte != null
+            ? ` · interpolated ${iv.lower_dte}–${iv.upper_dte} DTE`
+            : ''}
+        </span>
+        {/* One line, truncated, with the full sentence on hover -- kept in the DOM (and so
+            for screen readers) rather than dropped, because "no label yet" is the answer. */}
+        {(() => {
+          const text =
+            iv.label ??
+            `Insufficient history — a regime label needs ${iv.min_history_required} prior snapshots, there are ${iv.history_observations}.`;
+          return (
+            <span className={iv.label ? 'report-iv-label' : 'report-headline__line report-headline__line--clip report-iv-label--muted'} title={text}>
+              {text}
+            </span>
+          );
+        })()}
+      </section>
+    </div>
   );
 }
 
@@ -322,36 +408,35 @@ function FullReportPanel({
   }, [data]);
 
   return (
-    <Surface as="section" aria-label="Full report" className="report-section" bordered={false} padded={false}>
-      <button type="button" aria-expanded={open} onClick={() => setOpen((previous) => !previous)}>
-        {open ? 'Hide full report' : 'View full report'}
+    <Surface as="section" aria-label="Full report" className="report-fullreport" level="app" bordered={false} padded={false}>
+      <button type="button" className="scan-toolbar__btn" aria-expanded={open} onClick={() => setOpen(true)}>
+        View full report
       </button>
-
-      {open && (
-        <div className="report-section">
-          {isLoading && <p aria-live="polite">Loading the full report…</p>}
-          {isError && (
-            <p role="alert">
-              Could not load the full report: {error instanceof ApiError ? error.message : 'unexpected error'}
-            </p>
-          )}
-          {data && (
-            <>
-              <div className="report-fulltext-actions">
-                <button type="button" onClick={() => void onCopy()}>
-                  Copy to clipboard
-                </button>
-                <span aria-live="polite" className="report-fulltext-copy-status">
-                  {copyState === 'copied' ? 'Copied.' : copyState === 'failed' ? 'Copying is not available in this browser context.' : ''}
-                </span>
-              </div>
-              <pre data-testid="report-text" className="report-fulltext">
-                {data}
-              </pre>
-            </>
-          )}
-        </div>
-      )}
+      {/* T122: an overlay rather than an inline expansion at the foot of the page. Always
+          mounted -- DetailDrawer's caller contract -- so focus returns to the button. */}
+      <DetailDrawer open={open} onClose={() => setOpen(false)} title={`${symbol} full report`} wide>
+        {isLoading && <p aria-live="polite">Loading the full report…</p>}
+        {isError && (
+          <p role="alert">
+            Could not load the full report: {error instanceof ApiError ? error.message : 'unexpected error'}
+          </p>
+        )}
+        {data && (
+          <>
+            <div className="report-fulltext-actions">
+              <button type="button" onClick={() => void onCopy()}>
+                Copy to clipboard
+              </button>
+              <span aria-live="polite" className="report-fulltext-copy-status">
+                {copyState === 'copied' ? 'Copied.' : copyState === 'failed' ? 'Copying is not available in this browser context.' : ''}
+              </span>
+            </div>
+            <pre data-testid="report-text" className="report-fulltext">
+              {data}
+            </pre>
+          </>
+        )}
+      </DetailDrawer>
     </Surface>
   );
 }
@@ -392,32 +477,81 @@ function NoDataYet({ symbol }: { symbol: Underlying }) {
 // Page
 // ---------------------------------------------------------------------------------------
 
+const REPORT_TABS = ['summary', 'gamma', 'premium', 'playbook', 'alerts'] as const;
+type ReportTab = (typeof REPORT_TABS)[number];
+const REPORT_TAB_LABELS: Record<ReportTab, string> = {
+  summary: 'Summary',
+  gamma: 'Gamma Exposure',
+  premium: 'Premium Screen',
+  playbook: 'Playbook',
+  alerts: 'Risk Alerts',
+};
+
+/** T122: the positioning pill's tone. Long gamma dampens moves (green, the "stable" reading),
+ * short gamma amplifies them (caution); a noise-dominated or empty scope has no direction and
+ * stays neutral -- colouring it would imply a reading the page explicitly declines to give. */
+function positioningTone(label: string): 'positive' | 'caution' | 'neutral' {
+  if (label === 'LONG GAMMA') return 'positive';
+  if (label === 'SHORT GAMMA') return 'caution';
+  return 'neutral';
+}
+
 function ReportBody({
   report,
   symbol,
   filter,
   cfdSpot,
   theme,
+  cfdControl,
 }: {
   report: ReportData;
   symbol: Underlying;
   filter: ExpiryFilter;
   cfdSpot?: number;
   theme: 'light' | 'dark';
+  /** The CFD-spot input, owned by `Report` (it reads the URL), rendered in the tab row. */
+  cfdControl: ReactNode;
 }) {
-  const { positioning, iv_regime: iv, ratios, levels, max_pain: maxPain, premium, playbook, alerts, summary, cfd } = report;
+  const { positioning, ratios, levels, premium, playbook, alerts, summary, cfd } = report;
   const cfdPlaybookByKey = useMemo(() => {
     const map = new Map<string, CfdPlaybookEntry>();
     for (const entry of cfd?.playbook ?? []) map.set(entry.key, entry);
     return map;
   }, [cfd]);
   const cfdStraddlingByStrike = useMemo(() => cfdLevelIndex(cfd?.straddling), [cfd]);
+  const cfdResistanceByStrike = useMemo(() => cfdLevelIndex(cfd?.resistance), [cfd]);
+  const cfdSupportByStrike = useMemo(() => cfdLevelIndex(cfd?.support), [cfd]);
+
+  // T122: only offer a tab whose section has something in it. Summary is always offered --
+  // it holds the market structure and sentiment, which exist even when the backend sends no
+  // summary lines; Risk alerts only when there are alerts.
+  const tabDefs = useMemo(
+    () =>
+      REPORT_TABS.filter((t) => (t === 'alerts' ? alerts.length > 0 : true)).map(
+        (value): TabDef<ReportTab> => ({
+          value,
+          label: REPORT_TAB_LABELS[value],
+          count: value === 'alerts' ? alerts.length : null,
+        }),
+      ),
+    [alerts.length],
+  );
+  const tabValues = useMemo(() => tabDefs.map((d) => d.value), [tabDefs]);
+  const [tab, setTab] = useTabParam<ReportTab>('tab', tabValues);
 
   return (
     <>
+      <Tabs
+        label="Report sections"
+        tabs={tabDefs}
+        active={tab}
+        onChange={setTab}
+        sticky
+        actions={cfdControl}
+      >
       {/* T41: the CFD spot the user typed, the ratio it implies, and the honesty text that
-          must travel with every converted number below -- shown once, near the top, rather
-          than repeated section by section. */}
+          must travel with every converted number below -- shown once, at the top of whichever
+          tab is open, rather than repeated section by section. */}
       {cfd && (
         <ScreeningNotice>
           {cfd.instrument} {formatPrice(cfd.cfd_spot)} / {symbol} {formatPrice(cfd.underlying_spot)} = ratio{' '}
@@ -425,112 +559,84 @@ function ReportBody({
         </ScreeningNotice>
       )}
 
-      <div className="report-summary-cards">
-        <section aria-label="Current price" className="report-summary-card">
-          <MetricCard
-            label="Current price"
-            value={formatPrice(report.spot)}
-            hint={
-              <>
-                {cfd && (
-                  <span className="report-summary-card__subvalue">
-                    {cfd.instrument} {formatPrice(cfd.cfd_spot)}
-                  </span>
-                )}
-                <span className="report-summary-card__line">
-                  Max pain {formatStrike(maxPain.strike)} ({formatPctValue(maxPain.distance_pct)})
-                  {cfd?.max_pain?.strike != null && (
-                    <span className="report-muted-inline"> [{cfd.instrument} {formatStrike(cfd.max_pain.strike)}]</span>
-                  )}
-                </span>
-              </>
-            }
-          />
-        </section>
-
-        <section aria-label="Volatility" className="report-summary-card">
-          <MetricCard
-            label="Volatility"
-            value={formatIv(iv.atm_iv)}
-            hint={
-              <>
-                <span className="report-summary-card__line">
-                  ATM ~{iv.target_dte}d
-                  {iv.interpolated && iv.lower_dte != null && iv.upper_dte != null
-                    ? `, interpolated ${iv.lower_dte}–${iv.upper_dte} DTE`
-                    : ''}
-                </span>
-                {/* The label is null on a single-snapshot database and that is the correct
-                    answer, not a loading state. Never substitute a band. */}
-                <span className={iv.label ? 'report-iv-label' : 'report-iv-label report-iv-label--muted'}>
-                  {iv.label ?? `Insufficient history — a regime label needs ${iv.min_history_required} prior snapshots, there are ${iv.history_observations}.`}
-                </span>
-              </>
-            }
-          />
-        </section>
-
-        <section aria-label="Market sentiment" className="report-summary-card">
-          <MetricCard
-            label="Market sentiment"
-            value={ratios.open_interest_ratio == null ? DASH : ratios.open_interest_ratio.toFixed(2)}
-            hint={
-              <>
-                <span className="report-summary-card__line">
-                  Put/call ratio on open interest (volume {ratios.volume_ratio == null ? DASH : ratios.volume_ratio.toFixed(2)})
-                </span>
-                <span className="report-positioning-label" data-testid="positioning-label">
-                  {positioning.label}
-                </span>
-                <span className="report-positioning-desc">{positioning.description}</span>
-              </>
-            }
-          />
-        </section>
-      </div>
-
-      <LevelChips
-        heading="Top resistance levels"
-        levels={levels.resistance}
-        cfdLevels={cfd?.resistance}
-        instrument={cfd?.instrument}
-        emptyMessage="No positive-gamma strike sits above spot in this expiry scope."
-        theme={theme}
-      />
-      <LevelChips
-        heading="Top support levels"
-        levels={levels.support}
-        cfdLevels={cfd?.support}
-        instrument={cfd?.instrument}
-        emptyMessage="No negative-gamma strike sits below spot in this expiry scope."
-        theme={theme}
-      />
-
-      {/* A real market condition, labelled rather than sorted away. The example report merged
-          these into its support and resistance lists and ended up printing support above
-          resistance. */}
-      {levels.overlapping && (
-        <Surface as="section" aria-label="Levels straddling spot" className="report-section" bordered={false} padded={false}>
-          <h2 className="report-section-title">Straddling spot</h2>
-          <p className="report-muted--spaced">{levels.overlap_note}</p>
-          <ul className="report-level-chips">
-            {levels.straddling.map((level) => (
-              <LevelChip
-                key={`straddle-${level.strike}`}
-                level={level}
-                cfd={level.strike == null ? undefined : cfdStraddlingByStrike.get(level.strike)}
+      {tab === 'summary' && (
+        <>
+          <div className="report-overview">
+            <Surface as="section" aria-label="Market structure" className="report-structure" level="app">
+              <h2 className="report-panel-title">Market structure</h2>
+              <LevelRow
+                heading="Resistance"
+                tone="resistance"
+                regionLabel="Top resistance levels"
+                levels={levels.resistance}
+                cfdIndex={cfdResistanceByStrike}
                 instrument={cfd?.instrument}
+                emptyMessage="No positive-gamma strike sits above spot in this expiry scope."
                 theme={theme}
               />
-            ))}
-          </ul>
-        </Surface>
+              <LevelRow
+                heading="Support"
+                tone="support"
+                regionLabel="Top support levels"
+                levels={levels.support}
+                cfdIndex={cfdSupportByStrike}
+                instrument={cfd?.instrument}
+                emptyMessage="No negative-gamma strike sits below spot in this expiry scope."
+                theme={theme}
+              />
+              {/* A real market condition, labelled rather than sorted away. The example report
+                  merged these into its support and resistance lists and ended up printing
+                  support above resistance. */}
+              {levels.overlapping && (
+                <LevelRow
+                  heading="Straddling spot"
+                  tone="straddling"
+                  regionLabel="Levels straddling spot"
+                  levels={levels.straddling}
+                  cfdIndex={cfdStraddlingByStrike}
+                  instrument={cfd?.instrument}
+                  note={levels.overlap_note}
+                  emptyMessage=""
+                  theme={theme}
+                />
+              )}
+            </Surface>
+
+            <Surface as="section" aria-label="Market sentiment" className="report-sentiment" level="app">
+              <h2 className="report-panel-title">Market sentiment</h2>
+              <span className="report-sentiment__value">
+                {ratios.open_interest_ratio == null ? DASH : ratios.open_interest_ratio.toFixed(2)}
+              </span>
+              <span className="report-muted">
+                Put/call ratio on open interest (volume {ratios.volume_ratio == null ? DASH : ratios.volume_ratio.toFixed(2)})
+              </span>
+              <span
+                className={`report-positioning-pill report-positioning-pill--${positioningTone(positioning.label)}`}
+                data-testid="positioning-label"
+              >
+                {positioning.label}
+              </span>
+              <span className="report-positioning-desc">{positioning.description}</span>
+            </Surface>
+          </div>
+
+          <Surface as="section" aria-label="Executive summary" className="report-summary" level="app">
+            <div className="report-summary__head">
+              <h2 className="report-panel-title">Summary</h2>
+              <FullReportPanel symbol={symbol} filter={filter} cfdSpot={cfdSpot} />
+            </div>
+            {summary.length > 0 && (
+              <ul className="report-summary__lines">
+                {summary.map((line) => (
+                  <li key={line}>{line}</li>
+                ))}
+              </ul>
+            )}
+          </Surface>
+        </>
       )}
 
-      <details className="report-disclosure">
-        <summary className="report-disclosure__summary">
-          <h2 className="report-section-title">Gamma exposure</h2>
-        </summary>
+      {tab === 'gamma' && (
         <Surface as="section" aria-label="Gamma exposure" className="report-section">
         <table>
           <tbody>
@@ -580,12 +686,9 @@ function ReportBody({
           </tbody>
         </table>
         </Surface>
-      </details>
+      )}
 
-      <details className="report-disclosure">
-        <summary className="report-disclosure__summary">
-          <h2 className="report-section-title">Premium selling screen</h2>
-        </summary>
+      {tab === 'premium' && (
         <Surface as="section" aria-label="Premium selling screen" className="report-section">
         <ScreeningNotice>
           Screening output computed from the current chain, not a recommendation. These are the
@@ -602,12 +705,9 @@ function ReportBody({
         />
         {premium.note && <p className="report-muted">{premium.note}</p>}
         </Surface>
-      </details>
+      )}
 
-      <details className="report-disclosure">
-        <summary className="report-disclosure__summary">
-          <h2 className="report-section-title">Playbook</h2>
-        </summary>
+      {tab === 'playbook' && (
         <Surface as="section" aria-label="Playbook" className="report-section">
         <ScreeningNotice>
           Screening output, not a recommendation. Every trigger, target and invalidation below
@@ -637,13 +737,9 @@ function ReportBody({
           </p>
         )}
         </Surface>
-      </details>
+      )}
 
-      {alerts.length > 0 && (
-        <details className="report-disclosure">
-          <summary className="report-disclosure__summary">
-            <h2 className="report-section-title">Risk alerts</h2>
-          </summary>
+      {tab === 'alerts' && (
           <Surface as="section" aria-label="Risk alerts" className="report-section" bordered={false} padded={false}>
             <ul className="report-alerts">
               {alerts.map((alert) => (
@@ -653,25 +749,8 @@ function ReportBody({
               ))}
             </ul>
           </Surface>
-        </details>
       )}
-
-      {summary.length > 0 && (
-        <details className="report-disclosure">
-          <summary className="report-disclosure__summary">
-            <h2 className="report-section-title">Summary</h2>
-          </summary>
-          <Surface as="section" aria-label="Executive summary" className="report-section" bordered={false} padded={false}>
-            {summary.map((line) => (
-              <p key={line} className="report-muted--spaced">
-                {line}
-              </p>
-            ))}
-          </Surface>
-        </details>
-      )}
-
-      <FullReportPanel symbol={symbol} filter={filter} cfdSpot={cfdSpot} />
+      </Tabs>
     </>
   );
 }
@@ -714,33 +793,7 @@ export function Report() {
             </span>
           ) : undefined
         }
-        actions={
-          <div className="report-header-actions">
-            {/* T41: the CFD instrument the user actually trades. Optional and URL-backed
-                (`?cfd=`), so `/report?symbol=GLD&cfd=4412.50` deep-links. Leaving it blank
-                leaves the report exactly as it is without T41 -- no converted block, no
-                placeholder. T47: `cfdInstrument` is `undefined` for a symbol `CFD_INSTRUMENTS`
-                does not cover (every sector/industry ETF today) -- the input degrades to "no
-                CFD mapping" by not rendering at all, mirroring `app/modules/gex/api/report.py`'s degrade
-                rather than showing a broken "undefined spot" label or an input that would 422
-                if ever submitted. */}
-            {cfdInstrument ? (
-              <label>
-                {cfdInstrument} spot{' '}
-                <input
-                  type="text"
-                  inputMode="decimal"
-                  placeholder="e.g. 4412.50"
-                  aria-label={`${cfdInstrument} spot`}
-                  value={cfdSpotRaw ?? ''}
-                  onChange={(event) => setCfdSpot(event.target.value.length > 0 ? event.target.value : null)}
-                />
-              </label>
-            ) : (
-              <span className="report-cfd-missing">No CFD mapping for {symbol}</span>
-            )}
-          </div>
-        }
+        actions={data ? <HeadlineMetrics report={data} /> : undefined}
       />
 
       {cfdSpotInvalid && cfdInstrument && (
@@ -760,7 +813,43 @@ export function Report() {
         </p>
       )}
 
-      {data && <ReportBody report={data} symbol={symbol} filter={filter} cfdSpot={cfdSpotValid} theme={theme} />}
+      {data && (
+        <ReportBody
+          report={data}
+          symbol={symbol}
+          filter={filter}
+          cfdSpot={cfdSpotValid}
+          theme={theme}
+          cfdControl={
+            <div className="report-header-actions">
+              {/* T41: the CFD instrument the user actually trades. Optional and URL-backed
+                  (`?cfd=`), so `/report?symbol=GLD&cfd=4412.50` deep-links. Leaving it blank
+                  leaves the report exactly as it is without T41 -- no converted block, no
+                  placeholder. T47: `cfdInstrument` is `undefined` for a symbol `CFD_INSTRUMENTS`
+                  does not cover (every sector/industry ETF today) -- the input degrades to "no
+                  CFD mapping" by not rendering at all, mirroring `app/modules/gex/api/report.py`'s
+                  degrade rather than showing a broken "undefined spot" label or an input that
+                  would 422 if ever submitted. T122: moved from the page header to the tab row,
+                  so the header's right side can carry the price and volatility. */}
+              {cfdInstrument ? (
+                <label>
+                  {cfdInstrument} spot{' '}
+                  <input
+                    type="text"
+                    inputMode="decimal"
+                    placeholder="e.g. 4412.50"
+                    aria-label={`${cfdInstrument} spot`}
+                    value={cfdSpotRaw ?? ''}
+                    onChange={(event) => setCfdSpot(event.target.value.length > 0 ? event.target.value : null)}
+                  />
+                </label>
+              ) : (
+                <span className="report-cfd-missing">No CFD mapping for {symbol}</span>
+              )}
+            </div>
+          }
+        />
+      )}
     </div>
   );
 }

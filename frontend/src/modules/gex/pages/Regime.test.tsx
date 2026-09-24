@@ -16,6 +16,7 @@ import { Regime } from './Regime';
 import regimeFixture from '../mocks/fixtures/scan/regime.json';
 import regimeZeroDteFixture from '../mocks/fixtures/scan/regime_zero_dte.json';
 import regimeEmptyFixture from '../mocks/fixtures/scan/regime_empty.json';
+import { expectPagedRows, forEveryPage } from '../../../test/pagination';
 
 function DashboardStandIn() {
   const [params] = useSearchParams();
@@ -51,7 +52,7 @@ describe('Regime page -- default view (filter=ALL)', () => {
       within(screen.getByRole('group', { name: 'Filter' })).getByRole('button', { name: 'All' }),
     ).toHaveAttribute('aria-pressed', 'true');
     const table = await screen.findByRole('table', { name: /dealer positioning regime/i });
-    expect(within(table).getAllByRole('row')).toHaveLength(regimeFixture.rows.length + 1);
+    expectPagedRows(table, regimeFixture.rows.length, 20, 'symbols');
   });
 
   it('renders T54 cross-asset strip above the board', async () => {
@@ -112,12 +113,14 @@ describe('Regime page -- deep links', () => {
       within(screen.getByRole('group', { name: 'Filter' })).getByRole('button', { name: '0DTE' }),
     ).toHaveAttribute('aria-pressed', 'true');
     const table = await screen.findByRole('table', { name: /dealer positioning regime/i });
-    expect(within(table).getAllByRole('row')).toHaveLength(regimeZeroDteFixture.rows.length + 1);
+    expectPagedRows(table, regimeZeroDteFixture.rows.length, 20, 'symbols');
     // Every row in the live ZERO_DTE snapshot is noise-dominated or (for the five also-stale
     // symbols) stale -- no genuine verdict survives the post-close 0/483 case (plan 03).
-    expect(within(table).queryByText('continuation')).not.toBeInTheDocument();
-    expect(within(table).queryByText('mixed')).not.toBeInTheDocument();
-    expect(within(table).queryByText('fade')).not.toBeInTheDocument();
+    forEveryPage(/dealer positioning regime/i, 'symbols', (page) => {
+      expect(within(page).queryByText('continuation')).not.toBeInTheDocument();
+      expect(within(page).queryByText('mixed')).not.toBeInTheDocument();
+      expect(within(page).queryByText('fade')).not.toBeInTheDocument();
+    });
   });
 });
 

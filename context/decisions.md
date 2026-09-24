@@ -89,7 +89,12 @@ number to be true, it belongs in a plan file's *Result* heading or behind an MCP
   never converted. — T41.
 - UI refreshes keep every piece of information and change only its presentation;
   compact first, heavy sections collapsed. — T62, T69.
+- A crowded page splits into in-section tabs (active tab in the URL, `?tab=`); a long table pages
+  *after* sorting and its pager always states the full count; detail opens in the overlay
+  `DetailDrawer`. — T122.
 - The build is stamped per service, never stack-wide; unknown says `unknown`. — T98.
+- A response cache is keyed on a fingerprint of its inputs, never a timer, and never holds anything
+  derived from the wall clock (chain age, `stale`). A GET never writes. — T124.
 
 ## Decisions and scoring (GEX)
 

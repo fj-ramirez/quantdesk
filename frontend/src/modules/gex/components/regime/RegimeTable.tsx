@@ -109,9 +109,11 @@ export interface RegimeTableProps {
   sort: string | null;
   dir: SortDir;
   onSort: (key: string) => void;
+  /** T122: rows per page, passed through to `ScanTable`; omitted shows every row. */
+  pageSize?: number;
 }
 
-export function RegimeTable({ rows, filterSearch, sort, dir, onSort }: RegimeTableProps) {
+export function RegimeTable({ rows, filterSearch, sort, dir, onSort, pageSize }: RegimeTableProps) {
   const columns: ColumnDef<RegimeRow>[] = [
     {
       key: 'symbol',
@@ -201,6 +203,8 @@ export function RegimeTable({ rows, filterSearch, sort, dir, onSort }: RegimeTab
       onSort={onSort}
       rowKey={(row) => row.symbol}
       caption="Dealer positioning regime by symbol"
+      pageSize={pageSize}
+      pageNoun="symbols"
     />
   );
 }

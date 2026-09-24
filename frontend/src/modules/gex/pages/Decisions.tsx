@@ -35,6 +35,13 @@
  * yet). Ranked table -> selected detail -> no-trade reasons -> track record was already in this
  * order (main column: table then drawer; aside: no-trade list; then track record below both) --
  * verified, not changed.
+ *
+ * T122: the three blocks under the toolbar -- ranked table, no-trade list, track record --
+ * were stacked, and the track record's ledger alone ran to a screen and a half. They are now
+ * in-section tabs (`?tab=`, URL state, so "the no-trade list" is linkable), in the same
+ * reading order; the ranked table pages at fifteen rows, and the selected opportunity opens
+ * in the (now overlay) `DetailDrawer`. The summary strip and toolbar stay above the tabs
+ * because they govern all three.
  */
 import { useCallback, useMemo, useState } from 'react';
 import { useDecisions } from '../api/queries';
@@ -51,6 +58,9 @@ import { DataTableFrame } from '../../../components/ui/DataTableFrame';
 import { DetailDrawer } from '../../../components/ui/DetailDrawer';
 import { MetricStrip } from '../../../components/ui/MetricCard';
 import { PageHeader } from '../../../components/ui/PageHeader';
+import { DEFAULT_PAGE_SIZE } from '../../../components/ui/usePagination';
+import { Tabs } from '../../../components/ui/Tabs';
+import { useTabParam } from '../../../components/ui/useTabParam';
 import { SegmentedControl, Toolbar } from '../../../components/ui/Toolbar';
 import { SCAN_MIN_SCORE_VALUES, useDashboardParams, useScanParams } from '../state/urlState';
 
@@ -59,10 +69,14 @@ const DECISION_FILTERS: readonly ExpiryFilter[] = ['ALL', 'ZERO_DTE', 'EX_ZERO_D
 /** Labels for `SCAN_MIN_SCORE_VALUES`: the engine's grade boundaries, read as thresholds. */
 const MIN_SCORE_LABELS: Record<number, string> = { 0: 'All', 45: 'C+', 60: 'B+', 75: 'A' };
 
+const DECISION_TABS = ['ranked', 'notrade', 'record'] as const;
+type DecisionTab = (typeof DECISION_TABS)[number];
+
 export function Decisions() {
   const { filter, setFilter } = useDashboardParams();
   const { sort, dir, setSort, minScore, setMinScore } = useScanParams();
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [tab, setTab] = useTabParam<DecisionTab>('tab', DECISION_TABS);
 
   const onSort = useCallback(
     (key: string) => {
@@ -138,58 +152,65 @@ export function Decisions() {
         />
       </Toolbar>
 
-      {decisions.isError ? (
-        <ErrorState message="Could not load the decision engine." />
-      ) : decisions.isPending ? (
-        <LoadingState message="Scoring opportunities across the universe…" />
-      ) : !decisions.data ? null : (
-        <>
-          <div className="scan-layout">
-            <div className="scan-layout__main">
-              {rows.length === 0 ? (
-                <EmptyState heading="No opportunities at this threshold">
-                  {decisions.data.generated_from}{' '}
-                  {decisions.data.symbols.length === 0
-                    ? 'No option chain has been captured yet, so there is nothing to score.'
-                    : 'Every symbol with a chain is either below the score threshold or has a named reason for no trade (listed on the right).'}
-                </EmptyState>
-              ) : (
-                <DataTableFrame
-                  title="Ranked opportunities"
-                  readingCue="Active entries are reachable now; watch entries need the wall to come closer; rejected entries fall below the reward/risk floor."
-                  sourceTiming={decisions.data.generated_from}
-                >
-                  <OpportunityTable
-                    rows={rows}
-                    filterSearch={filterSearch}
-                    sort={sort}
-                    dir={dir}
-                    onSort={onSort}
-                    selectedId={selectedId}
-                    onSelect={setSelectedId}
-                  />
-                </DataTableFrame>
-              )}
-              <DetailDrawer open={selected != null} onClose={() => setSelectedId(null)} title={drawerTitle}>
-                {selected && <OpportunityDetail opportunity={selected.opportunity} />}
-              </DetailDrawer>
-            </div>
-            {/* T68: every other scan-family page's side `<aside>` already carries its own
-                aria-label (Scan's "Open breakouts", Rotation's "Rank table and breadth") --
-                this one didn't, so it shared an unnamed "complementary" landmark with
-                SideRail's persistent `<aside>` (axe-core: "landmark-unique"). */}
-            <aside className="scan-layout__side" aria-label="No trade">
-              <NoTradeList
-                symbols={decisions.data.symbols}
-                noChain={decisions.data.no_chain}
-                filterSearch={filterSearch}
-              />
-            </aside>
-          </div>
-          {/* T61: what happened to earlier suggestions. Owns its own query and states. */}
+      <Tabs
+        label="Opportunities sections"
+        active={tab}
+        onChange={setTab}
+        tabs={[
+          { value: 'ranked', label: 'Ranked', count: decisions.data ? rows.length : null },
+          { value: 'notrade', label: 'No trade', count: decisions.data ? noTradeCount : null },
+          { value: 'record', label: 'Track record' },
+        ]}
+      >
+        {tab === 'record' ? (
+          // T61: what happened to earlier suggestions. Owns its own query and states, so it
+          // only fetches once this tab is opened.
           <TrackRecord filterSearch={filterSearch} />
-        </>
-      )}
+        ) : decisions.isError ? (
+          <ErrorState message="Could not load the decision engine." />
+        ) : decisions.isPending ? (
+          <LoadingState message="Scoring opportunities across the universe…" />
+        ) : !decisions.data ? null : tab === 'notrade' ? (
+          noTradeCount === 0 ? (
+            <EmptyState heading="Every symbol has a suggestion">
+              No symbol was declined at this filter, and every member has a captured chain.
+            </EmptyState>
+          ) : (
+            // Already a labelled `<section>` ("No trade"), so it needs no `<aside>` wrapper now
+            // that it no longer sits in a side column.
+            <NoTradeList symbols={decisions.data.symbols} noChain={decisions.data.no_chain} filterSearch={filterSearch} />
+          )
+        ) : rows.length === 0 ? (
+          <EmptyState heading="No opportunities at this threshold">
+            {decisions.data.generated_from}{' '}
+            {decisions.data.symbols.length === 0
+              ? 'No option chain has been captured yet, so there is nothing to score.'
+              : 'Every symbol with a chain is either below the score threshold or has a named reason for no trade (see the No trade tab).'}
+          </EmptyState>
+        ) : (
+          <DataTableFrame
+            title="Ranked opportunities"
+            readingCue="Active entries are reachable now; watch entries need the wall to come closer; rejected entries fall below the reward/risk floor. Select a row for the thesis and levels."
+            sourceTiming={decisions.data.generated_from}
+          >
+            <OpportunityTable
+              rows={rows}
+              filterSearch={filterSearch}
+              sort={sort}
+              dir={dir}
+              onSort={onSort}
+              selectedId={selectedId}
+              onSelect={setSelectedId}
+              pageSize={DEFAULT_PAGE_SIZE}
+            />
+          </DataTableFrame>
+        )}
+      </Tabs>
+      {/* Always mounted (DetailDrawer's caller contract), outside the tab panel so switching
+          tabs never unmounts it mid-focus-return. */}
+      <DetailDrawer open={selected != null} onClose={() => setSelectedId(null)} title={drawerTitle}>
+        {selected && <OpportunityDetail opportunity={selected.opportunity} />}
+      </DetailDrawer>
     </div>
   );
 }

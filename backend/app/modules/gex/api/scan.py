@@ -115,11 +115,21 @@ against the live server rather than only `tests/test_scan_api.py`'s offline equi
   this symbol",)` -- the same "row per universe member, `None` where inputs are missing"
   contract `/trend` already established, extended to "missing" meaning "no option chain
   captured" rather than "no bars."
+
+**T124: the universe pass is cached.** By 2026-09-23 the universe had grown to 125 symbols and
+`/decisions` took 5.8s, almost all of it the per-symbol trend pass above (`read_bars` ~2.9s,
+`_lookup_iv30` ~1.8s, indicators ~1.7s) -- which is a pure function of the stored bars and
+snapshots. `_universe()` keeps the last result keyed on a fingerprint of both tables (row count,
+max id, max date and a checksum of the bars; count, max id and IV count of the snapshots), so it
+recomputes exactly when a capture, a bars run, a revision or a retention pass changes an input,
+never on a timer. Anything that depends on the wall clock (chain age, `stale`) is computed per
+request downstream of it, never cached.
 """
 
 from __future__ import annotations
 
 import datetime as dt
+import threading
 from collections.abc import Sequence
 from dataclasses import dataclass
 from pathlib import Path
@@ -130,7 +140,7 @@ import numpy as np
 import pandas as pd
 from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel
-from sqlalchemy import select
+from sqlalchemy import Numeric, cast, func, select
 from sqlalchemy.orm import sessionmaker
 
 from app.core.config import settings
@@ -139,7 +149,7 @@ from app.modules.gex.gex.engine import ExpiryFilter, KeyLevels, StrikeGex, to_fr
 from app.modules.gex.gex.report import iv_regime
 from app.modules.gex.jobs.calendar import MARKET_CLOSE, effective_data_time, is_trading_day
 from app.modules.gex.models.chain import Underlying
-from app.modules.gex.models.db import GexByStrike, GexLevel, Snapshot
+from app.modules.gex.models.db import DailyBar, GexByStrike, GexLevel, Snapshot
 from app.modules.gex.providers import get_provider
 from app.modules.gex.providers.base import ProviderError
 from app.modules.gex.scan.breakouts import (
@@ -185,6 +195,7 @@ from app.modules.gex.scan.trend import (
 from app.modules.gex.storage.bars_repository import (
     get_session_factory,
     read_bars,
+    read_bars_many,
     read_universe_closes,
 )
 from app.modules.gex.storage.parquet import read_snapshot, resolve_snapshot_path
@@ -620,16 +631,94 @@ def _symbol_components(
     gex_session_factory: sessionmaker,
     *,
     data_dir: str | Path | None = None,
+    bars: pd.DataFrame | None = None,
 ) -> tuple[TrendComponents, pd.DataFrame]:
     """Fetch `symbol`'s bars, look up its `iv30`, and score it -- the one sequence both trend
     routes need, factored out so the universe route and the single-symbol route can never
     silently diverge on how a row is built. Returns `(components, bars)` because the detail
     route also needs `bars` itself to build the sparkline history; the universe route discards
-    the second element.
+    the second element. `bars`, when given, is used instead of reading them (T124: the
+    universe pass reads every symbol's bars in one query).
     """
-    bars = read_bars(symbol, session_factory=bars_session_factory)
+    if bars is None:
+        bars = read_bars(symbol, session_factory=bars_session_factory)
     iv30 = _lookup_iv30(symbol, gex_session_factory, data_dir=data_dir)
     return score_symbol(bars, iv30), bars
+
+
+@dataclass(frozen=True)
+class _Universe:
+    """T124. The trend pass over `settings.scan_universe`: each symbol's components and the
+    bars they were scored from. Shared between requests -- callers must not mutate the frames."""
+
+    components: dict[str, TrendComponents]
+    bars: dict[str, pd.DataFrame]
+
+
+_universe_cache: tuple[tuple, _Universe] | None = None
+_universe_lock = threading.Lock()
+
+
+def _universe_key(bars_session_factory: sessionmaker, gex_session_factory: sessionmaker) -> tuple:
+    """What `_universe()`'s result depends on, read in two aggregate queries (~tens of ms).
+
+    Bars: count and max id catch an insert or a retention delete; max date a new session; the
+    OHLC/volume sums an in-place revision (`upsert_bars` updates an existing date). Snapshots:
+    count and max id catch a new capture, `count(atm_iv)` an IV backfill.
+    """
+    with bars_session_factory() as session:
+        bars_state = session.execute(
+            select(
+                func.count(DailyBar.id),
+                func.max(DailyBar.id),
+                func.max(DailyBar.date),
+                # `numeric`, not float: Postgres sums in parallel, and a float sum's last digits
+                # depend on the order -- measured, it differed on every call. Numeric is exact.
+                func.sum(
+                    cast(DailyBar.open + DailyBar.high + DailyBar.low + DailyBar.close, Numeric)
+                ),
+                func.sum(DailyBar.volume),
+            )
+        ).one()
+    with gex_session_factory() as session:
+        snapshot_state = session.execute(
+            select(func.count(Snapshot.id), func.max(Snapshot.id), func.count(Snapshot.atm_iv))
+        ).one()
+    return (
+        tuple(settings.scan_universe),
+        str(settings.DATA_DIR),
+        tuple(bars_state),
+        tuple(snapshot_state),
+    )
+
+
+def _universe(bars_session_factory: sessionmaker, gex_session_factory: sessionmaker) -> _Universe:
+    """The trend pass over the whole universe, recomputed only when its inputs changed.
+
+    The lock makes a second request that arrives mid-computation wait for the first one's
+    result instead of starting its own copy of the pass.
+    """
+    global _universe_cache
+    key = _universe_key(bars_session_factory, gex_session_factory)
+    with _universe_lock:
+        if _universe_cache is not None and _universe_cache[0] == key:
+            return _universe_cache[1]
+        bars_by_symbol = read_bars_many(settings.scan_universe, session_factory=bars_session_factory)
+        components: dict[str, TrendComponents] = {}
+        for symbol in settings.scan_universe:
+            components[symbol], _ = _symbol_components(
+                symbol, bars_session_factory, gex_session_factory, bars=bars_by_symbol[symbol]
+            )
+        universe = _Universe(components, bars_by_symbol)
+        _universe_cache = (key, universe)
+        return universe
+
+
+def clear_universe_cache() -> None:
+    """Drop the cached universe pass. For tests, which swap the database under the module."""
+    global _universe_cache
+    with _universe_lock:
+        _universe_cache = None
 
 
 @router.get("/trend", response_model=TrendResponse)
@@ -650,10 +739,7 @@ def get_trend() -> TrendResponse:
     bars_session_factory = get_session_factory()
     gex_session_factory = get_gex_session_factory()
 
-    components_by_symbol: dict[str, TrendComponents] = {}
-    for symbol in settings.scan_universe:
-        components, _bars = _symbol_components(symbol, bars_session_factory, gex_session_factory)
-        components_by_symbol[symbol] = components
+    components_by_symbol = _universe(bars_session_factory, gex_session_factory).components
 
     rows = rank_universe(components_by_symbol)
     rows.sort(
@@ -1361,12 +1447,9 @@ def build_regime_rows(
     bars_session_factory = get_session_factory()
     gex_session_factory = get_gex_session_factory()
 
-    components_by_symbol: dict[str, TrendComponents] = {}
-    bars_by_symbol: dict[str, pd.DataFrame] = {}
-    for symbol in settings.scan_universe:
-        components, bars = _symbol_components(symbol, bars_session_factory, gex_session_factory)
-        components_by_symbol[symbol] = components
-        bars_by_symbol[symbol] = bars
+    universe = _universe(bars_session_factory, gex_session_factory)  # T124: cached
+    components_by_symbol = universe.components
+    bars_by_symbol = universe.bars
     trend_pct_by_symbol = {
         row.symbol: row.composite for row in rank_universe(components_by_symbol)
     }

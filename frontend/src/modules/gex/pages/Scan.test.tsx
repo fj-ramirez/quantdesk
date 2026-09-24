@@ -22,6 +22,7 @@ import breakoutsFixture from '../mocks/fixtures/scan/breakouts.json';
 import trendFixture from '../mocks/fixtures/scan/trend.json';
 import openEmptyFixture from '../mocks/fixtures/scan/breakouts_open_empty.json';
 import excludedFixture from '../mocks/fixtures/scan/breakouts_excluded.json';
+import { expectPagedRows, forEveryPage } from '../../../test/pagination';
 
 function renderScan(initialPath = '/scan') {
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
@@ -58,9 +59,7 @@ describe('Scan page -- breakouts view', () => {
     await awaitBreakoutsLoaded();
     const table = await screen.findByRole('table', { name: /breakout continuation/i });
     // Header row plus one per summary.
-    expect(within(table).getAllByRole('row')).toHaveLength(
-      breakoutsFixture.summaries.length + 1,
-    );
+    expectPagedRows(table, breakoutsFixture.summaries.length, 20, 'symbols');
   });
 
   it('renders a null rate as "n<5" rather than a dash or a zero', async () => {
@@ -71,7 +70,12 @@ describe('Scan page -- breakouts view', () => {
 
     renderScan();
     await awaitBreakoutsLoaded();
-    expect(screen.getAllByText('n<5')).toHaveLength(nullRateRows.length);
+    // Counted across every page: the null-rate rows sort last, so they live on the final page.
+    let seen = 0;
+    forEveryPage(/breakout continuation by symbol/i, 'symbols', (page) => {
+      seen += within(page).queryAllByText('n<5').length;
+    });
+    expect(seen).toBe(nullRateRows.length);
   });
 
   it('renders the empty open-breakouts panel as an empty state, not a blank column', async () => {

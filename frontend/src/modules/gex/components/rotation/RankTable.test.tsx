@@ -73,6 +73,14 @@ describe('<RankTable />', () => {
     expect(screen.getAllByText(/^\+/).length).toBeGreaterThan(0);
   });
 
+  it("prints each sector's name under its ticker, so the reader need not look XLRE up", () => {
+    renderTable(sectors.symbols);
+    const xlre = screen.getByRole('link', { name: 'XLRE' }).closest('tr')!;
+    expect(xlre).toHaveTextContent('Real estate');
+    const xlk = screen.getByRole('link', { name: 'XLK' }).closest('tr')!;
+    expect(xlk).toHaveTextContent('Technology');
+  });
+
   it('renders the neutral "n/a" chip for a symbol with no valid trail point at all, never a guessed quadrant', () => {
     const allWarmup: RotationSymbol = {
       symbol: 'NEWETF',

@@ -27,6 +27,8 @@
  */
 import type { ReactNode } from 'react';
 import { useMemo } from 'react';
+import { Pagination } from '../../../../components/ui/Pagination';
+import { usePagination } from '../../../../components/ui/usePagination';
 
 export type SortDir = 'asc' | 'desc';
 
@@ -62,6 +64,12 @@ export interface ScanTableProps<Row> {
    * embedding several tables under its own labelled `<section>` isn't forced to duplicate a
    * heading it already has. */
   caption?: string;
+  /** T122: rows per page. Omitted means every row renders (the pre-T122 behaviour, which
+   * short mini-tables still want). Paging happens after sorting, so page 1 is always the
+   * top of the ordering the reader chose. */
+  pageSize?: number;
+  /** What a row is, for the pager's "1–15 of 52 symbols" label. */
+  pageNoun?: string;
 }
 
 function compareValues(a: unknown, b: unknown, dir: SortDir): number {
@@ -90,6 +98,8 @@ export function ScanTable<Row>({
   rowKey,
   selectedKey,
   caption,
+  pageSize,
+  pageNoun,
 }: ScanTableProps<Row>) {
   const sortColumn = sort ? columns.find((c) => c.key === sort) : undefined;
 
@@ -98,6 +108,10 @@ export function ScanTable<Row>({
     const key = sortColumn.key;
     return [...rows].sort((a, b) => compareValues(a[key], b[key], dir));
   }, [rows, sortColumn, dir]);
+
+  // Keyed on the ordering and the row count, not the `rows` array's identity: a caller that
+  // rebuilds its rows on every render would otherwise bounce the reader back to page 1.
+  const paged = usePagination(sortedRows, pageSize, `${sort}|${dir}|${rows.length}`);
 
   function handleRowActivate(row: Row) {
     if (onRowClick) onRowClick(row);
@@ -109,6 +123,7 @@ export function ScanTable<Row>({
     // can scroll it once focused. Not `role="region"` too: the table already has its own
     // `<caption>` when one is given, and pairing that with a same-named region here would
     // just announce the caption twice.
+    <>
     <div className="scan-table-container" tabIndex={0}>
       <table className="scan-table">
         {caption && <caption className="scan-table__caption">{caption}</caption>}
@@ -143,7 +158,7 @@ export function ScanTable<Row>({
           </tr>
         </thead>
         <tbody>
-          {sortedRows.map((row) => {
+          {paged.pageRows.map((row) => {
             const key = rowKey(row);
             const selected = selectedKey != null && selectedKey === key;
             return (
@@ -175,5 +190,14 @@ export function ScanTable<Row>({
         </tbody>
       </table>
     </div>
+    <Pagination
+      page={paged.page}
+      pageCount={paged.pageCount}
+      total={paged.total}
+      pageSize={paged.pageSize}
+      onPage={paged.setPage}
+      noun={pageNoun}
+    />
+    </>
   );
 }

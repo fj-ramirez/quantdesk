@@ -74,6 +74,13 @@
  *    after the freshness line -- the plan's own instruction ("so it reads before the full
  *    RegimeStrip, not after it"). `/regime` itself is untouched and still renders the complete,
  *    unabbreviated strip via a bare `<RegimeStrip />`.
+ *
+ * **T122 -- tabs.** Even after T69 the page stacked six blocks and ran past four screens,
+ * most of it the open-breakouts card list. Below the Tape line the blocks now sit behind
+ * in-section tabs (`?tab=`, URL state) in the same reading order -- Continuation, Fading,
+ * Open now, Regime -- and open breakouts are a compact table paging at ten. Every block,
+ * fetch, ranking and link target is unchanged; the unranked-count note travels with both
+ * rate tabs, since both rankings are over the same subset.
  */
 import { useMemo } from 'react';
 import { useBreakouts, useRegime, useTrend } from '../api/queries';
@@ -88,6 +95,8 @@ import { BreakoutMiniTable } from '../components/overview/BreakoutMiniTable';
 import { TrendMiniTable } from '../components/overview/TrendMiniTable';
 import { RegimeMiniTable } from '../components/overview/RegimeMiniTable';
 import { PageHeader } from '../../../components/ui/PageHeader';
+import { Tabs } from '../../../components/ui/Tabs';
+import { useTabParam } from '../../../components/ui/useTabParam';
 import {
   REGIME_HREF,
   continuationRegimeRows,
@@ -97,7 +106,11 @@ import {
   scanTrendHref,
 } from '../components/overview/overviewRows';
 
+const OVERVIEW_TABS = ['continuation', 'fading', 'open', 'regime'] as const;
+type OverviewTab = (typeof OVERVIEW_TABS)[number];
+
 export function Overview() {
+  const [tab, setTab] = useTabParam<OverviewTab>('tab', OVERVIEW_TABS);
   const breakouts = useBreakouts();
   const trend = useTrend();
   const regime = useRegime('ALL');
@@ -123,66 +136,90 @@ export function Overview() {
         <CaptureFreshnessStrip />
       </OverviewBlock>
 
-      <section aria-label="Where continuation is" className="overview-section">
-        <h2 className="overview-section__title">Where continuation is</h2>
-
-        <div className="overview-grid">
-          <OverviewBlock heading="Top by breakout rate" to={scanBreakoutsHref('rate', 'desc')}>
-            <BreakoutsRankedBody query={breakouts} rows={ranked.top} caption="Top 8 symbols by breakout continuation rate" />
-          </OverviewBlock>
-          <OverviewBlock heading="Top by trend composite" to={scanTrendHref()}>
-            <TrendRankedBody query={trend} rows={rankedTrend.top} caption="Top 8 symbols by trend/chop composite" />
-          </OverviewBlock>
-        </div>
-        {breakouts.data && ranked.unrankedCount > 0 && (
-          <p className="overview-note">
-            {ranked.unrankedCount} symbol{ranked.unrankedCount === 1 ? '' : 's'} excluded from
-            both rate rankings below: fewer than five resolved breakout events in this lookback,
-            so no rate can be quoted -- not zero, not fabricated.
-          </p>
+      <Tabs
+        label="Overview sections"
+        active={tab}
+        onChange={setTab}
+        tabs={[
+          { value: 'continuation', label: 'Where continuation is' },
+          { value: 'fading', label: 'Fading' },
+          {
+            value: 'open',
+            label: 'Open now',
+            count: breakouts.data ? breakouts.data.open_breakouts.length : null,
+          },
+          { value: 'regime', label: 'Cross-asset regime' },
+        ]}
+      >
+        {tab === 'continuation' && (
+          <>
+            <div className="overview-grid">
+              <OverviewBlock heading="Top by breakout rate" to={scanBreakoutsHref('rate', 'desc')}>
+                <BreakoutsRankedBody query={breakouts} rows={ranked.top} caption="Top 8 symbols by breakout continuation rate" />
+              </OverviewBlock>
+              <OverviewBlock heading="Top by trend composite" to={scanTrendHref()}>
+                <TrendRankedBody query={trend} rows={rankedTrend.top} caption="Top 8 symbols by trend/chop composite" />
+              </OverviewBlock>
+            </div>
+            <UnrankedNote count={breakouts.data ? ranked.unrankedCount : 0} />
+          </>
         )}
 
-        <OverviewBlock heading="Fading — worst by breakout rate" to={scanBreakoutsHref('rate', 'asc')}>
-          <BreakoutsRankedBody query={breakouts} rows={ranked.worst} caption="8 worst symbols by breakout continuation rate" />
-        </OverviewBlock>
-      </section>
+        {tab === 'fading' && (
+          <>
+            <OverviewBlock heading="Fading — worst by breakout rate" to={scanBreakoutsHref('rate', 'asc')}>
+              <BreakoutsRankedBody query={breakouts} rows={ranked.worst} caption="8 worst symbols by breakout continuation rate" />
+            </OverviewBlock>
+            <UnrankedNote count={breakouts.data ? ranked.unrankedCount : 0} />
+          </>
+        )}
 
-      {/* T69: moved out of `Tape` and down past "Where continuation is" (plan's own
-          instruction), and rendered in `compact` mode -- `/regime` still gets the complete,
-          unabbreviated strip via a bare `<RegimeStrip />`. */}
-      <OverviewBlock heading="Cross-asset regime" to={REGIME_HREF} linkLabel="Open regime board →" headingLevel="h2">
-        <RegimeStrip compact />
-      </OverviewBlock>
+        {tab === 'open' && (
+          <div className="overview-grid">
+            <OverviewBlock heading="Open breakouts" to={scanBreakoutsHref(null)}>
+              {breakouts.isError ? (
+                <ErrorState message="Could not load the breakout ledger." />
+              ) : breakouts.isPending ? (
+                <LoadingState message="Scanning the universe for range breaks…" />
+              ) : (
+                <OpenBreakouts breakouts={breakouts.data?.open_breakouts ?? []} k={breakouts.data?.k ?? 5} pageSize={10} />
+              )}
+            </OverviewBlock>
+            <OverviewBlock heading="In continuation now" to={REGIME_HREF}>
+              {regime.isError ? (
+                <ErrorState message="Could not load the regime board." />
+              ) : regime.isPending ? (
+                <LoadingState message="Scoring dealer positioning across the universe…" />
+              ) : continuationRows.length === 0 ? (
+                <EmptyState heading="No continuation verdicts">
+                  No symbol on the regime board currently reads a `continuation` verdict.
+                </EmptyState>
+              ) : (
+                <RegimeMiniTable rows={continuationRows} caption="Regime rows with a continuation verdict" />
+              )}
+            </OverviewBlock>
+          </div>
+        )}
 
-      <section aria-label="Open now" className="overview-section">
-        <h2 className="overview-section__title">Open now</h2>
-
-        <div className="overview-grid">
-          <OverviewBlock heading="Open breakouts" to={scanBreakoutsHref(null)}>
-            {breakouts.isError ? (
-              <ErrorState message="Could not load the breakout ledger." />
-            ) : breakouts.isPending ? (
-              <LoadingState message="Scanning the universe for range breaks…" />
-            ) : (
-              <OpenBreakouts breakouts={breakouts.data?.open_breakouts ?? []} k={breakouts.data?.k ?? 5} />
-            )}
+        {/* T69's compact strip; `/regime` still renders the complete one. */}
+        {tab === 'regime' && (
+          <OverviewBlock heading="Cross-asset regime" to={REGIME_HREF} linkLabel="Open regime board →">
+            <RegimeStrip compact />
           </OverviewBlock>
-          <OverviewBlock heading="In continuation now" to={REGIME_HREF}>
-            {regime.isError ? (
-              <ErrorState message="Could not load the regime board." />
-            ) : regime.isPending ? (
-              <LoadingState message="Scoring dealer positioning across the universe…" />
-            ) : continuationRows.length === 0 ? (
-              <EmptyState heading="No continuation verdicts">
-                No symbol on the regime board currently reads a `continuation` verdict.
-              </EmptyState>
-            ) : (
-              <RegimeMiniTable rows={continuationRows} caption="Regime rows with a continuation verdict" />
-            )}
-          </OverviewBlock>
-        </div>
-      </section>
+        )}
+      </Tabs>
     </div>
+  );
+}
+
+function UnrankedNote({ count }: { count: number }) {
+  if (count === 0) return null;
+  return (
+    <p className="overview-note">
+      {count} symbol{count === 1 ? '' : 's'} excluded from both rate rankings: fewer than five
+      resolved breakout events in this lookback, so no rate can be quoted -- not zero, not
+      fabricated.
+    </p>
   );
 }
 

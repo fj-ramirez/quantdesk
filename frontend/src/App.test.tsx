@@ -182,7 +182,7 @@ describe('T55 scan-family nav and stub routes', () => {
 
   it('/scan renders the real scan page (T44), not a stub', async () => {
     renderApp('/gex/scan');
-    expect(await screen.findByRole('group', { name: 'View' })).toBeInTheDocument();
+    expect(await screen.findByRole('tablist', { name: 'Scan view' })).toBeInTheDocument();
     expect(screen.queryByRole('region', { name: 'Scan is not built yet' })).not.toBeInTheDocument();
   });
 
@@ -210,10 +210,10 @@ describe('T55 scan-family nav and stub routes', () => {
     expect(screen.getByRole('button', { name: 'Symbol SPX' })).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole('link', { name: 'Scan' }));
-    // Keyed on the real page's own view toggle since T44 replaced the stub. The Symbol
-    // dropdown is the dashboard control that must disappear; the View group is the scan
-    // page's.
-    await screen.findByRole('group', { name: 'View' });
+    // Keyed on the real page's own view toggle since T44 replaced the stub (a tab strip since
+    // T122). The Symbol dropdown is the dashboard control that must disappear; the view tabs
+    // are the scan page's.
+    await screen.findByRole('tablist', { name: 'Scan view' });
     expect(screen.queryByRole('button', { name: 'Symbol SPX' })).not.toBeInTheDocument();
 
     fireEvent.click(screen.getByRole('link', { name: 'GEX Explorer' }));

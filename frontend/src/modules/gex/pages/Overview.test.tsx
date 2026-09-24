@@ -7,7 +7,7 @@
  * from those fixture files, not hand-typed.
  */
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { render, screen, waitFor, within } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { HttpResponse, http } from 'msw';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { describe, expect, it } from 'vitest';
@@ -104,8 +104,8 @@ describe('Overview page', () => {
     expect(within(detail).getByText('Stale')).toBeInTheDocument();
   });
 
-  it('renders RegimeStrip in compact mode after "Where continuation is", not immediately after the freshness line (T69)', async () => {
-    renderOverview();
+  it('renders RegimeStrip in compact mode behind the last tab, after the continuation tabs (T69, T122)', async () => {
+    renderOverview('/overview?tab=regime');
     await awaitLoaded();
 
     const regimeBlock = await screen.findByRole('region', { name: 'Cross-asset regime' });
@@ -117,11 +117,32 @@ describe('Overview page', () => {
     expect(more.open).toBe(false);
     expect(within(more).getByText('TLT 20d')).toBeInTheDocument();
 
-    // Reading order: Tape's freshness line, then "Where continuation is", then this block.
+    // Reading order (T69's, kept by T122): the Tape freshness line, then the tabs in the order
+    // continuation -> fading -> open now -> regime.
     const tape = screen.getByRole('region', { name: 'Tape' });
-    const continuation = screen.getByRole('region', { name: 'Where continuation is' });
-    expect(tape.compareDocumentPosition(continuation) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
-    expect(continuation.compareDocumentPosition(regimeBlock) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    const tablist = screen.getByRole('tablist', { name: 'Overview sections' });
+    expect(tape.compareDocumentPosition(tablist) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    const labels = within(tablist).getAllByRole('tab').map((t) => t.textContent?.replace(/\d+$/, ''));
+    expect(labels).toEqual(['Where continuation is', 'Fading', 'Open now', 'Cross-asset regime']);
+    expect(within(tablist).getByRole('tab', { name: 'Cross-asset regime' })).toHaveAttribute('aria-selected', 'true');
+  });
+
+  it('opens on the continuation tab and switches panels by tab, keeping the choice in the URL (T122)', async () => {
+    renderOverview();
+    await awaitLoaded();
+    const tablist = screen.getByRole('tablist', { name: 'Overview sections' });
+    expect(within(tablist).getByRole('tab', { name: 'Where continuation is' })).toHaveAttribute('aria-selected', 'true');
+    expect(screen.getByRole('region', { name: 'Top by breakout rate' })).toBeInTheDocument();
+    expect(screen.queryByRole('region', { name: 'Open breakouts' })).not.toBeInTheDocument();
+
+    fireEvent.click(within(tablist).getByRole('tab', { name: /Open now/ }));
+    expect(await screen.findByRole('region', { name: 'Open breakouts' })).toBeInTheDocument();
+    expect(screen.queryByRole('region', { name: 'Top by breakout rate' })).not.toBeInTheDocument();
+
+    // Arrow keys move between tabs (WAI-ARIA tabs pattern).
+    fireEvent.keyDown(within(tablist).getByRole('tab', { name: /Open now/ }), { key: 'ArrowRight' });
+    expect(within(tablist).getByRole('tab', { name: 'Cross-asset regime' })).toHaveFocus();
+    expect(await screen.findByRole('region', { name: 'Cross-asset regime' })).toBeInTheDocument();
   });
 
   it('shows the top 8 symbols by breakout rate, computed from the fixture', async () => {
@@ -139,7 +160,7 @@ describe('Overview page', () => {
   });
 
   it('shows the 8 worst symbols by breakout rate, never including the null-rate symbol', async () => {
-    renderOverview();
+    renderOverview('/overview?tab=fading');
     await awaitLoaded();
     const block = await screen.findByRole('region', { name: 'Fading — worst by breakout rate' });
     const rows = within(block).getAllByRole('row').slice(1);
@@ -174,11 +195,21 @@ describe('Overview page', () => {
     );
   });
 
-  it('renders the open-breakouts panel from the fixture, sorted by bars elapsed', async () => {
-    renderOverview();
+  it('renders the open-breakouts panel from the fixture, sorted by bars elapsed, ten a page', async () => {
+    renderOverview('/overview?tab=open');
     await awaitLoaded();
     const block = await screen.findByRole('region', { name: 'Open breakouts' });
-    expect(within(block).getAllByText(/of 5 bars/).length).toBe(breakoutsFixture.open_breakouts.length);
+    const total = breakoutsFixture.open_breakouts.length;
+    const cells = within(block).getAllByText(/of 5 bars/);
+    expect(cells.length).toBe(Math.min(total, 10));
+    // Sorted by bars elapsed, freshest first.
+    const elapsed = cells.map((c) => Number(c.textContent?.split(' ')[0]));
+    expect(elapsed).toEqual([...elapsed].sort((a, b) => a - b));
+    if (total > 10) {
+      expect(within(block).getByRole('navigation', { name: 'Pages of open breakouts' })).toHaveTextContent(
+        `1–10 of ${total} open breakouts`,
+      );
+    }
     expect(within(block).getByRole('link', { name: /open full page/i })).toHaveAttribute(
       'href',
       '/scan?view=breakouts',
@@ -186,7 +217,7 @@ describe('Overview page', () => {
   });
 
   it('shows only genuine continuation-verdict regime rows, matching the fixture count', async () => {
-    renderOverview();
+    renderOverview('/overview?tab=open');
     await awaitLoaded();
     const block = await screen.findByRole('region', { name: 'In continuation now' });
     const expectedCount = regimeFixture.rows.filter((r) => r.verdict === 'continuation').length;
@@ -246,6 +277,9 @@ describe('Overview page -- several null breakout rates', () => {
     }
     expect(within(topBlock).getByText('AAA')).toBeInTheDocument();
 
+    expect(screen.getByText(/6 symbols excluded from both rate rankings/)).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('tab', { name: 'Fading' }));
     const worstBlock = await screen.findByRole('region', { name: 'Fading — worst by breakout rate' });
     const worstRows = within(worstBlock).getAllByRole('row').slice(1);
     expect(worstRows).toHaveLength(4);

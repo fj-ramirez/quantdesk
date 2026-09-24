@@ -1752,6 +1752,53 @@ never updated, because the trajectory is the evidence and last-writer-wins would
 decaying edge. `_insert_ignore` now takes its conflict target (hash is deliberately not unique
 there), and `forward_stats` reports `None`, not `0.0`, for a candidate too young to score.
 
+## T122 · Opus · T64, T69 (filed and finished 2026-09-23)
+
+**Tabs, pagination and an overlay detail sheet across the app.** The user found Overview and
+Opportunities crowded with oversized cards. New shared primitives in `components/ui/`: `Tabs`
+(WAI-ARIA tabs, only the active panel mounted) with `useTabParam` (`?tab=`, default kept out of
+the URL), and `Pagination` with `usePagination` (slices after sorting, resets to page 1 when the
+ordering changes, always prints "1–15 of 52"). `ScanTable` takes an optional `pageSize`.
+Overview: Tape stays on top; continuation / fading / open now / regime are tabs; open breakouts
+became a compact table (it was one card per event). Opportunities: ranked / no trade / track
+record are tabs; ranked and the ledger page at 15. Scan: compact regime strip, Breakouts/Trend
+as tabs over the existing `view` param, tables at 20. Regime, Rotation, Flows, terminal Board
+and Graph tables page at 20; the research leaderboard already paged server-side. Report: its five collapsed disclosures became tabs (Summary first; Risk alerts carries its count and is only offered when there are alerts), and the full text opens in a wide `DetailDrawer`. Then, to the user's spec and mockup, a dense layout: price and volatility as compact header blocks, tabs directly under the header (sticky under the context bar, which now publishes `--context-bar-height`), and the Summary tab as one Market structure panel beside Market sentiment; straddling levels got their own palette role, `levelStraddling` (blue). QQQ at 1440×900 fits in one viewport. `DetailDrawer`
+is now a modal side sheet at every width — it was already `aria-modal` with a focus trap but
+rendered inline at desktop. Metric cards cap at 280px. Page heights at 1440px: Overview
+4363→943, Opportunities 3470→1429, Scan 3053→1665. Tests that asserted "one row per record"
+now assert a full first page plus the pager's total; ones that assert over *every* row walk
+every page (`test/pagination.ts`).
+
+## T123 · Opus · T51, T122 (filed and finished 2026-09-23)
+
+**Rotation fits one viewport; symbols carry their names.** The user found `/rotation` needed
+scrolling and had to look tickers up. Breadth moved from under the rank table into the page
+header as four label-over-value readings; on desktop the RRG takes the height left under the
+header and toolbar (floor 440px) instead of a square; the side column widened 360→500px (the
+stacking breakpoint moved 1150→1290px to keep T68's arithmetic) and the rank table runs a
+notch tighter, so no column is clipped. The chart's axis ends printed raw floats
+(`104.26498373766198`) and ECharts reserved their width even when hidden — they are now hidden
+and formatted, and the y-axis name runs along the axis. New `lib/symbolNames.ts`: a static
+symbol → exposure/company map over the default `SCAN_UNIVERSE`; unknown symbols return `null`
+and render as the bare ticker. `SymbolCell` puts the name in every symbol's tooltip and prints
+it under the ticker with `showName` (the rank table); the RRG tooltip names the symbol too.
+At 1440×900 and 1810×870 the page no longer scrolls.
+
+## T124 · Opus · T45, T60, T103 (filed and finished 2026-09-23)
+
+**Opportunities loaded in 5.8 s.** Profiled: 6.9 of 7.2 s was `build_regime_rows`' trend pass
+over all 125 `SCAN_UNIVERSE` symbols (grown from 47 on 2026-09-10) — `read_bars` hydrating
+157k ORM objects (~2.9 s), `_lookup_iv30` reopening 23 Parquet files because every snapshot
+captured before T103 had a null `atm_iv` (~1.8 s), indicators (~1.7 s) — recomputed on every
+request. Three fixes: `read_bars` selects plain columns and the universe pass reads every
+symbol's bars in one query (`read_bars_many`, frames identical to `read_bars`); `backfill
+--atm-iv` stores the missing IV (202 of 207 local snapshots filled, none uncomputable); the
+universe pass is cached in-process on a fingerprint of `daily_bars` and `snapshots`. The
+`/decisions` and `/trend` responses were compared byte for byte before and after, and after the
+backfill: identical. Local, over HTTP: first load after new data 5.8 → 2.6 s, every later
+load 0.4–0.5 s. The homeserver needs `backfill --atm-iv` run once.
+
 ## Status corrections
 
 - **Done, no Done marker above:** T00–T14, T16, T27, T29, T30, T34–T41, T59 (all merged, per

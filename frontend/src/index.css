@@ -917,22 +917,13 @@ code {
 .scan-legend { font-size: 12px; color: var(--text); opacity: 0.75; margin: 0 0 8px; max-width: 70ch; }
 .scan-cell--muted { color: var(--text); opacity: 0.55; font-family: var(--mono); }
 
-.open-breakouts { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
-.open-breakouts__item { border: 1px solid var(--border); border-radius: 3px; padding: 8px 10px; }
-.open-breakouts__head { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; }
 .open-breakouts__symbol {
-  font: inherit; font-family: var(--mono); font-weight: 600; cursor: pointer;
-  background: none; border: none; padding: 0; color: var(--text-h); text-decoration: underline;
+  font: inherit; font-family: var(--mono); cursor: pointer; background: none; border: none;
+  padding: 0; color: var(--accent); text-decoration: underline;
 }
 .open-breakouts__dir { font-size: 11px; font-family: var(--mono); }
 .open-breakouts__dir--up { color: var(--accent); }
 .open-breakouts__dir--down { color: var(--text); opacity: 0.8; }
-.open-breakouts__meta {
-  display: grid; grid-template-columns: auto 1fr; gap: 1px 10px; margin: 6px 0 0;
-  font-size: 12px; font-family: var(--mono);
-}
-.open-breakouts__meta dt { color: var(--text); opacity: 0.6; }
-.open-breakouts__meta dd { margin: 0; text-align: right; }
 
 .scan-excluded { font-size: 12px; color: var(--text); opacity: 0.8; }
 .scan-excluded summary { cursor: pointer; }
@@ -981,8 +972,11 @@ code {
    (comfortably above the 856px floor plus the rail/padding this app's shell reserves) is the
    same one-property fix `/scan`'s never-overflowed layout uses -- no fixed floor above the
    breakpoint it can't satisfy, single column stacking below it, same as always. */
-.rotation-layout { display: grid; grid-template-columns: minmax(480px, 1fr) 360px; gap: 16px; align-items: start; }
-@media (max-width: 1150px) { .rotation-layout { grid-template-columns: 1fr; } }
+.rotation-layout { display: grid; grid-template-columns: minmax(480px, 1fr) 500px; gap: 16px; align-items: start; }
+/* T123: the side column widened from 360px to 500px so the rank table (now with names under
+   the tickers) fits without its own horizontal scroll -- the single-column breakpoint moves up
+   by 140px to keep T68's "no floor above the breakpoint" arithmetic. */
+@media (max-width: 1290px) { .rotation-layout { grid-template-columns: 1fr; } }
 /* T68, second half of the same finding: squeezing the RRG chart itself below 480px (which a
    naive `min-width: min(480px, 100%)` here would do below the breakpoint) doesn't just shrink
    it -- ECharts' axis labels and quadrant text aren't designed to reflow at that size and
@@ -996,6 +990,12 @@ code {
 .rotation-layout__side { min-width: 0; display: flex; flex-direction: column; gap: 16px; }
 .rotation-chart-scroll { overflow-x: auto; max-width: 100%; }
 .rotation-chart-box { min-width: 480px; aspect-ratio: 1; }
+/* T123: on a desktop the chart takes the height left under the header and toolbar rather
+   than a square, so the page never scrolls; 440px is the floor under which the quadrant
+   labels start colliding. Below the breakpoint it stacks and goes back to a square. */
+@media (min-width: 1291px) {
+  .rotation-chart-box { aspect-ratio: auto; height: max(440px, calc(100vh - 262px)); }
+}
 
 .rotation-chart-head { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; }
 
@@ -1004,14 +1004,33 @@ code {
 .rotation-info p { max-width: 60ch; margin: 6px 0 0; opacity: 0.85; }
 .rotation-info code { font-family: var(--mono); font-size: 11px; }
 
-.rotation-breadth__title { font-size: 12px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--text-h); margin: 0 0 8px; }
+/* T123: breadth lives in the page header -- four readings side by side, label over value. */
+.rotation-breadth { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.rotation-breadth__title { font-size: 11px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--text-muted); margin: 0; }
 .rotation-breadth__info { cursor: help; opacity: 0.7; }
 .rotation-breadth__list {
-  display: grid; grid-template-columns: auto 1fr; gap: 2px 10px; margin: 0;
-  font-size: 12px; font-family: var(--mono);
+  display: grid; grid-auto-flow: column; grid-template-rows: auto auto; gap: 0 20px; margin: 0;
+  font-size: 12px;
 }
-.rotation-breadth__list dt { color: var(--text); opacity: 0.6; }
-.rotation-breadth__list dd { margin: 0; text-align: right; }
+.rotation-breadth__list dt { color: var(--text-muted); font-size: 11px; white-space: nowrap; }
+.rotation-breadth__list dd { margin: 0; font-family: var(--mono); font-size: 15px; color: var(--text-strong); }
+@media (max-width: 900px) {
+  .rotation-page .page-header { flex-wrap: wrap; }
+  .rotation-page .page-header__actions { flex: 1 1 100%; min-width: 0; }
+}
+@media (max-width: 640px) {
+  .rotation-breadth__list { grid-auto-flow: row; grid-template-rows: none; grid-template-columns: auto auto; gap: 2px 12px; }
+}
+
+/* T123: the rank table has at most twelve rows (one fixed group) and sits beside the chart,
+   so it runs a notch tighter than the app's default table to finish inside the viewport. */
+.rotation-layout__side .scan-table th,
+.rotation-layout__side .scan-table td { padding: 5px 8px; }
+.rotation-layout__side .status-chip { padding: 1px 8px; }
+
+/* T123: a name under the ticker, for tables the reader scans rather than hovers. */
+.symbol-cell-named { display: flex; flex-direction: column; line-height: 1.25; min-width: 0; }
+.symbol-cell-named__name { font-size: 11px; color: var(--text-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 22ch; }
 
 /* ---------------------------------------------------------------------------
    T49 -- /regime page. Same token discipline as /scan and /rotation above: no
@@ -1459,6 +1478,8 @@ code {
 
 .metric-strip { display: flex; flex-wrap: wrap; gap: var(--space-3); }
 .metric-card { display: flex; flex-direction: column; gap: 4px; min-width: 140px; flex: 1 1 140px; }
+/* T122: a strip of four no longer stretches each card across a quarter of a wide screen. */
+.metric-strip > .metric-card { max-width: 280px; }
 .metric-card__label { font-size: 11px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--text-muted); }
 .metric-card__value {
   font-size: 22px; font-family: var(--mono); color: var(--text-strong); font-variant-numeric: tabular-nums;
@@ -1592,21 +1613,38 @@ code {
 }
 .data-table-frame__actions { display: flex; align-items: center; gap: var(--space-2); }
 
-/* DetailDrawer: docked in normal page flow at desktop (no scrim -- `.detail-drawer-scrim` is
- * an inert, non-positioned wrapper); a fixed, dimmed, full-viewport overlay sliding from the
- * bottom at or below 640px. The panel itself keeps identical focus/dialog semantics at every
- * width -- only its CSS position changes. */
-.detail-drawer-scrim { display: block; }
+/* DetailDrawer (T122): a modal side sheet at every width. It was docked in page flow at
+ * desktop, which pushed everything under the table down while it was open -- and it already
+ * carried `aria-modal` and a focus trap, so rendering it inline contradicted its own
+ * semantics. Now: dimmed scrim, sheet from the right on desktop, from the bottom at or below
+ * 640px. Focus/dialog behaviour is unchanged. */
+.detail-drawer-scrim {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.4);
+  z-index: 60;
+  display: flex;
+  justify-content: flex-end;
+  align-items: stretch;
+}
 .detail-drawer {
-  border-top: 1px solid var(--border-default);
-  margin-top: var(--space-2);
-  padding-top: var(--space-3);
+  width: min(560px, 92vw);
+  height: 100%;
+  overflow-y: auto;
+  padding: var(--space-4) var(--space-5);
   display: flex;
   flex-direction: column;
   gap: var(--space-3);
   background: var(--surface-app);
+  box-shadow: var(--elevation-2);
+  border-left: 1px solid var(--border-default);
 }
-.detail-drawer__head { display: flex; justify-content: space-between; align-items: baseline; gap: var(--space-3); }
+.detail-drawer--wide { width: min(980px, 96vw); }
+.detail-drawer__head {
+  display: flex; justify-content: space-between; align-items: baseline; gap: var(--space-3);
+  position: sticky; top: calc(-1 * var(--space-4)); background: var(--surface-app);
+  padding: var(--space-2) 0; border-bottom: 1px solid var(--border-default);
+}
 .detail-drawer__title {
   font-size: 12px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--text-strong); margin: 0;
 }
@@ -1617,26 +1655,72 @@ code {
 .detail-drawer__body { display: flex; flex-direction: column; gap: var(--space-3); }
 
 @media (max-width: 640px) {
-  .detail-drawer-scrim {
-    position: fixed;
-    inset: 0;
-    background: rgba(0, 0, 0, 0.4);
-    z-index: 60;
-    display: flex;
-    align-items: flex-end;
-    justify-content: center;
-  }
+  .detail-drawer-scrim { align-items: flex-end; justify-content: center; }
   .detail-drawer {
     width: 100%;
+    height: auto;
     max-height: 88vh;
-    overflow-y: auto;
-    border-top: none;
+    border-left: none;
     border-radius: var(--radius-lg) var(--radius-lg) 0 0;
-    box-shadow: var(--elevation-2);
     padding: var(--space-4);
-    margin-top: 0;
   }
 }
+
+/* Tabs (T122): in-section tabs, one block visible at a time. */
+.ui-tabs { display: flex; flex-direction: column; gap: var(--space-3); min-width: 0; }
+.ui-tabs__bar {
+  display: flex; align-items: flex-end; justify-content: space-between; gap: var(--space-3);
+  border-bottom: 1px solid var(--border-default);
+}
+.ui-tabs__list {
+  display: flex; gap: var(--space-1); flex: 1 1 auto; min-width: 0;
+  overflow-x: auto; scrollbar-width: thin;
+}
+.ui-tabs__actions {
+  display: flex; align-items: center; gap: var(--space-3); flex-wrap: wrap; justify-content: flex-end;
+  padding-bottom: var(--space-1);
+}
+/* On a phone the actions take their own line above the tabs, so they never squeeze the
+   tab strip into a sliver; the tabs stay directly on top of the panel they control. */
+@media (max-width: 640px) {
+  .ui-tabs__bar { flex-wrap: wrap; row-gap: var(--space-2); }
+  .ui-tabs__list { flex-basis: 100%; }
+  .ui-tabs__actions { order: -1; justify-content: flex-start; padding-bottom: 0; }
+}
+/* Pinned under the (also sticky) context bar, whose measured height ContextBar publishes.
+   Desktop only: on a phone a pinned row would take a fixed slice of a small screen. */
+@media (min-width: 901px) {
+  .ui-tabs--sticky > .ui-tabs__bar {
+    position: sticky;
+    top: var(--context-bar-height, 0px);
+    z-index: 9;
+    background: var(--surface-app);
+  }
+}
+.ui-tabs__tab {
+  font: inherit; font-size: 13px; cursor: pointer; white-space: nowrap;
+  background: none; border: none; border-bottom: 2px solid transparent; margin-bottom: -1px;
+  padding: var(--space-2) var(--space-3); color: var(--text-default);
+  display: inline-flex; align-items: center; gap: var(--space-2);
+}
+.ui-tabs__tab:hover { color: var(--text-strong); }
+.ui-tabs__tab--active { color: var(--text-strong); border-bottom-color: var(--accent); font-weight: 600; }
+.ui-tabs__tab:focus-visible { outline: none; box-shadow: var(--focus-ring); border-radius: var(--radius-sm); }
+.ui-tabs__count {
+  font-family: var(--mono); font-size: 11px; font-weight: 400;
+  padding: 0 6px; border-radius: 999px; background: var(--accent-bg); color: var(--text-strong);
+}
+.ui-tabs__panel { min-width: 0; display: flex; flex-direction: column; gap: var(--space-3); }
+
+/* Pagination (T122). */
+.ui-pagination {
+  display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center;
+  gap: var(--space-2); padding: var(--space-2) 0; font-size: 12px;
+}
+.ui-pagination__range { color: var(--text-muted); font-family: var(--mono); }
+.ui-pagination__controls { display: flex; flex-wrap: wrap; gap: var(--space-1); align-items: center; }
+.ui-pagination__controls .scan-toolbar__btn:disabled { opacity: 0.4; cursor: default; }
+.ui-pagination__gap { color: var(--text-muted); padding: 0 var(--space-1); }
 
 /* Generic visually-hidden utility -- same recipe `.scan-table caption` and the collapsed
    rail's group title already use inline, named once so a new caller doesn't have to repeat
@@ -1687,26 +1771,98 @@ code {
   padding-left: 10px;
 }
 
-.report-summary-cards { display: flex; flex-wrap: wrap; gap: var(--space-3); }
-.report-summary-card { flex: 1 1 220px; min-width: 220px; }
-.report-summary-card .metric-card__value { font-size: 26px; }
-.report-summary-card__line { display: block; }
-.report-summary-card__subvalue { display: block; font-size: 15px; color: var(--text-default); }
 .report-iv-label { display: block; color: var(--text-strong); }
 .report-iv-label--muted { color: var(--text-muted); }
 .report-positioning-label { display: block; font-size: 14px; font-weight: 600; color: var(--text-strong); }
-.report-positioning-desc { display: block; font-size: 12px; color: var(--text-default); }
+.report-positioning-desc { display: block; font-size: 13px; color: var(--text-default); }
 
-/* T69 -- Gamma exposure/Premium selling screen/Playbook/Risk alerts/Summary become native
-   <details> disclosures, collapsed by default (Levels-straddling-spot and the three top
-   summary cards stay outside this, always visible). Same minimal "style cursor/colour only"
-   treatment `.rotation-info` already established -- no bespoke focus-trap code, `<details>`
-   is natively keyboard-operable. The heading lives inside `<summary>` (an h2, so heading-order
-   navigation is unaffected), so it never repeats once the section is opened. */
-.report-disclosure { margin-top: var(--space-4); }
-.report-disclosure > summary { cursor: pointer; list-style: revert; }
-.report-disclosure > summary .report-section-title { display: inline; margin: 0; }
-.report-disclosure .report-section { margin-top: var(--space-3); }
+/* T122 -- dense report layout. Price and volatility sit in the page header's right slot as
+   compact blocks; market structure and sentiment share one row; nothing is a full-width band. */
+.report-headline { display: flex; align-items: stretch; min-width: 0; max-width: 100%; }
+.report-headline__metric + .report-headline__metric,
+.report-headline__metric:first-child {
+  border-left: 1px solid var(--border-default); padding-left: var(--space-5); margin-left: var(--space-5);
+}
+.report-headline__metric { display: flex; flex-direction: column; gap: 1px; max-width: 34ch; min-width: 0; line-height: 1.45; }
+.report-headline__line--clip { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.report-headline__value {
+  font-family: var(--mono); font-size: 24px; line-height: 1.1; font-weight: 600; color: var(--text-strong);
+}
+.report-headline__label {
+  font-size: 10.5px; text-transform: uppercase; letter-spacing: 0.08em; color: var(--text-muted);
+}
+.report-headline__line { font-size: 12px; color: var(--text-default); }
+.report-headline .report-iv-label { font-size: 11.5px; }
+
+.report-overview {
+  display: grid; grid-template-columns: minmax(0, 3fr) minmax(0, 2fr); gap: var(--space-3); align-items: stretch;
+}
+.report-panel-title {
+  margin: 0 0 var(--space-2); font-size: 12px; font-weight: 700; text-transform: uppercase;
+  letter-spacing: 0.08em; color: var(--text-strong);
+}
+.report-structure, .report-sentiment { padding: var(--space-3) var(--space-4); }
+.report-level-row {
+  display: grid; grid-template-columns: 124px minmax(0, 1fr); gap: var(--space-2); align-items: baseline;
+  padding: var(--space-1) 0;
+}
+.report-level-row + .report-level-row { border-top: 1px solid var(--border-default); }
+.report-level-row__label {
+  margin: 0; font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em;
+  color: var(--text-strong);
+}
+/* Same hues as the chips, mixed toward the strong text colour so the small label keeps text
+   contrast in both themes (the raw red fails 4.5:1 on the light surface). */
+.report-level-row__label--resistance { color: color-mix(in srgb, var(--status-negative) 75%, var(--text-strong)); }
+.report-level-row__label--support { color: color-mix(in srgb, var(--status-positive) 75%, var(--text-strong)); }
+.report-level-row__label--straddling { color: color-mix(in srgb, var(--status-info) 75%, var(--text-strong)); }
+.report-level-row__body { display: flex; flex-direction: column; gap: var(--space-1); min-width: 0; }
+.report-level-row__note { margin: 0; font-size: 11.5px; color: var(--text-muted); }
+.report-sentiment { display: flex; flex-direction: column; gap: var(--space-1); line-height: 1.45; }
+.report-structure { line-height: 1.45; }
+.report-sentiment__value {
+  font-family: var(--mono); font-size: 30px; line-height: 1.1; font-weight: 600; color: var(--text-strong);
+}
+.report-positioning-pill {
+  align-self: flex-start; margin: var(--space-1) 0; padding: 2px 12px; border-radius: 999px;
+  border: 1px solid var(--border-default); font-size: 13px; font-weight: 700; letter-spacing: 0.04em;
+  color: var(--text-strong);
+}
+.report-positioning-pill--positive {
+  color: color-mix(in srgb, var(--status-positive) 75%, var(--text-strong));
+  border-color: var(--status-positive);
+  background: color-mix(in srgb, var(--status-positive) 12%, transparent);
+}
+.report-positioning-pill--caution {
+  color: color-mix(in srgb, var(--status-caution) 75%, var(--text-strong));
+  border-color: var(--status-caution);
+  background: color-mix(in srgb, var(--status-caution) 12%, transparent);
+}
+
+.report-summary { padding: var(--space-3) var(--space-4); }
+.report-summary__head { display: flex; justify-content: space-between; align-items: center; gap: var(--space-3); }
+.report-summary__head .report-panel-title { margin: 0; }
+.report-summary__lines { margin: var(--space-2) 0 0; padding-left: 18px; }
+.report-summary__lines li { font-size: 13px; line-height: 1.6; color: var(--text-default); max-width: 120ch; }
+.report-summary__lines li::marker { color: var(--status-info); }
+
+@media (max-width: 900px) {
+  .report-overview { grid-template-columns: 1fr; }
+  .report-headline { gap: var(--space-4); }
+}
+@media (max-width: 900px) {
+  .report-page .page-header { flex-wrap: wrap; }
+  .report-page .page-header__main { flex: 1 1 100%; }
+  .report-page .page-header__actions { flex: 1 1 100%; min-width: 0; }
+}
+@media (max-width: 640px) {
+  .report-headline { flex-wrap: wrap; row-gap: var(--space-2); }
+  .report-headline__metric,
+  .report-headline__metric + .report-headline__metric,
+  .report-headline__metric:first-child { border-left: none; padding-left: 0; margin-left: 0; max-width: 100%; }
+  .report-headline { column-gap: var(--space-5); }
+  .report-level-row { grid-template-columns: 1fr; }
+}
 
 .report-section { margin-top: var(--space-4); }
 /* T68: was `<h3>` with nothing else on the page above `h2` -- every one of these sections
@@ -1719,20 +1875,20 @@ code {
 .report-muted--spaced { margin: 0 0 8px; font-size: 13px; color: var(--text-muted); }
 .report-muted-inline { color: var(--text-muted); }
 
-.report-level-chips { display: flex; flex-wrap: wrap; gap: var(--space-2); margin: 0; padding: 0; }
+.report-level-chips { display: flex; flex-wrap: wrap; gap: var(--space-1) var(--space-2); margin: 0; padding: 0; }
 .report-level-chip {
   display: inline-flex;
   align-items: baseline;
   gap: var(--space-2);
   border: 1px solid;
   border-radius: 999px;
-  padding: 4px 12px;
+  padding: 2px 10px;
   background: var(--surface-raised);
   color: var(--text-strong);
   list-style: none;
 }
 .report-level-chip__dot { width: 8px; height: 8px; border-radius: 50%; align-self: center; }
-.report-level-chip__strike { font-size: 15px; }
+.report-level-chip__strike { font-size: 14px; }
 .report-level-chip__distance { font-size: 12px; color: var(--text-default); }
 .report-level-chip__gex { font-size: 12px; color: var(--text-muted); }
 .report-level-chip__cfd { font-size: 12px; color: var(--text-muted); }
@@ -3813,3 +3969,8 @@ code {
   border-top: 1px solid var(--border-default);
   margin: var(--space-5) 0;
 }
+
+/* T122: the report's full-text trigger sits above its tabs, right-aligned. */
+.report-fullreport { display: flex; justify-content: flex-end; }
+/* Inside the sheet the sheet itself scrolls, so the text no longer needs its own capped box. */
+.detail-drawer .report-fulltext { max-height: none; overflow: visible; }

@@ -36,16 +36,20 @@ export interface DetailDrawerProps {
   /** Visible heading and the panel's accessible name (`aria-label`). */
   title: string;
   children?: ReactNode;
+  /** T122: a wider sheet, for fixed-width content such as the report's full text. */
+  wide?: boolean;
 }
 
-export function DetailDrawer({ open, onClose, title, children }: DetailDrawerProps) {
+export function DetailDrawer({ open, onClose, title, children, wide }: DetailDrawerProps) {
   const containerRef = useOverlayDismiss<HTMLElement>(open, onClose);
 
   if (!open) return null;
 
   return (
     <div className="detail-drawer-scrim">
-      <section ref={containerRef} role="dialog" aria-modal="true" aria-label={title} className="detail-drawer">
+      <section ref={containerRef} role="dialog" aria-modal="true" aria-label={title}
+        className={wide ? 'detail-drawer detail-drawer--wide' : 'detail-drawer'}
+      >
         <header className="detail-drawer__head">
           <h2 className="detail-drawer__title">{title}</h2>
           <button type="button" className="detail-drawer__close" onClick={onClose}>

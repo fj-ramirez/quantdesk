@@ -23,6 +23,11 @@
  * `Toolbar`/`SegmentedControl` -- identical DOM/classes/`aria-pressed` behavior, same URL
  * state. The rank table (the page's only table; the RRG itself is a chart, not wrapped in
  * `DataTableFrame`) is wrapped in `DataTableFrame`.
+ *
+ * T123: the page fits one desktop viewport. The breadth block moved into the header (it is
+ * a four-number reading about the market, not about the chart), the chart takes the viewport
+ * height left under the header and toolbar instead of a square, and the rank table beside it
+ * prints each symbol's name under the ticker (`SymbolCell`'s `showName`).
  */
 import { useCallback } from 'react';
 import { useRotation } from '../api/queries';
@@ -69,7 +74,11 @@ export function Rotation() {
 
   return (
     <div className="rotation-page">
-      <PageHeader title="Rotation" description="Sector, industry, or asset rotation relative to a benchmark." />
+      <PageHeader
+        title="Rotation"
+        description="Sector, industry, or asset rotation relative to a benchmark."
+        actions={rotation.data ? <Breadth breadth={rotation.data.breadth} /> : undefined}
+      />
 
       <Toolbar>
         <SegmentedControl<ScanGroup>
@@ -150,11 +159,10 @@ function RotationView({
           </div>
         </div>
       </section>
-      <aside className="rotation-layout__side" aria-label="Rank table and breadth">
-        <DataTableFrame title="Relative rotation ranking" readingCue="Sorted by 4-week relative return by default; click a header to sort by another window.">
-          <RankTable symbols={data.symbols} sort={sort} dir={dir} onSort={onSort} />
+      <aside className="rotation-layout__side" aria-label="Rank table">
+        <DataTableFrame title="Relative rotation ranking" readingCue="By 4-week relative return; click a header to re-sort.">
+          <RankTable symbols={data.symbols} sort={sort} dir={dir} onSort={onSort} pageSize={20} />
         </DataTableFrame>
-        <Breadth breadth={data.breadth} />
       </aside>
     </div>
   );

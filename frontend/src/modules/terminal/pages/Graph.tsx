@@ -12,6 +12,8 @@
  * asserting one would mislead precisely when it matters.
  */
 import { DataTableFrame } from '../../../components/ui/DataTableFrame';
+import { Pagination } from '../../../components/ui/Pagination';
+import { usePagination } from '../../../components/ui/usePagination';
 import { InfoTip } from '../../../components/ui/InfoTip';
 import { PageHeader } from '../../../components/ui/PageHeader';
 import { EmptyState } from '../../gex/components/EmptyState';
@@ -34,6 +36,8 @@ export function Graph() {
   const edges = useEdges(asOf);
 
   const estimated = (edges.data?.edges ?? []).filter((e) => e.beta != null);
+  // T122: twenty edges a page; a new as-of starts at page 1.
+  const estimatedPage = usePagination(estimated, 20, `${asOf}|${estimated.length}`);
   const conflicts = estimated.filter((e) => e.sign_conflict);
 
   return (
@@ -103,6 +107,7 @@ export function Graph() {
                 empirical half does not yet.
               </EmptyState>
             ) : (
+              <>
               <div className="terminal-table__scroll">
                 <table className="terminal-table">
                   <thead>
@@ -132,7 +137,7 @@ export function Graph() {
                     </tr>
                   </thead>
                   <tbody>
-                    {estimated.map((e) => (
+                    {estimatedPage.pageRows.map((e) => (
                       <tr
                         key={`${e.from_series}->${e.to_series}`}
                         className={e.sign_conflict ? 'terminal-table__row--conflict' : undefined}
@@ -159,6 +164,15 @@ export function Graph() {
                   </tbody>
                 </table>
               </div>
+              <Pagination
+                page={estimatedPage.page}
+                pageCount={estimatedPage.pageCount}
+                total={estimatedPage.total}
+                pageSize={estimatedPage.pageSize}
+                onPage={estimatedPage.setPage}
+                noun="edges"
+              />
+              </>
             )}
           </DataTableFrame>
 

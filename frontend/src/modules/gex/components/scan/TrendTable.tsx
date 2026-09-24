@@ -43,6 +43,8 @@ export interface TrendTableProps {
   onSort: (key: string) => void;
   onRowClick: (row: TrendRow) => void;
   selectedSymbol: string | null;
+  /** T122: rows per page, passed through to `ScanTable`; omitted shows every row. */
+  pageSize?: number;
 }
 
 export function TrendTable({
@@ -52,6 +54,7 @@ export function TrendTable({
   onSort,
   onRowClick,
   selectedSymbol,
+  pageSize,
 }: TrendTableProps) {
   const columns: ColumnDef<TrendRow>[] = [
     {
@@ -166,6 +169,8 @@ export function TrendTable({
       rowKey={(row) => row.symbol}
       selectedKey={selectedSymbol}
       caption="Trend and chop by symbol"
+      pageSize={pageSize}
+      pageNoun="symbols"
     />
   );
 }

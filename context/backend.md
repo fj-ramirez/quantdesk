@@ -266,6 +266,20 @@ twice, and T71's write idempotency would hide most of the evidence.
 `uv run python -m app.modules.gex.gex.backfill` recomputes levels for snapshots that lack them, printing
 `total/processed/failed/skipped_up_to_date` and exiting non-zero on any failure.
 
+`--atm-iv` (T124) instead stores T103's ATM implied vol on snapshots where it is null (every
+capture before T103). Readers of IV (`/trend`, `/regime`, `/decisions`) fall back to reopening
+Parquet for those rows, so run it once on any database that predates T103 — it prints
+`pending/filled/still_null/failed` and touches nothing but the `atm_iv*` columns.
+
+## The universe cache (T124)
+
+`app.modules.gex.api.scan._universe()` holds the last trend pass over `SCAN_UNIVERSE` (bars
+and components for every symbol), keyed on a fingerprint of `daily_bars` and `snapshots`
+(`_universe_key`), so `/trend`, `/regime` and `/decisions` recompute it only when a capture,
+bars run, revision or retention pass changes an input. The checksum sums in `numeric`: a
+float sum differs between calls under Postgres' parallel aggregation. Tests drop it before
+each test (`tests/conftest.py`). Callers must not mutate the frames it hands out.
+
 ## Testing
 
 `backend/tests/` mirrors the module layout, one `test_<module>.py` per module. Everything runs
