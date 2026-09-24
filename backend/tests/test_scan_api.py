@@ -360,6 +360,45 @@ def test_get_trend_returns_iv30_none_for_no_chain_and_a_number_for_spy(
     assert rows["SPY"]["iv_rv_ratio"] is not None
 
 
+def test_universe_pass_is_cached_until_an_input_changes(
+    client, session_factory, gex_session_factory, tmp_path, monkeypatch, spy_snapshot
+):
+    """T124: the 125-symbol trend pass runs once per change to the stored bars or snapshots,
+    not once per request -- and a new bar, a revised bar or a new capture each invalidate it."""
+    import app.modules.gex.api.scan as scan_module
+
+    calls: list[str] = []
+    real = scan_module._symbol_components
+
+    def counting(symbol, *args, **kwargs):
+        calls.append(symbol)
+        return real(symbol, *args, **kwargs)
+
+    monkeypatch.setattr(scan_module, "_symbol_components", counting)
+    _seed_monotone(session_factory, "SPY", 150)
+    _universe(monkeypatch, ["SPY"])
+
+    first = client.get("/api/gex/scan/trend").json()
+    assert client.get("/api/gex/scan/trend").json() == first
+    assert calls == ["SPY"], "an unchanged database must not rerun the pass"
+
+    # A new session's bar.
+    upsert_bars([_bar("SPY", dt.date(2026, 1, 5) + dt.timedelta(days=150), 400.0)], session_factory=session_factory)
+    client.get("/api/gex/scan/trend")
+    assert len(calls) == 2
+
+    # An in-place revision of an existing date: same row count, same max id, same max date.
+    upsert_bars([_bar("SPY", dt.date(2026, 1, 5), 90.0)], session_factory=session_factory)
+    client.get("/api/gex/scan/trend")
+    assert len(calls) == 3
+
+    # A new capture changes the IV the pass reads.
+    _index_snapshot(tmp_path, gex_session_factory, spy_snapshot)
+    after_capture = client.get("/api/gex/scan/trend").json()
+    assert len(calls) == 4
+    assert after_capture["rows"][0]["iv30"] is not None
+
+
 def test_get_trend_returns_iv30_none_for_a_covered_underlying_never_captured(
     client, session_factory, gex_session_factory, monkeypatch
 ):

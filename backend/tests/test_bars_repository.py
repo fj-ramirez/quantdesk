@@ -15,6 +15,7 @@ from app.modules.gex.models.db import Base
 from app.modules.gex.storage.bars_repository import (
     last_bar_date,
     read_bars,
+    read_bars_many,
     read_universe_closes,
     upsert_bars,
 )
@@ -169,6 +170,27 @@ def test_read_bars_respects_start_and_end_bounds(session_factory):
 
 
 # --- read_universe_closes: wide frame -----------------------------------------------------
+
+
+def test_read_bars_many_matches_read_bars_per_symbol_exactly(session_factory):
+    """T124: one query for the universe, but each frame identical to `read_bars` -- including
+    ^VIX's all-None volume staying None beside SPY's integers, and a symbol with no bars."""
+    upsert_bars(
+        [
+            _bar("SPY", dt.date(2026, 9, 3), close=650.0),
+            _bar("SPY", dt.date(2026, 9, 4), close=652.0),
+            _bar("^VIX", dt.date(2026, 9, 4), volume=None, close=15.2),
+        ],
+        session_factory=session_factory,
+    )
+
+    many = read_bars_many(["SPY", "^VIX", "NOBARS", "SPY"], session_factory=session_factory)
+
+    assert list(many) == ["SPY", "^VIX", "NOBARS"]
+    for symbol, frame in many.items():
+        pd.testing.assert_frame_equal(frame, read_bars(symbol, session_factory=session_factory))
+    assert many["^VIX"]["volume"].tolist() == [None]
+    assert many["NOBARS"].empty
 
 
 def test_read_universe_closes_returns_wide_frame(session_factory):

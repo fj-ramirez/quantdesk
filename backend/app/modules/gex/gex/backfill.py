@@ -24,6 +24,12 @@ existing row has at all.
 accumulates. It is **not** the default, because it reopens every Parquet file on disk -- run it
 outside capture hours, since nothing may risk the 16:20 capture.
 
+**`--atm-iv` fills T103's stored ATM vol on snapshots captured before T103** (T124). Readers
+that need a symbol's IV (`/trend`, `/regime`, `/decisions`) fall back to reopening the Parquet
+file when the column is null -- on 2026-09-23 that was 23 of the 28 latest snapshots, ~1.8s of
+every request. This pass computes the value once and stores it, touching nothing else. A chain
+with no usable IV stays null and is simply retried on the next run.
+
 It rewrites derived rows only. `gex.decisions` is append-only and is never touched here: the
 track record depends on a recorded level being the level that was actually suggested at the
 time, wrong ones included.
@@ -39,10 +45,18 @@ from pathlib import Path
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session, sessionmaker
 
-from app.modules.gex.gex.store import DEFAULT_FILTERS, compute_and_store, get_session_factory
+from app.modules.gex.gex.engine import to_frame
+from app.modules.gex.gex.report import iv_regime
+from app.modules.gex.gex.store import (
+    DEFAULT_FILTERS,
+    apply_atm_iv,
+    compute_and_store,
+    get_session_factory,
+)
 from app.modules.gex.models.db import GexLevel, Snapshot
+from app.modules.gex.storage.parquet import read_snapshot, resolve_snapshot_path
 
-__all__ = ["backfill", "main"]
+__all__ = ["backfill", "backfill_atm_iv", "main"]
 
 logger = logging.getLogger("app.modules.gex.gex.backfill")
 
@@ -114,6 +128,58 @@ def backfill(
     return summary
 
 
+def backfill_atm_iv(
+    *,
+    session_factory: sessionmaker[Session] | None = None,
+    data_dir: str | Path | None = None,
+) -> dict[str, int]:
+    """Store the ATM vol on every snapshot whose `atm_iv` is null (T124). Never raises.
+
+    Only the six `atm_iv*` columns are written -- levels, strikes and `gex.decisions` are left
+    exactly as they are. One snapshot's failure is logged and skipped, as in `backfill`.
+
+    Returns:
+        `{"pending": n, "filled": n, "still_null": n, "failed": n}` -- `still_null` counts
+        chains that were read fine but carry no usable ATM quote.
+    """
+    factory = session_factory or get_session_factory()
+    with factory() as session:
+        pending = list(
+            session.execute(
+                select(Snapshot.id).where(Snapshot.atm_iv.is_(None)).order_by(Snapshot.id)
+            )
+            .scalars()
+            .all()
+        )
+
+    filled = still_null = failed = 0
+    for snapshot_id in pending:
+        try:
+            with factory() as session:
+                row = session.get(Snapshot, snapshot_id)
+                snapshot = read_snapshot(resolve_snapshot_path(row, data_dir))  # invariant 5
+                iv = iv_regime(to_frame(snapshot), snapshot.spot)
+                apply_atm_iv(row, iv)
+                session.commit()
+        except Exception:
+            failed += 1
+            logger.exception("backfill --atm-iv: failed for snapshot_id=%d", snapshot_id)
+            continue
+        if iv.atm_iv is None:
+            still_null += 1
+        else:
+            filled += 1
+
+    summary = {
+        "pending": len(pending),
+        "filled": filled,
+        "still_null": still_null,
+        "failed": failed,
+    }
+    logger.info("backfill --atm-iv: %s", summary)
+    return summary
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
@@ -124,8 +190,24 @@ def main(argv: list[str] | None = None) -> int:
             "change; reopens every Parquet file, so run it outside capture hours."
         ),
     )
+    parser.add_argument(
+        "--atm-iv",
+        action="store_true",
+        help=(
+            "Store the ATM implied vol on snapshots captured before T103 (atm_iv is null) "
+            "instead of computing levels. Reopens those Parquet files only."
+        ),
+    )
     args = parser.parse_args(argv)
     logging.basicConfig(level=logging.INFO, format="%(message)s")
+
+    if args.atm_iv:
+        iv_summary = backfill_atm_iv()
+        print(
+            f"backfill --atm-iv: pending={iv_summary['pending']} filled={iv_summary['filled']} "
+            f"still_null={iv_summary['still_null']} failed={iv_summary['failed']}"
+        )
+        return 1 if iv_summary["failed"] else 0
 
     summary = backfill(recompute=args.recompute)
     print(

@@ -10,10 +10,10 @@ import pytest
 from sqlalchemy import func, select
 
 from app.core.db import get_engine, get_sessionmaker
-from app.modules.gex.gex.backfill import backfill
+from app.modules.gex.gex.backfill import backfill, backfill_atm_iv
 from app.modules.gex.gex.store import DEFAULT_FILTERS
 from app.modules.gex.models.chain import ChainSnapshot, OptionContract, Underlying
-from app.modules.gex.models.db import Base, GexByStrike, GexLevel
+from app.modules.gex.models.db import Base, GexByStrike, GexLevel, Snapshot
 from app.modules.gex.storage.parquet import write_snapshot
 from app.modules.gex.storage.repository import SnapshotRepository
 
@@ -123,3 +123,44 @@ def test_backfill_skips_a_broken_snapshot_and_continues(tmp_path, session_factor
     assert summary["total"] == 2
     assert summary["processed"] == 1
     assert summary["failed"] == 1
+
+
+# --- --atm-iv (T124) ---------------------------------------------------------------------------
+
+
+def test_backfill_atm_iv_fills_a_pre_t103_snapshot_and_touches_nothing_else(tmp_path, session_factory):
+    """A snapshot indexed without its ATM vol (as every capture before T103 was) gets the same
+    value `compute_and_store` would have stored; levels are left alone, and a second run finds
+    nothing pending."""
+    from app.modules.gex.gex.engine import to_frame
+    from app.modules.gex.gex.report import iv_regime
+    from tests.test_scan_api import _fixture_snapshot
+
+    snapshot = _fixture_snapshot("SPY", "spy.json")
+    with session_factory() as session:
+        snapshot_id = SnapshotRepository(session).add(
+            snapshot, write_snapshot(snapshot, data_dir=tmp_path), is_eod=True
+        ).id
+        assert session.get(Snapshot, snapshot_id).atm_iv is None
+
+    summary = backfill_atm_iv(session_factory=session_factory)
+
+    assert summary == {"pending": 1, "filled": 1, "still_null": 0, "failed": 0}
+    expected = iv_regime(to_frame(snapshot), snapshot.spot)
+    with session_factory() as session:
+        row = session.get(Snapshot, snapshot_id)
+        assert row.atm_iv == pytest.approx(expected.atm_iv)
+        assert row.atm_iv_target_dte == expected.target_dte
+    assert _counts(session_factory) == (0, 0), "--atm-iv must not compute levels"
+    assert backfill_atm_iv(session_factory=session_factory)["pending"] == 0
+
+
+def test_backfill_atm_iv_skips_a_missing_parquet_file_and_continues(tmp_path, session_factory):
+    add_snapshot(tmp_path, session_factory, minute=1, parquet_path=str(tmp_path / "gone.parquet"))
+    add_snapshot(tmp_path, session_factory, minute=2)
+
+    summary = backfill_atm_iv(session_factory=session_factory)
+
+    assert summary["pending"] == 2
+    assert summary["failed"] == 1
+    assert summary["filled"] + summary["still_null"] == 1

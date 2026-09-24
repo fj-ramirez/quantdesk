@@ -42,7 +42,7 @@ from app.modules.gex.models.chain import ChainSnapshot
 from app.modules.gex.models.db import GexByExpiry, GexByStrike, GexLevel, Snapshot
 from app.modules.gex.storage.parquet import read_snapshot, resolve_snapshot_path
 
-__all__ = ["DEFAULT_FILTERS", "compute_and_store", "get_session_factory"]
+__all__ = ["DEFAULT_FILTERS", "apply_atm_iv", "compute_and_store", "get_session_factory"]
 
 logger = logging.getLogger("app.modules.gex.gex.store")
 
@@ -71,6 +71,17 @@ def get_session_factory() -> sessionmaker[Session]:
     if _session_factory is None:
         _session_factory = get_sessionmaker(get_engine())
     return _session_factory
+
+
+def apply_atm_iv(row: Snapshot, iv: IvRegime | None) -> None:
+    """Write T103's constant-maturity ATM vol columns onto a snapshot row (`None` clears them).
+    Shared with `app.modules.gex.gex.backfill`'s `--atm-iv` pass (T124)."""
+    row.atm_iv = None if iv is None else iv.atm_iv
+    row.atm_iv_target_dte = None if iv is None else iv.target_dte
+    row.atm_iv_lower_dte = None if iv is None else iv.lower_dte
+    row.atm_iv_upper_dte = None if iv is None else iv.upper_dte
+    row.atm_iv_interpolated = None if iv is None else iv.interpolated
+    row.atm_iv_contracts = None if iv is None else iv.contracts
 
 
 def compute_and_store(
@@ -144,12 +155,7 @@ def compute_and_store(
 
         # Written on the snapshot row itself: IV is a property of the chain, not of an expiry
         # filter, so it has no business being repeated per (snapshot, filter).
-        row.atm_iv = None if iv is None else iv.atm_iv
-        row.atm_iv_target_dte = None if iv is None else iv.target_dte
-        row.atm_iv_lower_dte = None if iv is None else iv.lower_dte
-        row.atm_iv_upper_dte = None if iv is None else iv.upper_dte
-        row.atm_iv_interpolated = None if iv is None else iv.interpolated
-        row.atm_iv_contracts = None if iv is None else iv.contracts
+        apply_atm_iv(row, iv)
 
         stored: list[GexLevel] = []
         for f in filters:

@@ -1785,6 +1785,20 @@ and render as the bare ticker. `SymbolCell` puts the name in every symbol's tool
 it under the ticker with `showName` (the rank table); the RRG tooltip names the symbol too.
 At 1440×900 and 1810×870 the page no longer scrolls.
 
+## T124 · Opus · T45, T60, T103 (filed and finished 2026-09-23)
+
+**Opportunities loaded in 5.8 s.** Profiled: 6.9 of 7.2 s was `build_regime_rows`' trend pass
+over all 125 `SCAN_UNIVERSE` symbols (grown from 47 on 2026-09-10) — `read_bars` hydrating
+157k ORM objects (~2.9 s), `_lookup_iv30` reopening 23 Parquet files because every snapshot
+captured before T103 had a null `atm_iv` (~1.8 s), indicators (~1.7 s) — recomputed on every
+request. Three fixes: `read_bars` selects plain columns and the universe pass reads every
+symbol's bars in one query (`read_bars_many`, frames identical to `read_bars`); `backfill
+--atm-iv` stores the missing IV (202 of 207 local snapshots filled, none uncomputable); the
+universe pass is cached in-process on a fingerprint of `daily_bars` and `snapshots`. The
+`/decisions` and `/trend` responses were compared byte for byte before and after, and after the
+backfill: identical. Local, over HTTP: first load after new data 5.8 → 2.6 s, every later
+load 0.4–0.5 s. The homeserver needs `backfill --atm-iv` run once.
+
 ## Status corrections
 
 - **Done, no Done marker above:** T00–T14, T16, T27, T29, T30, T34–T41, T59 (all merged, per

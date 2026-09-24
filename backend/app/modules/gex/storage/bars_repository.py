@@ -32,6 +32,7 @@ __all__ = [
     "get_session_factory",
     "last_bar_date",
     "read_bars",
+    "read_bars_many",
     "read_intraday_bars",
     "read_universe_closes",
     "upsert_bars",
@@ -271,26 +272,61 @@ def read_bars(
     unconditionally without a prior "is this empty" branch.
     """
     factory = session_factory or get_session_factory()
-    stmt = select(DailyBar).where(DailyBar.symbol == symbol)
+    # T124: plain columns, not `select(DailyBar)`. Hydrating an ORM object per row cost ~2.9 s
+    # across the 125-symbol universe (157k rows) for data that goes straight into a frame.
+    stmt = select(*_BAR_COLUMNS).where(DailyBar.symbol == symbol)
     if start is not None:
         stmt = stmt.where(DailyBar.date >= start)
     if end is not None:
         stmt = stmt.where(DailyBar.date <= end)
     stmt = stmt.order_by(DailyBar.date.asc())
     with factory() as session:
-        rows = session.execute(stmt).scalars().all()
-    return pd.DataFrame(
-        {
-            "date": [r.date for r in rows],
-            "open": [r.open for r in rows],
-            "high": [r.high for r in rows],
-            "low": [r.low for r in rows],
-            "close": [r.close for r in rows],
-            "volume": [r.volume for r in rows],
-            "source": [r.source for r in rows],
-        },
-        columns=["date", "open", "high", "low", "close", "volume", "source"],
+        rows = session.execute(stmt).all()
+    return _bars_frame(rows)
+
+
+def read_bars_many(
+    symbols: Sequence[str],
+    *,
+    session_factory: sessionmaker[Session] | None = None,
+) -> dict[str, pd.DataFrame]:
+    """`read_bars(symbol)` for every symbol in `symbols`, in one query (T124).
+
+    Each frame is built by the same `_bars_frame` as `read_bars`, per symbol, so it is
+    identical to what `read_bars` returns -- including a symbol whose volume is all `None`
+    staying `None` rather than being widened to `NaN` by a neighbour's integers in a shared
+    frame. Every requested symbol gets a key; one with no bars maps to the empty frame.
+    """
+    factory = session_factory or get_session_factory()
+    wanted = list(dict.fromkeys(symbols))
+    stmt = (
+        select(DailyBar.symbol, *_BAR_COLUMNS)
+        .where(DailyBar.symbol.in_(wanted))
+        .order_by(DailyBar.symbol, DailyBar.date.asc())
     )
+    grouped: dict[str, list] = {symbol: [] for symbol in wanted}
+    with factory() as session:
+        for symbol, *bar in session.execute(stmt):
+            grouped[symbol].append(bar)
+    return {symbol: _bars_frame(rows) for symbol, rows in grouped.items()}
+
+
+_BAR_COLUMNS = (
+    DailyBar.date,
+    DailyBar.open,
+    DailyBar.high,
+    DailyBar.low,
+    DailyBar.close,
+    DailyBar.volume,
+    DailyBar.source,
+)
+_BAR_FRAME_COLUMNS = ["date", "open", "high", "low", "close", "volume", "source"]
+
+
+def _bars_frame(rows: Sequence[Sequence]) -> pd.DataFrame:
+    """`read_bars`' frame from `(date, open, high, low, close, volume, source)` tuples."""
+    columns = (list(col) for col in zip(*rows)) if rows else ([] for _ in _BAR_FRAME_COLUMNS)
+    return pd.DataFrame(dict(zip(_BAR_FRAME_COLUMNS, columns)), columns=_BAR_FRAME_COLUMNS)
 
 
 def read_universe_closes(
