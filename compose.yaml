@@ -118,6 +118,11 @@ services:
       RESEARCH_SCHEDULE: ${RESEARCH_SCHEDULE:-cron}
       RESEARCH_CRON: ${RESEARCH_CRON:-0 2 * * *}
       RESEARCH_INTERVAL_MINUTES: ${RESEARCH_INTERVAL_MINUTES:-60}
+      # T125. Where the Theta Terminal answers (plans/thetadata/README.md). Empty by default: the
+      # terminal runs only in the prod stack (compose.prod.yaml sets this to the service), or in
+      # dev when compose.theta-dev.yaml is named explicitly. Empty means "no ThetaData here" and
+      # the provider says so rather than guessing a host.
+      THETADATA_URL: ${THETADATA_URL:-}
       # T79. The terminal module (xactx). FRED is the only source needing a credential --
       # Treasury, Cboe, CFTC and CME are keyless -- and it is empty by default so a dev stack is
       # never blocked by a missing key. The nightly sequence runs at 03:00, an hour clear of the

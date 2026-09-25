@@ -67,6 +67,8 @@ services:
       # variable is missing. Unlike POSTGRES_PASSWORD this one IS re-applied on every boot
       # (`app.core.ro_role`), so changing it here and restarting really does rotate it.
       QUANTDESK_RO_PASSWORD: ${QUANTDESK_RO_PASSWORD:?required - set it in .env (see .env.example)}
+      # T125. The homeserver's own terminal, on the stack network (plans/thetadata/README.md).
+      THETADATA_URL: http://theta-terminal:25503
     networks:
       # Both: `internal` to reach postgres, `edge` so Caddy can reach it on 8001. This is the
       # only service on both networks, and it is the only path from `edge` to the database.
@@ -227,6 +229,38 @@ services:
         limits:
           cpus: "0.25"
           memory: 256M
+
+  # T125. The Theta Terminal (plans/thetadata/README.md). Defined HERE and not in compose.yaml
+  # because the homeserver owns it: one ThetaData login is one live terminal session, and a
+  # second session started from a laptop can knock this one off. Dev gets a terminal only by
+  # naming compose.theta-dev.yaml explicitly.
+  #
+  # Not `:?required`, deliberately: ThetaData is an add-on, and a missing credential should
+  # stop this one container (the entrypoint exits 64 naming the variables), not refuse to
+  # render the whole stack and take the free Cboe capture down with it.
+  theta-terminal:
+    image: theta-terminal:prod
+    build:
+      context: ./theta
+    environment:
+      THETADATA_API_KEY: ${THETADATA_API_KEY:-}
+      THETADATA_USERNAME: ${THETADATA_USERNAME:-}
+      THETADATA_PASSWORD: ${THETADATA_PASSWORD:-}
+    volumes:
+      # The bootstrap downloads the real terminal jar here; kept so a restart does not
+      # re-download ~100 MB.
+      - ./data/theta-lib:/opt/theta/lib
+    networks:
+      # `internal` only: the workers reach it, Caddy and the LAN do not. No published port.
+      internal: {}
+    restart: unless-stopped
+    # Java heap is -Xmx2g (THETA_JAVA_OPTS); the cap leaves room for metaspace and netty.
+    mem_limit: 2500m
+    logging:
+      driver: json-file
+      options:
+        max-size: 10m
+        max-file: "3"
 
   frontend:
     image: gex-frontend:prod

@@ -23,37 +23,73 @@ How to use this file:
   `context/decisions.md` if it settled a rule. A finished block does not stay here.
 - New work gets the next free ID and is filed here, never fixed silently.
 
-**Next free ID: T125.** (T108 was allocated retroactively — see the archive's addendum;
+**Next free ID: T128.** (T108 was allocated retroactively — see the archive's addendum;
 T109–T114 were filed on 2026-09-22 from the task-history audit, T115–T121 from the logic audit;
-T122–T124 were filed and finished on 2026-09-23 — see the addendum.)
+T122–T124 were filed and finished on 2026-09-23 — see the addendum; T125–T127 were filed on
+2026-09-25 for the ThetaData initiative, [plans/thetadata/](plans/thetadata/README.md).)
 
 ---
 
-## Blocked or conditional
+## ThetaData (Options Standard, bought 2026-09-24)
 
-> Phase 5 status and the 2026-09-11 vendor re-survey are in
-> [plans/continuous-feed/04-realtime-paid.md](plans/continuous-feed/04-realtime-paid.md).
-> **Blocked on a funded Tradier account.** The trigger for opening one is empirical: measure,
-> from T18's own captured series, how far the 15-minute-lagged flip point sits from where it
-> actually was.
+> Initiative: [plans/thetadata/README.md](plans/thetadata/README.md). Options only — no Stocks,
+> no Indices. **The homeserver owns the terminal session**; dev never starts one implicitly.
+
+### T125 · Sonnet · —
+**Theta Terminal service, probe, and the budget decision on record**
+
+`theta-terminal` in `compose.prod.yaml` (always on at the homeserver), a dev opt-in file,
+`THETADATA_*` settings, and `python -m app.modules.gex.providers.thetadata <SYMBOL> <DATE>`, which pulls one SPX and one SPY session and
+reports row counts, the OI date semantics, and whether `underlying_price` is filled for SPX
+without an Indices subscription. Update `PLAN.md` §1 and `context/data-and-ops.md` (the budget
+line). Acceptance: the probe's output is recorded under the plan's *Result*.
+
+### T26 · Sonnet · T125
+**ThetaData history loader**
+
+`app/modules/gex/providers/thetadata.py` (a client for the v3 REST API that normalizes to
+`ChainSnapshot`) plus `python -m app.modules.gex.gex.history --symbols SPX,SPY --start --end`:
+one snapshot per session built from greeks/EOD(D) + OI reported on D (= D−1 close), written
+through the same Parquet + `compute_and_store` path as a live capture, `source='thetadata'`,
+`is_eod`, `session_date=D`. Skip sessions that already have an EOD snapshot. Resumable; run
+outside capture hours. Rules 2–4 of the plan are its acceptance tests.
+
+### T126 · Sonnet · T26
+**`PROVIDER=thetadata` for live captures**
+
+`fetch_chain` from the snapshot endpoints (quote + OI + greeks), `delayed_minutes=0`. Cboe stays
+the default until a week of side-by-side captures agrees; the switch is a config change.
+
+### T127 · Opus · T26, T115, T116, T117
+**Replay the decision engine over the loaded history**
+
+Run `scan/decisions` and `scan/outcomes` over each historical session's levels and bars,
+writing to a research-owned table — **never `gex.decisions`**. Its purpose is to give T112 an
+out-of-sample record years deep instead of waiting for ~100 live resolutions. Gated on
+T115–T117 for the same reason T112 is: the outcome logic is known to be wrong until they land.
+
+### Real-time (re-pointed from Tradier to ThetaData)
+
+> These were blocked on a funded Tradier account. ThetaData Standard streams real-time OPRA
+> quotes, so T22 becomes a ThetaData streaming provider and the Tradier account is no longer
+> needed. The spec below is the original; read "Tradier" as "ThetaData stream" and the
+> `StreamingProvider` interface stands. Still no index feed: SPX spot comes from the option
+> chain (parity forward, T33), not from a quote.
 
 ### T21 · Opus · T07, T08, T18
 **Real-time recompute design**
 
-Write `docs/realtime.md` before any code: how the day's OI is frozen at the first capture, how streaming quotes update spot and per-contract IV, how IV is derived when the stream provides only prices (Newton or Brent solve against T07 pricing, with fallbacks), recompute cadence (target 2–5 s, throttled), memory layout (NumPy arrays keyed by contract index), and what happens on reconnect or gaps. Define the `StreamingProvider` interface: `subscribe(contracts)`, `async iter_quotes()`. State the subset of contracts to stream (e.g. strikes within ±7% of spot for expiries within 45 days) to stay under vendor limits.
+Write `docs/realtime.md` before any code: how the day's OI is frozen at the first capture, how streaming quotes update spot and per-contract IV, how IV is derived when the stream provides only prices (Newton or Brent solve against T07 pricing, with fallbacks), recompute cadence (target 2–5 s, throttled), memory layout (NumPy arrays keyed by contract index), and what happens on reconnect or gaps. Define the `StreamingProvider` interface: `subscribe(contracts)`, `async iter_quotes()`. State the subset of contracts to stream (e.g. strikes within ±7% of spot for expiries within 45 days) to stay under vendor limits (ThetaData Standard: 10k streamed contracts).
 
-### T22 · Sonnet · T21
-**Tradier provider (REST + WebSocket)**
+### T22 · Sonnet · T21, T126
+**ThetaData streaming provider** (was: Tradier provider)
 
-- REST: `GET /v1/markets/options/chains?symbol=SPX&expiration=&greeks=true` for the chain (all expirations from `/v1/markets/options/expirations`), mapped to `ChainSnapshot`. Sandbox base URL for tests, production URL from config. Token from `TRADIER_TOKEN`.
-- WebSocket: create a session via `/v1/markets/events/session`, then stream quotes for the subscribed OCC symbols. Implement `StreamingProvider` from T21.
-- Reconnect with backoff; heartbeat; metrics counters.
-- Tests with recorded fixtures; a live smoke script that streams 30 seconds and prints message counts.
+Implement `StreamingProvider` from T21 over the Theta Terminal's stream. Reconnect with backoff; heartbeat; metrics counters. Tests with recorded fixtures; a live smoke script that streams 30 seconds and prints message counts.
 
 ### T23 · Opus · T21, T22
 **Real-time GEX loop**
 
-Implement the design from T21 in `backend/app/gex/realtime.py`. Publish results through the T19 SSE channel with an event type `realtime`. Frontend: when a realtime stream is active, charts update in place without flicker (ECharts `setOption` with `notMerge=false`). Config flag `REALTIME_ENABLED`.
+Implement the design from T21 in `backend/app/modules/gex/gex/realtime.py`, in a worker (invariant 7), never the API process. Publish results through the T19 SSE channel with an event type `realtime`. Frontend: when a realtime stream is active, charts update in place without flicker (ECharts `setOption` with `notMerge=false`). Config flag `REALTIME_ENABLED`.
 
 Acceptance: during market hours, the dashboard updates every few seconds and CPU stays under one core.
 
@@ -61,13 +97,6 @@ Acceptance: during market hours, the dashboard updates every few seconds and CPU
 **Phase 5 review**
 
 Review the IV solver for stability on deep OTM and 0DTE contracts, reconnect behaviour, and that frozen OI is the previous day's (not stale from two days ago on a Monday). Fix or file.
-
-**Conditional on buying the ThetaData plan** (and on T25):
-
-### T26 · Sonnet · T25
-**ThetaData history loader (only if the $80/month plan is purchased)**
-
-Implement `backend/app/providers/thetadata.py` for historical EOD chains with OI and Greeks from the local Theta Terminal REST API, writing Parquet snapshots in the same layout as T04 so T25 works unchanged.
 
 ---
 
@@ -377,7 +406,8 @@ source survey. Spec:
 
 `backend/app/research/`: load all EOD levels and next-day OHLC; compute for each day whether the next session's range stayed within call wall / put wall, distance to flip vs. realized range, and 0DTE-only vs. all-expiry level quality. Output a Markdown report and CSV. Notebook optional. Design the module so a ThetaData history loader can be added later without changing the analysis code.
 
-> Largely overtaken by EdgeLab (T77). Before dispatching, decide whether a GEX-level backtest
+> **Now fed by T26** (2026-09-25): years of EOD levels instead of weeks of self-capture, so this
+> is worth running. Largely overtaken by EdgeLab (T77). Before dispatching, decide whether a GEX-level backtest
 > still belongs here or as an EdgeLab strategy family; a documented "superseded" closes it.
 
 ---

@@ -48,8 +48,9 @@ Cboe delayed JSON  ──providers/cboe.py──▶  ChainSnapshot (models/chain
 - **`providers/`** — the only place that knows a vendor's wire format. `OptionChainProvider`
   is an ABC with `fetch_chain(symbol) -> ChainSnapshot`, `name`, `delayed_minutes`.
   `cboe.py` is the default (`PROVIDER=cboe`); `marketdata.py` is the fallback and requires
-  `MARKETDATA_TOKEN`. Adding a source (Tradier, ThetaData in later phases) means one new
-  class and a config value — never a change to a caller.
+  `MARKETDATA_TOKEN`. Adding a source means one new class and a config value — never a change
+  to a caller. `thetadata.py` (T26) serves history through a one-session provider that goes
+  through `capture_snapshot` like any live capture; it joins the `PROVIDER` registry in T126.
   Ownership convention: a provider passed *into* a function is left open for the caller to
   close; one constructed internally is closed before returning.
 - **`models/chain.py`** — Pydantic domain types (`OptionContract`, `ChainSnapshot`, `Right`,

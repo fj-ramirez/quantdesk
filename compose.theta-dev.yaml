@@ -1,0 +1,29 @@
+# T125. Opt-in Theta Terminal for DEV. Never loaded automatically -- name it:
+#
+#     docker compose -f compose.yaml -f compose.override.yaml -f compose.theta-dev.yaml up theta-terminal
+#
+# The homeserver owns the ThetaData session (plans/thetadata/README.md, rule 1): one login is
+# one live terminal, and starting this one can knock the homeserver's off. Only run it when the
+# homeserver's terminal is stopped or not needed. Published on 127.0.0.1 only, so host-side
+# `uv run` scripts reach it at http://127.0.0.1:25503.
+services:
+  theta-terminal:
+    image: theta-terminal:dev
+    build:
+      context: ./theta
+    environment:
+      THETADATA_API_KEY: ${THETADATA_API_KEY:-}
+      THETADATA_USERNAME: ${THETADATA_USERNAME:-}
+      THETADATA_PASSWORD: ${THETADATA_PASSWORD:-}
+    volumes:
+      - theta-lib:/opt/theta/lib
+    ports:
+      - "127.0.0.1:25503:25503"
+
+  backend: &theta_env
+    environment:
+      THETADATA_URL: http://theta-terminal:25503
+  gex-capture: *theta_env
+
+volumes:
+  theta-lib:
