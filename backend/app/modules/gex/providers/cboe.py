@@ -1,6 +1,6 @@
 """Cboe delayed-quotes provider.
 
-The free, unofficial Cboe endpoint (``cdn.cboe.com/api/global/delayed_quotes/options``) is the
+The free, unofficial Cboe endpoint (``cdn-api.cboe.com/api/global/delayed_quotes/options``) is the
 primary data source for phases 1-4 of this project (PLAN.md §1): no key, 15-minute delay, and it
 carries every field the GEX engine needs (OI, IV, Greeks). Every downstream task — storage
 (T04), the scheduler (T05), the GEX engine (T08) and the dashboard — sees only what this module
@@ -78,7 +78,11 @@ __all__ = ["CboeProvider"]
 
 logger = logging.getLogger(__name__)
 
-_BASE_URL = "https://cdn.cboe.com/api/global/delayed_quotes/options/{symbol}.json"
+#: Moved 2026-09-23: the old ``cdn.cboe.com`` path now answers ``307`` to ``cdn-api.cboe.com``
+#: with an identical payload. httpx does not follow redirects by default, so every capture from
+#: 2026-09-23 failed until this changed. Redirects stay unfollowed on purpose: a moved endpoint
+#: should fail loudly and be re-pointed here, not be chased to wherever Cboe sends it next.
+_BASE_URL = "https://cdn-api.cboe.com/api/global/delayed_quotes/options/{symbol}.json"
 
 # Cboe rejects some default HTTP-client user agents outright; a browser-like one is required.
 _USER_AGENT = (
