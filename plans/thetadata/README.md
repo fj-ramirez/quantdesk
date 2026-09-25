@@ -93,9 +93,10 @@ capture-window guard. They also pin that T71's content dedupe skips a stale repo
 byte-identical to the previous session. Full suite: 1260 passed.
 
 ### T126: code landed, not yet run live (2026-09-25)
-Prod already ran `PROVIDER=thetadata`, which `get_provider` did not know, so every capture
-since the switch failed and the Explorer's 0DTE view had nothing but 16:00 ET backfills. At
-16:00, every PM-settled 0DTE contract is expired by definition.
+The Explorer's 0DTE view was blank. The latest snapshots were the 09-23/09-24 backfills
+stamped 16:00 ET, where every PM-settled 0DTE contract has already expired, and 0DTE belongs
+on a live pull anyway. `PROVIDER=thetadata` also had no live provider behind it. Prod was on
+`cboe` throughout; an earlier draft of this entry said otherwise.
 - `ThetaDataProvider` (registered as `thetadata`) reads `/v3/option/snapshot/greeks/first_order`
   + `/v3/option/snapshot/open_interest`. It uses `first_order` because `greeks/all` needs the
   Pro tier; the engine recomputes gamma from IV anyway. `captured_at` is the newest quote
