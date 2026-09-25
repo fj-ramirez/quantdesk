@@ -60,3 +60,49 @@ def test_get_provider_unknown_settings_provider_raises_clear_error(monkeypatch):
     monkeypatch.setattr(settings, "PROVIDER", "does-not-exist")
     with pytest.raises(ValueError, match="unknown provider"):
         get_provider()
+
+
+def test_get_provider_thetadata_by_name(monkeypatch):
+    """T126: `PROVIDER=thetadata` resolves to the live provider, not an unknown-name error."""
+    from app.modules.gex.providers.thetadata import ThetaDataProvider
+
+    monkeypatch.setattr(settings, "THETADATA_URL", "http://theta-terminal:25503")
+    provider = get_provider("thetadata")
+    assert isinstance(provider, ThetaDataProvider)
+    assert provider.name == "thetadata" and provider.delayed_minutes == 0
+
+
+def test_get_provider_thetadata_without_url_names_the_setting(monkeypatch):
+    from app.modules.gex.providers.base import ProviderError
+
+    monkeypatch.setattr(settings, "THETADATA_URL", "")
+    with pytest.raises(ProviderError, match="THETADATA_URL"):
+        get_provider("thetadata")
+
+
+async def test_default_fetch_expiry_keeps_exactly_that_date():
+    """A whole-chain vendor (Cboe) still answers the live 0DTE pull correctly."""
+    import datetime as dt
+
+    from app.modules.gex.models.chain import ChainSnapshot, OptionContract, Underlying
+    from app.modules.gex.providers.base import OptionChainProvider
+
+    class WholeChain(OptionChainProvider):
+        name = "fake"
+        delayed_minutes = 15
+
+        async def fetch_chain(self, underlying: str) -> ChainSnapshot:
+            return ChainSnapshot(
+                underlying=Underlying.SPY,
+                spot=500.0,
+                captured_at=dt.datetime(2026, 9, 24, 15, tzinfo=dt.UTC),
+                source="fake",
+                delayed_minutes=15,
+                contracts=[
+                    OptionContract.from_occ("SPY260924C00505000", open_interest=1, iv=0.2),
+                    OptionContract.from_occ("SPY260925C00505000", open_interest=1, iv=0.2),
+                ],
+            )
+
+    snap = await WholeChain().fetch_expiry("SPY", dt.date(2026, 9, 24))
+    assert [c.expiry for c in snap.contracts] == [dt.date(2026, 9, 24)]

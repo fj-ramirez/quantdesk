@@ -46,6 +46,12 @@ export const apiClient = {
     return apiFetch<GexResult>(`/api/gex/gex/${underlying}/latest`, { filter });
   },
 
+  /** T126: today's expiry pulled from the provider on request -- never stored, so
+   * `snapshot.id` is null. 409 on a non-trading day, 503 when the provider has no answer. */
+  gexLive(underlying: Underlying): Promise<GexResult> {
+    return apiFetch<GexResult>(`/api/gex/gex/${underlying}/live`, { filter: 'ZERO_DTE' });
+  },
+
   gexSnapshot(underlying: Underlying, snapshotId: string, filter: ExpiryFilter): Promise<GexResult> {
     return apiFetch<GexResult>(`/api/gex/gex/${underlying}/snapshots/${snapshotId}`, { filter });
   },

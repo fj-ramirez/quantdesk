@@ -323,6 +323,18 @@ export const handlers = [
     return HttpResponse.json(scaled(GEX_BY_UNDERLYING[underlying], filter));
   }),
 
+  // T126: the live 0DTE pull -- the 0DTE fixture, marked the way the real route marks a pull
+  // that was never stored (no id, not EOD, real-time).
+  http.get('*/api/gex/gex/:underlying/live', ({ params }) => {
+    const underlying = String(params.underlying).toUpperCase();
+    if (!isUnderlying(underlying)) return notFound(`unknown underlying ${underlying}`);
+    const result = GEX_ZERO_DTE_BY_UNDERLYING[underlying];
+    return HttpResponse.json({
+      ...result,
+      snapshot: { ...result.snapshot, id: null, is_eod: false, source: 'thetadata', delayed_minutes: 0 },
+    });
+  }),
+
   http.get('*/api/gex/gex/:underlying/snapshots/:snapshotId', ({ params, request }) => {
     const underlying = String(params.underlying).toUpperCase();
     if (!isUnderlying(underlying)) return notFound(`unknown underlying ${underlying}`);

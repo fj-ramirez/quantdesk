@@ -13,7 +13,9 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { MemoryRouter } from 'react-router-dom';
+import { HttpResponse, http } from 'msw';
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { server } from '../../../mocks/server';
 import { Dashboard } from './Dashboard';
 import { ThemeProvider } from '../../../theme/ThemeContext';
 
@@ -100,3 +102,41 @@ describe('Dashboard (GEX Explorer) density pass (T69)', () => {
     restore();
   });
 });
+
+describe('Dashboard (GEX Explorer) live 0DTE (T126)', () => {
+  it('reads the live pull for 0DTE when nothing is pinned, and says so', async () => {
+    renderDashboard('/dashboard?symbol=SPY&filter=ZERO_DTE');
+    expect(await screen.findByText(/Live 0DTE · thetadata quotes as of/)).toBeInTheDocument();
+    expect(await screen.findByRole('img', { name: /GEX by strike/i })).toBeInTheDocument();
+  });
+
+  it('falls back to the stored snapshot and names the reason when the live pull fails', async () => {
+    server.use(
+      http.get('*/api/gex/gex/:underlying/live', () =>
+        HttpResponse.json({ detail: '2026-09-26 is not a trading day: no 0DTE session' }, { status: 409 }),
+      ),
+    );
+    renderDashboard('/dashboard?symbol=SPY&filter=ZERO_DTE');
+    expect(
+      await screen.findByText(/Live 0DTE unavailable: 2026-09-26 is not a trading day: no 0DTE session\. Showing the latest stored snapshot\./),
+    ).toBeInTheDocument();
+    expect(await screen.findByRole('img', { name: /GEX by strike/i })).toBeInTheDocument();
+  });
+
+  it('does not pull live for any other filter or for a pinned snapshot', async () => {
+    let liveCalls = 0;
+    server.use(
+      http.get('*/api/gex/gex/:underlying/live', () => {
+        liveCalls += 1;
+        return HttpResponse.json({}, { status: 500 });
+      }),
+    );
+    renderDashboard('/dashboard?symbol=SPY&filter=ALL');
+    await screen.findByRole('img', { name: /GEX by strike/i });
+    renderDashboard('/dashboard?symbol=SPY&filter=ZERO_DTE&snapshot=91');
+    await waitFor(() => expect(screen.getAllByRole('img', { name: /GEX by strike/i })).toHaveLength(2));
+    expect(liveCalls).toBe(0);
+    expect(screen.queryByText(/Live 0DTE/)).not.toBeInTheDocument();
+  });
+});
+

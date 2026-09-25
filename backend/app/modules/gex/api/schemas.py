@@ -181,7 +181,9 @@ class SnapshotMetaOut(BaseModel):
     and (T34) `effective_at`. T11/T34 are the merge points named there.
     """
 
-    id: int
+    id: int | None = Field(
+        description="The snapshot's index id; null for a live pull, which is never stored."
+    )
     is_eod: bool
     underlying: str
     spot: float

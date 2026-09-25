@@ -40,6 +40,7 @@ this type; letting an ``httpx`` exception escape unwrapped defeats that.
 
 from __future__ import annotations
 
+import datetime as dt
 from abc import ABC, abstractmethod
 
 from app.modules.gex.models.chain import (
@@ -134,6 +135,19 @@ class OptionChainProvider(ABC):
             SymbolNotSupported: the provider cannot serve this underlying.
             UpstreamUnavailable: the vendor failed after the provider's retries.
         """
+
+    async def fetch_expiry(self, underlying: str, expiry: dt.date) -> ChainSnapshot:
+        """The chain restricted to one expiry date -- the live 0DTE pull's request.
+
+        Not a filtering loophole: the caller asked for exactly one expiry, and every contract
+        of that date is returned. This default fetches the full chain and keeps that date, so
+        a vendor that serves only whole chains (Cboe) still answers correctly; a vendor that
+        can ask for one expiry overrides it to save the full-chain request.
+        """
+        snapshot = await self.fetch_chain(underlying)
+        return snapshot.model_copy(
+            update={"contracts": tuple(c for c in snapshot.contracts if c.expiry == expiry)}
+        )
 
     def __repr__(self) -> str:
         return f"<{type(self).__name__} name={self.name!r} delayed_minutes={self.delayed_minutes}>"

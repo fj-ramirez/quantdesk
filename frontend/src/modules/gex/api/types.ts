@@ -95,7 +95,9 @@ export type Settlement = 'AM' | 'PM';
 // ---------------------------------------------------------------------------------------
 
 export interface SnapshotInfo {
-  id: number;
+  /** The snapshot's index id; `null` for a live pull (`GET .../live`, T126), which is
+   * computed on request and never stored. */
+  id: number | null;
   underlying: Underlying;
   /** ISO 8601, tz-aware UTC — the vendor's own payload timestamp (docs/schema.md T34
    * correction: this is NOT reliably "the effective time of the data" — Cboe's `timestamp`

@@ -1,4 +1,5 @@
-"""ThetaData provider -- historical EOD chains from a Theta Terminal v3 (T26).
+"""ThetaData providers -- historical EOD chains (T26) and the live chain (T126) from a Theta
+Terminal v3.
 
 The subscription is **Options Standard, options only** (plans/thetadata/README.md): no Stocks,
 no Indices. Everything goes through a locally running Theta Terminal, never ThetaData's cloud
@@ -12,6 +13,9 @@ Written on 2026-09-25 from ThetaData's published v3 docs, **before any live resp
 
 * ``/v3/option/history/greeks/eod`` -- https://thetadata.net/docs/operations/option_history_greeks_eod.html
 * ``/v3/option/history/open_interest`` -- https://thetadata.net/docs/operations/option_history_open_interest.html
+* ``/v3/option/snapshot/greeks/first_order`` and ``/v3/option/snapshot/open_interest`` (T126) --
+  https://thetadata.net/docs/operations/option_snapshot_greeks_first_order.html (Standard tier;
+  ``greeks/all`` is Pro-only). Its columns are the EOD ones minus ``close``/``volume``/``gamma``.
 * v2 -> v3 changes (strike in dollars, ``right`` = ``call``/``put``, ``format``) --
   https://thetadata.net/docs/Articles/Getting-Started/v2-migration-guide.html
 
@@ -75,13 +79,21 @@ from app.modules.gex.providers.base import (
     UpstreamUnavailable,
 )
 
-__all__ = ["ThetaDataClient", "ThetaDataEodProvider", "build_eod_snapshot", "vendor_roots"]
+__all__ = [
+    "ThetaDataClient",
+    "ThetaDataEodProvider",
+    "ThetaDataProvider",
+    "build_eod_snapshot",
+    "build_live_snapshot",
+    "vendor_roots",
+]
 
 logger = logging.getLogger(__name__)
 
 _NY = ZoneInfo("America/New_York")
 _CLOSE = dt.time(16, 0)
 _DEFAULT_TIMEOUT_SECONDS = 120.0
+_LIVE_TIMEOUT_SECONDS = 30.0
 _DEFAULT_MAX_RETRIES = 3
 _DEFAULT_BACKOFF_SECONDS = 5.0
 #: ThetaData's "no data for this request" status (v2 documented it as 472 NO_DATA). An empty
@@ -135,19 +147,18 @@ def _occ(root: str, expiry: dt.date, strike: float, right: str) -> str:
     return f"{root}{expiry:%y%m%d}{right}{round(strike * 1000):08d}"
 
 
-def build_eod_snapshot(
+def _assemble(
     underlying: Underlying,
-    session: dt.date,
+    label: str,
     greeks_rows: Iterable[tuple[str, Mapping[str, str]]],
     oi_rows: Iterable[tuple[str, Mapping[str, str]]],
-    *,
-    source: str = "thetadata",
-) -> ChainSnapshot:
-    """Join one session's greeks/EOD rows with the OI reported on that session. Pure.
+) -> tuple[tuple[OptionContract, ...], float]:
+    """Join greeks rows with OI rows into contracts plus the median spot. Pure.
 
-    Args:
-        greeks_rows / oi_rows: ``(requested_root, csv_row)`` pairs; the requested root is the
-            fallback when a row carries no ``symbol`` column.
+    Shared by the EOD and the live snapshot: both endpoints carry the same identifying and
+    ``bid``/``ask``/``implied_vol``/``underlying_price`` columns. A column one of them lacks
+    (the live ``first_order`` rows have no ``close``, ``volume`` or ``gamma``) reads as
+    ``None``, which is what an absent value is.
 
     Raises:
         UpstreamUnavailable: no usable contracts, or no ``underlying_price`` to take spot from.
@@ -193,38 +204,103 @@ def build_eod_snapshot(
             logger.warning("thetadata: skipping contract %r: %s: %s", row, type(exc).__name__, exc)
 
     if skipped:
-        logger.warning(
-            "thetadata: skipped %d/%d contracts for %s %s", skipped, listed, underlying.value, session
-        )
+        logger.warning("thetadata: skipped %d/%d contracts for %s %s", skipped, listed, underlying.value, label)
     if not contracts:
         raise UpstreamUnavailable(
-            f"ThetaData returned no usable contracts for {underlying.value} on {session} "
+            f"ThetaData returned no usable contracts for {underlying.value} {label} "
             f"({listed} listed, {skipped} skipped)"
         )
     if not spots:
         raise UpstreamUnavailable(
-            f"ThetaData greeks/EOD for {underlying.value} on {session} carry no underlying_price; "
+            f"ThetaData rows for {underlying.value} {label} carry no underlying_price; "
             "spot cannot be taken from the chain (see plans/thetadata/README.md: T33 fallback)"
         )
     missing_oi = sum(1 for c in contracts.values() if c.open_interest is None)
     if missing_oi:
         logger.info(
-            "thetadata: %d/%d %s contracts on %s have no OI row (kept as unknown, not zero)",
-            missing_oi, len(contracts), underlying.value, session,
+            "thetadata: %d/%d %s contracts %s have no OI row (kept as unknown, not zero)",
+            missing_oi, len(contracts), underlying.value, label,
         )
+    return tuple(contracts.values()), statistics.median(spots)
+
+
+def _snapshot(
+    underlying: Underlying, label: str, contracts: tuple[OptionContract, ...], spot: float,
+    captured_at: dt.datetime, source: str,
+) -> ChainSnapshot:
     try:
         return ChainSnapshot(
             underlying=underlying,
-            spot=statistics.median(spots),
-            captured_at=dt.datetime.combine(session, _CLOSE, tzinfo=_NY).astimezone(dt.UTC),
+            spot=spot,
+            captured_at=captured_at,
             source=source,
             delayed_minutes=0,
-            contracts=tuple(contracts.values()),
+            contracts=contracts,
         )
     except ValidationError as exc:
         raise UpstreamUnavailable(
-            f"ThetaData snapshot for {underlying.value} on {session} failed schema validation"
+            f"ThetaData snapshot for {underlying.value} {label} failed schema validation"
         ) from exc
+
+
+def build_eod_snapshot(
+    underlying: Underlying,
+    session: dt.date,
+    greeks_rows: Iterable[tuple[str, Mapping[str, str]]],
+    oi_rows: Iterable[tuple[str, Mapping[str, str]]],
+    *,
+    source: str = "thetadata",
+) -> ChainSnapshot:
+    """Join one session's greeks/EOD rows with the OI reported on that session. Pure.
+
+    Args:
+        greeks_rows / oi_rows: ``(requested_root, csv_row)`` pairs; the requested root is the
+            fallback when a row carries no ``symbol`` column.
+
+    Raises:
+        UpstreamUnavailable: no usable contracts, or no ``underlying_price`` to take spot from.
+    """
+    label = f"on {session}"
+    contracts, spot = _assemble(underlying, label, greeks_rows, oi_rows)
+    captured_at = dt.datetime.combine(session, _CLOSE, tzinfo=_NY).astimezone(dt.UTC)
+    return _snapshot(underlying, label, contracts, spot, captured_at, source)
+
+
+def _quote_time(raw: str | None) -> dt.datetime | None:
+    """A v3 ``timestamp`` (``YYYY-MM-DDTHH:mm:ss.SSS``, naive America/New_York) as UTC."""
+    if not raw or not raw.strip():
+        return None
+    try:
+        return dt.datetime.fromisoformat(raw.strip()).replace(tzinfo=_NY).astimezone(dt.UTC)
+    except ValueError:
+        return None
+
+
+def build_live_snapshot(
+    underlying: Underlying,
+    greeks_rows: Iterable[tuple[str, Mapping[str, str]]],
+    oi_rows: Iterable[tuple[str, Mapping[str, str]]],
+    *,
+    now: dt.datetime,
+    source: str = "thetadata",
+) -> ChainSnapshot:
+    """Join the real-time ``greeks/first_order`` snapshot with the morning's OI report. Pure.
+
+    ``captured_at`` is the newest quote timestamp in the rows -- the vendor's own "as of",
+    which is what the engine measures time to expiry from and what the Cboe provider records
+    too. After the close it stops at the last quote rather than advancing with the wall
+    clock. It is capped at ``now`` (a clock-skewed terminal must not stamp the future) and
+    falls back to ``now`` only when no row carries a parseable timestamp.
+
+    OI is the snapshot OI report, published ~06:30 ET for the previous close -- the same OI a
+    Cboe capture carries all day (plan rule 3), so intraday GEX moves with IV and spot, never
+    with positioning.
+    """
+    greeks_rows = list(greeks_rows)
+    contracts, spot = _assemble(underlying, "live", greeks_rows, oi_rows)
+    stamps = [t for t in (_quote_time(row.get("timestamp")) for _, row in greeks_rows) if t is not None]
+    captured_at = min(max(stamps), now) if stamps else now
+    return _snapshot(underlying, "live", contracts, spot, captured_at, source)
 
 
 class ThetaDataClient:
@@ -307,13 +383,35 @@ class ThetaDataClient:
                 oi.append((root, row))
         return greeks, oi
 
+    async def snapshot_rows(
+        self, underlying: Underlying, expiration: dt.date | None = None
+    ) -> tuple[list[tuple[str, dict[str, str]]], list[tuple[str, dict[str, str]]]]:
+        """Every root's real-time ``greeks/first_order`` rows and the current OI report.
+
+        ``expiration`` narrows both requests to one expiry (a 0DTE pull is a few hundred
+        contracts instead of the whole chain); ``None`` asks for every expiry.
+        ``first_order`` rather than ``greeks/all``: the latter needs the Pro tier, and the
+        engine recomputes gamma from IV anyway (plan rule 4).
+        """
+        expiry = "*" if expiration is None else f"{expiration:%Y%m%d}"
+        greeks: list[tuple[str, dict[str, str]]] = []
+        oi: list[tuple[str, dict[str, str]]] = []
+        for root in vendor_roots(underlying):
+            common = {"symbol": root, "expiration": expiry}
+            for row in await self.get_rows("/v3/option/snapshot/greeks/first_order", common):
+                greeks.append((root, row))
+            for row in await self.get_rows("/v3/option/snapshot/open_interest", common):
+                oi.append((root, row))
+        return greeks, oi
+
 
 class ThetaDataEodProvider(OptionChainProvider):
     """A one-shot provider bound to one past session, so a history load goes through
     ``jobs.capture.capture_snapshot`` -- the same dedupe, Parquet, index and level
     computation as a live capture -- instead of a parallel write path.
 
-    Not registered in ``get_provider``: it cannot answer "the chain now". That is T126.
+    Not registered in ``get_provider``: it cannot answer "the chain now";
+    :class:`ThetaDataProvider` does.
     """
 
     def __init__(self, client: ThetaDataClient, session: dt.date) -> None:
@@ -329,12 +427,56 @@ class ThetaDataEodProvider(OptionChainProvider):
         return 0
 
     async def fetch_chain(self, underlying: str) -> ChainSnapshot:
-        try:
-            canonical = Underlying(underlying.strip().upper())
-        except (AttributeError, ValueError):
-            raise SymbolNotSupported(f"thetadata provider does not support {underlying!r}") from None
+        canonical = _canonical(underlying)
         greeks, oi = await self._client.eod_rows(canonical, self._session)
         return build_eod_snapshot(canonical, self._session, greeks, oi, source=self.name)
+
+
+def _canonical(underlying: str) -> Underlying:
+    try:
+        return Underlying(underlying.strip().upper())
+    except (AttributeError, ValueError):
+        raise SymbolNotSupported(f"thetadata provider does not support {underlying!r}") from None
+
+
+class ThetaDataProvider(OptionChainProvider):
+    """The live provider behind ``PROVIDER=thetadata`` (T126): the chain *now*, real time.
+
+    Reads the terminal's snapshot endpoints (``greeks/first_order`` + ``open_interest``),
+    which the Options Standard subscription covers. Outside a session day the terminal has
+    no snapshot (its cache resets at midnight ET) and this raises ``UpstreamUnavailable``,
+    which the capture job logs and moves past like any other vendor gap.
+
+    Timeouts are shorter than the history client's: this also answers the Explorer's live
+    0DTE pull, where a two-minute hang is worse than a quick, named failure.
+    """
+
+    def __init__(self, client: ThetaDataClient | None = None) -> None:
+        self._client = client if client is not None else ThetaDataClient(
+            timeout=_LIVE_TIMEOUT_SECONDS, max_retries=2, backoff_seconds=1.0
+        )
+
+    @property
+    def name(self) -> str:
+        return "thetadata"
+
+    @property
+    def delayed_minutes(self) -> int:
+        return 0
+
+    async def close(self) -> None:
+        await self._client.close()
+
+    async def fetch_chain(self, underlying: str) -> ChainSnapshot:
+        canonical = _canonical(underlying)
+        greeks, oi = await self._client.snapshot_rows(canonical)
+        return build_live_snapshot(canonical, greeks, oi, now=dt.datetime.now(dt.UTC), source=self.name)
+
+    async def fetch_expiry(self, underlying: str, expiry: dt.date) -> ChainSnapshot:
+        """One expiry only, asked of the terminal rather than filtered out of the full chain."""
+        canonical = _canonical(underlying)
+        greeks, oi = await self._client.snapshot_rows(canonical, expiry)
+        return build_live_snapshot(canonical, greeks, oi, now=dt.datetime.now(dt.UTC), source=self.name)
 
 
 async def _probe(symbol: str, session: dt.date) -> None:
