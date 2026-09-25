@@ -50,7 +50,7 @@ T125 terminal service + probe ──▶ T26 history loader ──┬─▶ T25 G
 |---|---|---|
 | T125 | `theta-terminal` service (prod always, dev opt-in), env, probe, doc updates | done bar the prod deploy |
 | T26 | `providers/thetadata.py` history client + `gex.gex.history` CLI, resumable | open |
-| T126 | `PROVIDER=thetadata` for live captures from the snapshot endpoints | open |
+| T126 | `PROVIDER=thetadata` for live captures from the snapshot endpoints, + live 0DTE pull | code landed, not yet run live |
 | T25 | GEX-level backtest over the loaded history — re-scoped, see `TASKS.md` | open |
 | T127 | Replay the decision engine over history into a research table | open |
 
@@ -91,4 +91,26 @@ T125 terminal service + probe ──▶ T26 history loader ──┬─▶ T25 G
 `__main__`) and `gex/history.py`. 9 offline tests pin plan rules 2–4, resumability, and the
 capture-window guard. They also pin that T71's content dedupe skips a stale report that is
 byte-identical to the previous session. Full suite: 1260 passed.
+
+### T126: code landed, not yet run live (2026-09-25)
+Prod already ran `PROVIDER=thetadata`, which `get_provider` did not know, so every capture
+since the switch failed and the Explorer's 0DTE view had nothing but 16:00 ET backfills. At
+16:00, every PM-settled 0DTE contract is expired by definition.
+- `ThetaDataProvider` (registered as `thetadata`) reads `/v3/option/snapshot/greeks/first_order`
+  + `/v3/option/snapshot/open_interest`. It uses `first_order` because `greeks/all` needs the
+  Pro tier; the engine recomputes gamma from IV anyway. `captured_at` is the newest quote
+  timestamp, capped at now. OI is the 06:30 ET report, which is the same rule-3 OI a Cboe
+  capture carries.
+- `OptionChainProvider.fetch_expiry` narrows the request to one expiry. The base default
+  filters the full chain, so Cboe still answers it; ThetaData asks the terminal for that
+  expiry alone.
+- `GET /api/gex/gex/{u}/live?filter=ZERO_DTE` pulls today's expiry on request, computes it and
+  stores nothing (`snapshot.id` null). It returns 409 on a non-trading day and 503 with the
+  reason when the provider has none. This is request handling, not background work
+  (invariant 7).
+- The Explorer, with the 0DTE filter and nothing pinned, polls it every 30 s. On failure it
+  falls back to the stored snapshot and names the reason.
+- Unverified until run on the homeserver: the live column names (taken from the docs, like
+  T26's were), and what `underlying_price` carries for SPX intraday without an Indices
+  subscription.
 

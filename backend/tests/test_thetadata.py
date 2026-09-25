@@ -1,4 +1,5 @@
-"""T26: the ThetaData history client, the snapshot join, and the history loader.
+"""T26/T126: the ThetaData history client, the snapshot join, the history loader and the
+live provider.
 
 The CSV bodies below are **hand-built from ThetaData's v3 docs** (see the provider's module
 docstring), not recorded traffic -- the terminal had not run when this was written. What they
@@ -18,8 +19,13 @@ from app.core.db import get_engine, get_sessionmaker
 from app.modules.gex.gex.history import capture_window_open, load_history, pending_sessions
 from app.modules.gex.models.chain import ChainSnapshot, OptionContract, Underlying
 from app.modules.gex.models.db import Base, GexLevel, Snapshot
-from app.modules.gex.providers.base import ProviderError, UpstreamUnavailable
-from app.modules.gex.providers.thetadata import ThetaDataClient, build_eod_snapshot
+from app.modules.gex.providers.base import ProviderError, SymbolNotSupported, UpstreamUnavailable
+from app.modules.gex.providers.thetadata import (
+    ThetaDataClient,
+    ThetaDataProvider,
+    build_eod_snapshot,
+    build_live_snapshot,
+)
 
 GREEKS_HEADER = (
     "symbol,expiration,strike,right,timestamp,open,high,low,close,volume,count,bid,ask,"
@@ -211,3 +217,92 @@ async def test_a_stale_report_identical_to_the_last_session_is_not_stored_twice(
             client=client, session_factory=session_factory, data_dir=tmp_path,
         )
     assert counts == {"pending": 2, "loaded": 1, "failed": 0, "duplicate": 1}
+
+
+# --- T126: the live provider ------------------------------------------------------------------
+
+LIVE_HEADER = (
+    "symbol,expiration,strike,right,timestamp,bid,ask,delta,theta,vega,rho,epsilon,lambda,"
+    "implied_vol,iv_error,underlying_timestamp,underlying_price\n"
+)
+
+
+def live_csv(root: str, expiry: str = "2026-09-24", stamps: tuple[str, str] = ("10:59:58.120", "11:00:01.500")) -> str:
+    """``greeks/first_order`` rows: no ``close``, ``volume`` or ``gamma`` columns at all."""
+    return LIVE_HEADER + "".join(
+        f"{root},{expiry},{strike},{right},2026-09-24T{stamp},1.0,1.2,0.5,-0.9,5.0,0.01,0,0,"
+        f"{iv},0.0,2026-09-24T11:00:00.000,500.0\n"
+        for (strike, right, iv), stamp in zip(
+            [("505.000", "CALL", "0.18"), ("495.000", "PUT", "0.2")], stamps, strict=True
+        )
+    )
+
+
+def live_oi_csv(root: str, expiry: str = "2026-09-24") -> str:
+    return (
+        OI_HEADER
+        + f"{root},{expiry},505.000,CALL,2026-09-24T06:30:00,4000\n"
+        + f"{root},{expiry},495.000,PUT,2026-09-24T06:30:00,6000\n"
+    )
+
+
+NOW = dt.datetime(2026, 9, 24, 15, 5, tzinfo=dt.UTC)  # 11:05 ET
+
+
+def test_live_snapshot_is_stamped_with_the_newest_quote_not_the_wall_clock():
+    snap = build_live_snapshot(
+        Underlying.SPY, rows("SPY", live_csv("SPY")), rows("SPY", live_oi_csv("SPY")), now=NOW
+    )
+    assert snap.captured_at == dt.datetime(2026, 9, 24, 15, 0, 1, 500000, tzinfo=dt.UTC)
+    assert snap.delayed_minutes == 0 and snap.source == "thetadata" and snap.spot == 500.0
+    call = next(c for c in snap.contracts if c.strike == 505)
+    # Columns the live endpoint does not carry are unknown, never zero.
+    assert call.last is None and call.volume is None and call.gamma is None
+    assert call.open_interest == 4000 and call.iv == 0.18 and call.vega == 0.05
+
+
+def test_live_snapshot_never_stamps_the_future_and_falls_back_to_now():
+    ahead = live_csv("SPY", stamps=("11:30:00.000", "11:31:00.000"))  # terminal clock ahead
+    snap = build_live_snapshot(Underlying.SPY, rows("SPY", ahead), [], now=NOW)
+    assert snap.captured_at == NOW
+    blank = live_csv("SPY").replace("2026-09-24T10:59:58.120", "").replace("2026-09-24T11:00:01.500", "")
+    assert build_live_snapshot(Underlying.SPY, rows("SPY", blank), [], now=NOW).captured_at == NOW
+
+
+def live_transport(seen: list[httpx.Request]) -> httpx.MockTransport:
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen.append(request)
+        root = request.url.params["symbol"]
+        if request.url.path.endswith("/greeks/first_order"):
+            return httpx.Response(200, text=live_csv(root))
+        return httpx.Response(200, text=live_oi_csv(root))
+
+    return httpx.MockTransport(handler)
+
+
+async def test_fetch_expiry_asks_the_terminal_for_that_expiry_only():
+    seen: list[httpx.Request] = []
+    async with httpx.AsyncClient(transport=live_transport(seen)) as http:
+        provider = ThetaDataProvider(ThetaDataClient(base_url="http://theta", client=http, backoff_seconds=0))
+        snap = await provider.fetch_expiry("spx", dt.date(2026, 9, 24))
+    assert {r.url.path for r in seen} == {
+        "/v3/option/snapshot/greeks/first_order",
+        "/v3/option/snapshot/open_interest",
+    }
+    assert {r.url.params["expiration"] for r in seen} == {"20260924"}
+    assert {r.url.params["symbol"] for r in seen} == {"SPX", "SPXW"}
+    assert snap.roots == ("SPX", "SPXW")
+
+
+async def test_fetch_chain_asks_for_every_expiry():
+    seen: list[httpx.Request] = []
+    async with httpx.AsyncClient(transport=live_transport(seen)) as http:
+        provider = ThetaDataProvider(ThetaDataClient(base_url="http://theta", client=http, backoff_seconds=0))
+        await provider.fetch_chain("SPY")
+    assert {r.url.params["expiration"] for r in seen} == {"*"}
+
+
+async def test_unknown_symbol_is_not_supported():
+    provider = ThetaDataProvider(ThetaDataClient(base_url="http://theta"))
+    with pytest.raises(SymbolNotSupported):
+        await provider.fetch_chain("AAPL")

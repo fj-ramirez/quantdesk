@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { UNDERLYINGS, type Underlying, type KeyLevels as KeyLevelsData } from '../api/types';
-import { useGexResult } from '../api/queries';
+import { useGexResult, useLiveZeroDte } from '../api/queries';
+import { ApiError } from '../api/client';
 import { useDashboardParams } from '../state/urlState';
 import { KeyLevels } from '../components/KeyLevels';
 import { StrikeTable } from '../components/StrikeTable';
@@ -11,6 +12,7 @@ import { MetricStrip, type MetricStripItem } from '../../../components/ui/Metric
 import { DataTableFrame } from '../../../components/ui/DataTableFrame';
 import { SegmentedControl, Toolbar } from '../../../components/ui/Toolbar';
 import { formatDistance, formatDistancePct, formatGex, formatStrike } from '../../../lib/format';
+import { formatNyTime } from '../../../lib/time';
 
 /**
  * Cycles the URL-state symbol with `[` / `]` (previous/next in `UNDERLYINGS` order, wrapping).
@@ -122,6 +124,32 @@ function keyLevelMetrics(data: NonNullable<ReturnType<typeof useGexResult>['data
   ];
 }
 
+/** T126: what the 0DTE view is showing, when it is the live pull or should have been.
+ *
+ * 0DTE is intraday, so with the ZERO_DTE filter and nothing pinned the page reads
+ * `GET .../live` (re-pulled every 30 s) instead of the latest stored snapshot. When the pull
+ * fails -- a weekend, the terminal down -- the page falls back to the snapshot and this line
+ * says why, rather than leaving a stale book looking current. */
+function LiveZeroDteNote({ live }: { live: ReturnType<typeof useLiveZeroDte> }) {
+  if (live.data) {
+    return (
+      <p className="overview-note" role="status">
+        Live 0DTE · {live.data.snapshot.source} quotes as of {formatNyTime(live.data.snapshot.captured_at)} ·
+        refreshes every 30 s. Open interest is this morning&apos;s report (yesterday&apos;s close).
+      </p>
+    );
+  }
+  if (live.isError) {
+    const reason = live.error instanceof ApiError ? live.error.message : 'the live pull failed';
+    return (
+      <p className="overview-note" role="status">
+        Live 0DTE unavailable: {reason}. Showing the latest stored snapshot.
+      </p>
+    );
+  }
+  return null;
+}
+
 /**
  * Dashboard assembly (T16). Layout, per `plans/ui-ux-refresh/README.md`'s "Analyze" reading
  * order — page question, current-state strip, GEX-by-strike, gamma profile, then the
@@ -169,7 +197,14 @@ export function Dashboard() {
   const isNarrow = useNarrowDashboard();
   const [narrowView, setNarrowView] = useState<'strike' | 'profile'>('strike');
 
-  const primary = useGexResult(symbol, filter, snapshotId);
+  // T126: 0DTE with nothing pinned reads the live pull; the stored snapshot is the fallback.
+  const liveEnabled = filter === 'ZERO_DTE' && snapshotId == null;
+  const live = useLiveZeroDte(symbol, liveEnabled);
+  const stored = useGexResult(symbol, filter, snapshotId);
+  const useStored = !liveEnabled || live.isError;
+  const primary = useStored
+    ? stored
+    : { data: live.data, isLoading: live.isLoading, isError: false as const, error: null };
   const allProfile = useGexResult(symbol, 'ALL', snapshotId);
   const exZeroDteProfile = useGexResult(symbol, 'EX_ZERO_DTE', snapshotId);
 
@@ -191,6 +226,8 @@ export function Dashboard() {
           message={`Failed to load ${symbol} GEX: ${primary.error instanceof Error ? primary.error.message : 'unknown error'}`}
         />
       )}
+
+      {liveEnabled && <LiveZeroDteNote live={live} />}
 
       {primary.data && (
         <>

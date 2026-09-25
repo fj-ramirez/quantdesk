@@ -11,6 +11,7 @@ import type { ExpiryFilter, RotationBenchmark, RotationGroup, Underlying } from 
 export const queryKeys = {
   gex: (underlying: Underlying, filter: ExpiryFilter, snapshotId: string | null) =>
     ['gex', underlying, filter, snapshotId ?? 'latest'] as const,
+  gexLive: (underlying: Underlying) => ['gex-live', underlying] as const,
   levelsHistory: (
     underlying: Underlying,
     filter: ExpiryFilter,
@@ -37,6 +38,24 @@ export function useGexResult(underlying: Underlying, filter: ExpiryFilter, snaps
       snapshotId
         ? apiClient.gexSnapshot(underlying, snapshotId, filter)
         : apiClient.gexLatest(underlying, filter),
+  });
+}
+
+/** How often the live 0DTE view re-pulls. Each pull is one expiry (a few hundred contracts),
+ * two terminal requests per root -- well inside the terminal's four concurrent requests. */
+export const LIVE_ZERO_DTE_REFRESH_MS = 30_000;
+
+/** T126: live 0DTE for the Explorer. `enabled` is the caller's "0DTE filter, nothing pinned";
+ * no retry, because a 409/503 here is an answer (no session, terminal down) that the page
+ * shows while falling back to the latest snapshot -- retrying only delays saying so. Polling
+ * pauses while the tab is hidden, which is TanStack's default. */
+export function useLiveZeroDte(underlying: Underlying, enabled: boolean) {
+  return useQuery({
+    queryKey: queryKeys.gexLive(underlying),
+    queryFn: () => apiClient.gexLive(underlying),
+    enabled,
+    retry: false,
+    refetchInterval: LIVE_ZERO_DTE_REFRESH_MS,
   });
 }
 

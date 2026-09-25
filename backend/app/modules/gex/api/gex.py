@@ -17,6 +17,8 @@ Two of these three routes recompute rather than read `gex_levels`/`gex_by_strike
   single-user app that is an acceptable page-load cost, and it buys internal consistency for
   free. No caching layer is added on top -- there is one user, and a second request for the
   same snapshot is just another 0.43 s, not a scaling problem worth the complexity.
+* `GET /gex/{underlying}/live` (0DTE only) computes from a chain pulled from the provider on
+  request and never stored -- see that route's docstring.
 * `GET /gex/{underlying}/levels/history` is the one route that must scale past a single
   snapshot -- it can span months of 15-minute intraday captures once T18 ships -- so it is a
   pure `gex_levels` JOIN `snapshots` read and never opens Parquet at all.
@@ -26,11 +28,13 @@ from __future__ import annotations
 
 import datetime as dt
 from typing import Annotated, Any
+from zoneinfo import ZoneInfo
 
 from fastapi import APIRouter, HTTPException, Query
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.core.config import settings
 from app.core.db import get_session_factory
 from app.modules.gex.api.schemas import (
     ExpiryHistoryRowOut,
@@ -38,9 +42,11 @@ from app.modules.gex.api.schemas import (
     LevelHistoryRowOut,
 )
 from app.modules.gex.gex.engine import ExpiryFilter, compute_all
-from app.modules.gex.jobs.calendar import effective_data_time
+from app.modules.gex.jobs.calendar import effective_data_time, is_trading_day
 from app.modules.gex.models.chain import Underlying
 from app.modules.gex.models.db import GexByExpiry, GexLevel, Snapshot
+from app.modules.gex.providers import get_provider
+from app.modules.gex.providers.base import ProviderError, SymbolNotSupported
 from app.modules.gex.storage.parquet import read_snapshot, resolve_snapshot_path
 
 __all__ = ["router"]
@@ -187,6 +193,62 @@ def get_latest(
     with session_factory() as session:
         row = _get_latest_row(session, canonical)
         return _compute_result_out(row, parsed_filter)
+
+
+def _exchange_today() -> dt.date:
+    """Today's date in the exchange's zone -- the only date a 0DTE expiry can carry."""
+    return dt.datetime.now(ZoneInfo(settings.TZ)).date()
+
+
+@router.get("/{underlying}/live", response_model=GexResultOut)
+async def get_live(
+    underlying: str,
+    filter_: Annotated[
+        str, Query(alias="filter", description="Only ZERO_DTE: the live pull is today's expiry.")
+    ] = ExpiryFilter.ZERO_DTE.value,
+) -> GexResultOut:
+    """Today's expiry, pulled from the provider **now**, computed and returned -- never stored.
+
+    0DTE is an intraday instrument and a 15-minute snapshot is the wrong clock for it, so
+    this asks the configured provider for today's expiry alone (a few hundred contracts on
+    ThetaData, which narrows the request itself) on every call. It is request handling, not
+    background work (invariant 7): nothing is scheduled, persisted or published, and the
+    capture worker's snapshots stay the only record. `snapshot.id` is null to say exactly that.
+
+    Errors say *why* there is nothing live, so the Explorer can fall back to the latest
+    snapshot and name the reason: 409 when today is not a trading day, 503 when the provider
+    has no answer (terminal down, no session yet, THETADATA_URL unset).
+    """
+    canonical = _canonical_underlying(underlying)
+    if filter_ != ExpiryFilter.ZERO_DTE.value:
+        raise HTTPException(status_code=422, detail="the live pull serves filter=ZERO_DTE only")
+    today = _exchange_today()
+    if not is_trading_day(today):
+        raise HTTPException(status_code=409, detail=f"{today} is not a trading day: no 0DTE session")
+    try:
+        provider = get_provider()
+    except ProviderError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from None
+    try:
+        snapshot = await provider.fetch_expiry(canonical, today)
+    except SymbolNotSupported as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from None
+    except ProviderError as exc:
+        raise HTTPException(status_code=503, detail=f"live {canonical} 0DTE unavailable: {exc}") from None
+    finally:
+        close = getattr(provider, "close", None)
+        if close is not None:
+            await close()
+    if not snapshot.contracts:
+        raise HTTPException(status_code=503, detail=f"{canonical} lists no {today} expiry")
+    payload = compute_all(snapshot, ExpiryFilter.ZERO_DTE).to_dict()
+    payload["snapshot"] = {
+        **payload["snapshot"],
+        "id": None,
+        "is_eod": False,
+        "effective_at": effective_data_time(snapshot.captured_at, snapshot.delayed_minutes),
+    }
+    return GexResultOut.model_validate(payload)
 
 
 @router.get("/{underlying}/snapshots/{snapshot_id}", response_model=GexResultOut)

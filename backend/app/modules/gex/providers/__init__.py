@@ -13,6 +13,7 @@ from app.core.config import settings
 from app.modules.gex.providers.base import OptionChainProvider
 from app.modules.gex.providers.cboe import CboeProvider
 from app.modules.gex.providers.marketdata import MarketDataProvider
+from app.modules.gex.providers.thetadata import ThetaDataProvider
 
 __all__ = ["get_provider"]
 
@@ -20,6 +21,7 @@ __all__ = ["get_provider"]
 _PROVIDERS: dict[str, type[OptionChainProvider]] = {
     "cboe": CboeProvider,
     "marketdata": MarketDataProvider,
+    "thetadata": ThetaDataProvider,
 }
 
 

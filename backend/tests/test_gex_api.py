@@ -385,3 +385,82 @@ def test_levels_history_empty_for_a_symbol_with_no_captures(client, monkeypatch,
     response = client.get("/api/gex/gex/QQQ/levels/history")
     assert response.status_code == 200
     assert response.json() == []
+
+
+# --- GET /gex/{underlying}/live (0DTE, T126) --------------------------------------------------
+
+LIVE_DAY = dt.date(2026, 9, 24)  # a Thursday
+_LIVE_GREEKS = (
+    "symbol,expiration,strike,right,timestamp,bid,ask,delta,theta,vega,rho,epsilon,lambda,"
+    "implied_vol,iv_error,underlying_timestamp,underlying_price\n"
+    "SPY,2026-09-24,505.000,CALL,2026-09-24T11:00:00.000,1,1.2,0.3,-1,5,0,0,0,0.18,0,2026-09-24T11:00:00.000,500\n"
+    "SPY,2026-09-24,495.000,PUT,2026-09-24T11:00:00.000,1,1.2,-0.3,-1,5,0,0,0,0.2,0,2026-09-24T11:00:00.000,500\n"
+)
+_LIVE_OI = (
+    "timestamp,symbol,expiration,strike,right,open_interest\n"
+    "2026-09-24T06:30:00,SPY,2026-09-24,505.000,CALL,4000\n"
+    "2026-09-24T06:30:00,SPY,2026-09-24,495.000,PUT,6000\n"
+)
+
+
+@pytest.fixture
+def live_terminal(monkeypatch):
+    """Route `get_provider` to a real `ThetaDataProvider` over a mock terminal; returns the
+    list of requests it saw, and a switch to make the terminal fail."""
+    from app.modules.gex.api import gex as gex_api
+    from app.modules.gex.providers.thetadata import ThetaDataClient, ThetaDataProvider
+
+    seen: list[httpx.Request] = []
+    state = {"down": False}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen.append(request)
+        if state["down"]:
+            return httpx.Response(503)
+        body = _LIVE_GREEKS if request.url.path.endswith("/first_order") else _LIVE_OI
+        return httpx.Response(200, text=body)
+
+    http = httpx.AsyncClient(transport=httpx.MockTransport(handler))
+    monkeypatch.setattr(
+        gex_api,
+        "get_provider",
+        lambda: ThetaDataProvider(ThetaDataClient(base_url="http://theta", client=http, backoff_seconds=0)),
+    )
+    monkeypatch.setattr(gex_api, "_exchange_today", lambda: LIVE_DAY)
+    return seen, state
+
+
+def test_live_pulls_todays_expiry_and_stores_nothing(client, live_terminal):
+    seen, _ = live_terminal
+    response = client.get("/api/gex/gex/SPY/live", params={"filter": "ZERO_DTE"})
+    assert response.status_code == 200, response.text
+    body = response.json()
+    assert body["filter"] == "ZERO_DTE"
+    assert body["snapshot"]["id"] is None and body["snapshot"]["is_eod"] is False
+    assert body["snapshot"]["source"] == "thetadata" and body["snapshot"]["delayed_minutes"] == 0
+    assert body["snapshot"]["captured_at"].startswith("2026-09-24T15:00:00")
+    assert body["levels"]["net_gex"] is not None
+    assert body["levels"]["call_wall"] == 505 and body["levels"]["put_wall"] == 495
+    assert {r.url.params["expiration"] for r in seen} == {"20260924"}
+
+
+def test_live_is_zero_dte_only(client, live_terminal):
+    assert client.get("/api/gex/gex/SPY/live", params={"filter": "ALL"}).status_code == 422
+
+
+def test_live_on_a_non_trading_day_is_409_without_asking_the_terminal(client, live_terminal, monkeypatch):
+    from app.modules.gex.api import gex as gex_api
+
+    seen, _ = live_terminal
+    monkeypatch.setattr(gex_api, "_exchange_today", lambda: dt.date(2026, 9, 26))  # Saturday
+    response = client.get("/api/gex/gex/SPY/live")
+    assert response.status_code == 409 and "not a trading day" in response.json()["detail"]
+    assert seen == []
+
+
+def test_live_names_the_reason_when_the_terminal_is_down(client, live_terminal):
+    _, state = live_terminal
+    state["down"] = True
+    response = client.get("/api/gex/gex/SPY/live")
+    assert response.status_code == 503
+    assert "live SPY 0DTE unavailable" in response.json()["detail"]

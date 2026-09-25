@@ -60,6 +60,11 @@ outside capture hours. Rules 2–4 of the plan are its acceptance tests.
 `fetch_chain` from the snapshot endpoints (quote + OI + greeks), `delayed_minutes=0`. Cboe stays
 the default until a week of side-by-side captures agrees; the switch is a config change.
 
+**Partial (2026-09-25):** the code landed, together with the live 0DTE route the Explorer
+polls. Prod was already on `PROVIDER=thetadata`, so the side-by-side week was skipped. Open:
+first live run on the homeserver, then check the columns and SPX spot. See
+`plans/thetadata/README.md`.
+
 ### T127 · Opus · T26, T115, T116, T117
 **Replay the decision engine over the loaded history**
 
