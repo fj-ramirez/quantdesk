@@ -83,6 +83,10 @@ questions a spike would have to answer are in `plans/continuous-feed/04-realtime
 **Paid, worth it if budget grows: ThetaData Options Standard, $80/month.**
 Real-time streaming plus tick history to 2016 with full Greeks. This is what unlocks backtesting GEX levels against realized moves and building intraday gamma-profile history without waiting months of self-capture. Not needed until you want research, not just a dashboard.
 
+**Bought 2026-09-24** (Options Standard, options only: no Stocks or Indices). The budget is now
+$80/month plus OPRA fees. Cboe stays the default live source until T126 proves ThetaData side by side.
+The plan is `plans/thetadata/README.md`.
+
 **Licensing note.** The app is single-user (the owner only), so real-time data falls under OPRA "non-professional" use at about $1.25/month, passed through by the vendor. No redistribution license is needed. Delayed data has no fee at all.
 
 ---

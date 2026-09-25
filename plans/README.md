@@ -37,6 +37,8 @@ plans/
     03-terminal-module.md           T79, T80  xactx ports in; the board finally gets built
     04-launcher-shell.md            T81  the page you land on, and the module switcher
     05-mcp-connector.md             T82  read-only MCP over all three schemas
+  thetadata/                        ThetaData Options Standard (2026-09-25) — T125, T26, T126, T127
+    README.md                       what the subscription gives, the five rules, dependency graph
   capture-memory/                   the capture worker's heap (2026-09-21) — complete (T89 not needed)
     README.md                       the measurements, the anon/page-cache distinction, the gate
     00-containment.md               T86  container limits and MALLOC_ARENA_MAX

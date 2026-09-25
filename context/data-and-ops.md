@@ -185,7 +185,10 @@ cancel-in-progress concurrency:
 
 ## Cost and licensing constraints
 
-Data budget is **under $50/month** and the app is single-user (owner only), which keeps real-
+Data budget was **under $50/month** until 2026-09-24, when ThetaData Options Standard ($80/month,
+options only) was bought for history and a real-time path — see `plans/thetadata/README.md`. Its
+terminal runs only in the homeserver stack (`theta-terminal`); one login is one session, and the
+homeserver's wins. The app is single-user (owner only), which keeps real-
 time data under OPRA non-professional status (~$1.25/month, passed through by the vendor) with
 no redistribution license. Phases 1–4 run entirely free on Cboe. Phase 5's real-time path is a
 Tradier brokerage account ($0–10/month), confirmed available for a Dominican Republic

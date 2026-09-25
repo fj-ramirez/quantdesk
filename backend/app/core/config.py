@@ -76,6 +76,12 @@ class Settings(BaseSettings):
     # missing credential; app.modules.gex.providers.marketdata.MarketDataProvider raises a clear,
     # setting-named error if it is ever constructed without this populated.
     MARKETDATA_TOKEN: str = ""
+    # T125. Base URL of a running Theta Terminal v3 (plans/thetadata/README.md). Empty means
+    # "no ThetaData here"; app.modules.gex.providers.thetadata raises a setting-named error if
+    # it is constructed without one. Prod compose sets http://theta-terminal:25503; a host-side
+    # `uv run` against the dev opt-in terminal uses http://127.0.0.1:25503. The credentials
+    # are the terminal container's business, never the backend's.
+    THETADATA_URL: str = ""
     PROVIDER: str = "cboe"
     # --- T76: the read-only role's password ---------------------------------------------------
     # Empty by default, same rule as MARKETDATA_TOKEN and TIINGO_TOKEN above: a dev stack that
