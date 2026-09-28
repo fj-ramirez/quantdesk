@@ -1997,7 +1997,8 @@
           "rejection_reason": null
         }
       ],
-      "no_trade_reasons": []
+      "no_trade_reasons": [],
+      "live": false
     },
     {
       "underlying": "SPY",
@@ -2081,7 +2082,8 @@
           "rejection_reason": null
         }
       ],
-      "no_trade_reasons": []
+      "no_trade_reasons": [],
+      "live": false
     },
     {
       "underlying": "QQQ",
@@ -2164,7 +2166,8 @@
           "rejection_reason": null
         }
       ],
-      "no_trade_reasons": []
+      "no_trade_reasons": [],
+      "live": false
     },
     {
       "underlying": "GLD",
@@ -2320,7 +2323,8 @@
           "rejection_reason": null
         }
       ],
-      "no_trade_reasons": []
+      "no_trade_reasons": [],
+      "live": false
     },
     {
       "underlying": "DIA",
@@ -2404,7 +2408,8 @@
           "rejection_reason": null
         }
       ],
-      "no_trade_reasons": []
+      "no_trade_reasons": [],
+      "live": false
     },
     {
       "underlying": "XLK",
@@ -2489,7 +2494,8 @@
           "rejection_reason": null
         }
       ],
-      "no_trade_reasons": []
+      "no_trade_reasons": [],
+      "live": false
     },
     {
       "underlying": "XLF",
@@ -2575,7 +2581,8 @@
           "rejection_reason": null
         }
       ],
-      "no_trade_reasons": []
+      "no_trade_reasons": [],
+      "live": false
     },
     {
       "underlying": "XLE",
@@ -2727,7 +2734,8 @@
           "rejection_reason": null
         }
       ],
-      "no_trade_reasons": []
+      "no_trade_reasons": [],
+      "live": false
     },
     {
       "underlying": "XLV",
@@ -2814,7 +2822,8 @@
           "rejection_reason": null
         }
       ],
-      "no_trade_reasons": []
+      "no_trade_reasons": [],
+      "live": false
     },
     {
       "underlying": "XLI",
@@ -2900,7 +2909,8 @@
           "rejection_reason": null
         }
       ],
-      "no_trade_reasons": []
+      "no_trade_reasons": [],
+      "live": false
     },
     {
       "underlying": "XLY",
@@ -2986,7 +2996,8 @@
           "rejection_reason": null
         }
       ],
-      "no_trade_reasons": []
+      "no_trade_reasons": [],
+      "live": false
     },
     {
       "underlying": "XLP",
@@ -3072,7 +3083,8 @@
           "rejection_reason": null
         }
       ],
-      "no_trade_reasons": []
+      "no_trade_reasons": [],
+      "live": false
     },
     {
       "underlying": "XLU",
@@ -3155,7 +3167,8 @@
           "rejection_reason": null
         }
       ],
-      "no_trade_reasons": []
+      "no_trade_reasons": [],
+      "live": false
     },
     {
       "underlying": "XLB",
@@ -3241,7 +3254,8 @@
           "rejection_reason": null
         }
       ],
-      "no_trade_reasons": []
+      "no_trade_reasons": [],
+      "live": false
     },
     {
       "underlying": "XLRE",
@@ -3258,7 +3272,8 @@
       "no_trade_reasons": [
         "chain is 314 min stale relative to its trading day's close: no suggestion is built on a chain that predates the close",
         "net GEX is noise-dominated: Net gamma is 2.9% of gross, below the 3% floor. A net this small is within the range a known-wrong carry assumption can move it (docs/validation.md section 9), so no direction is reported. Per-strike walls below are unaffected and remain usable."
-      ]
+      ],
+      "live": false
     },
     {
       "underlying": "XLC",
@@ -3274,7 +3289,8 @@
       "opportunities": [],
       "no_trade_reasons": [
         "chain is 314 min stale relative to its trading day's close: no suggestion is built on a chain that predates the close"
-      ]
+      ],
+      "live": false
     },
     {
       "underlying": "IWM",
@@ -3358,7 +3374,8 @@
           "rejection_reason": null
         }
       ],
-      "no_trade_reasons": []
+      "no_trade_reasons": [],
+      "live": false
     },
     {
       "underlying": "SMH",
@@ -3441,7 +3458,8 @@
           "rejection_reason": null
         }
       ],
-      "no_trade_reasons": []
+      "no_trade_reasons": [],
+      "live": false
     },
     {
       "underlying": "XBI",
@@ -3457,7 +3475,8 @@
       "opportunities": [],
       "no_trade_reasons": [
         "chain is 42 min stale relative to its trading day's close: no suggestion is built on a chain that predates the close"
-      ]
+      ],
+      "live": false
     },
     {
       "underlying": "KRE",
@@ -3473,7 +3492,8 @@
       "opportunities": [],
       "no_trade_reasons": [
         "chain is 39 min stale relative to its trading day's close: no suggestion is built on a chain that predates the close"
-      ]
+      ],
+      "live": false
     },
     {
       "underlying": "XOP",
@@ -3556,7 +3576,8 @@
           "rejection_reason": null
         }
       ],
-      "no_trade_reasons": []
+      "no_trade_reasons": [],
+      "live": false
     },
     {
       "underlying": "TLT",
@@ -3640,7 +3661,8 @@
           "rejection_reason": null
         }
       ],
-      "no_trade_reasons": []
+      "no_trade_reasons": [],
+      "live": false
     },
     {
       "underlying": "HYG",
@@ -3724,7 +3746,8 @@
           "rejection_reason": null
         }
       ],
-      "no_trade_reasons": []
+      "no_trade_reasons": [],
+      "live": false
     },
     {
       "underlying": "EEM",
@@ -3740,7 +3763,8 @@
       "opportunities": [],
       "no_trade_reasons": [
         "net GEX is noise-dominated: Net gamma is 1.5% of gross, below the 3% floor. A net this small is within the range a known-wrong carry assumption can move it (docs/validation.md section 9), so no direction is reported. Per-strike walls below are unaffected and remain usable."
-      ]
+      ],
+      "live": false
     },
     {
       "underlying": "FXI",
@@ -3824,7 +3848,8 @@
           "rejection_reason": null
         }
       ],
-      "no_trade_reasons": []
+      "no_trade_reasons": [],
+      "live": false
     },
     {
       "underlying": "SLV",
@@ -3906,7 +3931,8 @@
           "rejection_reason": null
         }
       ],
-      "no_trade_reasons": []
+      "no_trade_reasons": [],
+      "live": false
     },
     {
       "underlying": "USO",
@@ -3992,7 +4018,8 @@
           "rejection_reason": null
         }
       ],
-      "no_trade_reasons": []
+      "no_trade_reasons": [],
+      "live": false
     },
     {
       "underlying": "GDX",
@@ -4075,7 +4102,8 @@
           "rejection_reason": null
         }
       ],
-      "no_trade_reasons": []
+      "no_trade_reasons": [],
+      "live": false
     }
   ],
   "no_chain": [],
@@ -4087,5 +4115,7 @@
     "independent_bets": null,
     "window": 60,
     "threshold": 0.8
-  }
+  },
+  "live_unavailable": null,
+  "live_errors": {}
 }

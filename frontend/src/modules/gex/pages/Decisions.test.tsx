@@ -159,6 +159,44 @@ describe('Decisions page', () => {
     expect(within(table).getAllByRole('row').slice(1)).toHaveLength(expected);
   });
 
+  it('0DTE names the live symbols and each fallback with its reason (T126)', async () => {
+    server.use(
+      http.get('*/api/gex/decisions', () =>
+        HttpResponse.json({
+          ...fixture,
+          filter: 'ZERO_DTE',
+          symbols: fixture.symbols.map((s) => ({ ...s, live: s.underlying === 'SPY' })),
+          live_errors: { XLRE: 'lists no 2026-09-24 expiry' },
+        }),
+      ),
+    );
+    renderDecisions('/decisions?filter=ZERO_DTE');
+    await awaitLoaded();
+    const note = await screen.findByText(/SPY pulled live/);
+    expect(note).toHaveTextContent('refreshes every 60 s');
+    expect(screen.getByText('1 on the stored snapshot instead')).toBeInTheDocument();
+    expect(screen.getByText('XLRE: lists no 2026-09-24 expiry')).toBeInTheDocument();
+  });
+
+  it('0DTE on a non-trading day says the live pull was not attempted (T126)', async () => {
+    server.use(
+      http.get('*/api/gex/decisions', () =>
+        HttpResponse.json({ ...fixture, live_unavailable: '2026-09-26 is not a trading day: no 0DTE session' }),
+      ),
+    );
+    renderDecisions('/decisions?filter=ZERO_DTE');
+    await awaitLoaded();
+    expect(
+      await screen.findByText(/Live 0DTE unavailable: 2026-09-26 is not a trading day/),
+    ).toBeInTheDocument();
+  });
+
+  it('shows no live note outside 0DTE', async () => {
+    renderDecisions();
+    await awaitLoaded();
+    expect(screen.queryByText(/Live 0DTE/)).not.toBeInTheDocument();
+  });
+
   it('renders an error state on a transport failure, never a raw response body', async () => {
     server.use(http.get('*/api/gex/decisions', () => HttpResponse.error()));
     renderDecisions();

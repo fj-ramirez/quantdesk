@@ -115,3 +115,24 @@ on a live pull anyway. `PROVIDER=thetadata` also had no live provider behind it.
   T26's were), and what `underlying_price` carries for SPX intraday without an Indices
   subscription.
 
+
+### T126 follow-up: Opportunities on 0DTE was still reading stored snapshots (2026-09-28)
+The live pull reached the Explorer only. `GET /api/gex/decisions?filter=ZERO_DTE` still built
+every row from the latest stored `gex_levels`, which is the same 16:00-backfill problem the
+Explorer had. Even an intraday snapshot would have been gated, because the regime layer ages a
+stored chain against its session's close: at 11:00 ET a chain is "300 min stale", so the
+verdict is suppressed and no suggestion is built.
+- `/decisions` and `/decisions/{u}` under `ZERO_DTE` now pull today's expiry for each symbol
+  (`api/scan.pull_live_zero_dte`, two symbols at a time, since the terminal serves four
+  requests and a pull is two). Each symbol falls back to its stored snapshot on failure, and
+  `live_errors` names why; `live_unavailable` covers a non-trading day or no provider.
+  `DecisionOut.live` says which source each row used.
+- A live chain is aged against now (`live_zero_dte_inputs`), using the same 30-minute
+  threshold. The stored path keeps its close-based clock.
+- Nothing live is recorded. The 17:45 job records `ALL`, and `/record` never pulls; a live row
+  has no `snapshot_id` to key on.
+- The Opportunities page polls every 60 s on 0DTE (the Explorer's 30 s is for one symbol) and
+  shows which symbols are live and which fell back.
+- Load: under `PROVIDER=cboe`, `fetch_expiry` falls back to the full chain, so each refresh
+  pulls about 28 whole Cboe chains while the page is open on 0DTE. Most symbols have no expiry
+  today and fall back.
