@@ -266,10 +266,17 @@ export function useFlows(window: number) {
 // `useDashboardParams`'s validator for it, exactly as `Regime.tsx` does).
 // ---------------------------------------------------------------------------------------
 
+/** How often 0DTE opportunities re-pull. Slower than the Explorer's single-symbol 30 s:
+ * each pull asks the provider for today's expiry across the whole universe. */
+export const LIVE_DECISIONS_REFRESH_MS = 60_000;
+
+/** T126: under `ZERO_DTE` the backend builds every row from a live pull, so the page polls;
+ * the other filters read stored snapshots and do not. */
 export function useDecisions(filter: ExpiryFilter, minScore?: number) {
   return useQuery({
     queryKey: scanQueryKeys.decisions(filter, minScore),
     queryFn: () => apiClient.decisions(filter, minScore),
+    refetchInterval: filter === 'ZERO_DTE' ? LIVE_DECISIONS_REFRESH_MS : false,
   });
 }
 

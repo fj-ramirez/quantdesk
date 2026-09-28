@@ -1229,6 +1229,8 @@ export interface SymbolDecision {
   positioning_ratio: number | null;
   opportunities: Opportunity[];
   no_trade_reasons: string[];
+  /** T126: built from a live 0DTE pull rather than the latest stored snapshot. */
+  live: boolean;
 }
 
 export interface DecisionsResponse {
@@ -1242,6 +1244,10 @@ export interface DecisionsResponse {
   no_chain: string[];
   /** T93. Measured over the non-rejected ranked opportunities. */
   factors: FactorSummary;
+  /** T126, `ZERO_DTE` only: why no live pull was attempted (a non-trading day, no provider). */
+  live_unavailable: string | null;
+  /** T126: per symbol, why its live pull failed and its row fell back to the stored snapshot. */
+  live_errors: Record<string, string>;
 }
 
 // ---------------------------------------------------------------------------------------

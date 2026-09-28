@@ -128,9 +128,10 @@ request downstream of it, never cached.
 
 from __future__ import annotations
 
+import asyncio
 import datetime as dt
 import threading
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Annotated
@@ -145,10 +146,10 @@ from sqlalchemy.orm import sessionmaker
 
 from app.core.config import settings
 from app.core.db import get_session_factory as get_gex_session_factory
-from app.modules.gex.gex.engine import ExpiryFilter, KeyLevels, StrikeGex, to_frame
+from app.modules.gex.gex.engine import ExpiryFilter, KeyLevels, StrikeGex, compute_all, to_frame
 from app.modules.gex.gex.report import iv_regime
 from app.modules.gex.jobs.calendar import MARKET_CLOSE, effective_data_time, is_trading_day
-from app.modules.gex.models.chain import Underlying
+from app.modules.gex.models.chain import ChainSnapshot, Underlying
 from app.modules.gex.models.db import DailyBar, GexByStrike, GexLevel, Snapshot
 from app.modules.gex.providers import get_provider
 from app.modules.gex.providers.base import ProviderError
@@ -1086,7 +1087,8 @@ class _RegimeGexInputs:
     `gex_by_strike`, never from Parquet.
     """
 
-    snapshot_id: int
+    #: `None` for a live pull (T126), which is computed on request and never stored.
+    snapshot_id: int | None
     levels: KeyLevels
     by_strike: tuple[StrikeGex, ...]
     zero_dte_by_strike: tuple[StrikeGex, ...]
@@ -1420,13 +1422,19 @@ class RegimeBuild:
     trend_pct: float | None
     by_strike: tuple[StrikeGex, ...]
     bars: pd.DataFrame
-    #: The `snapshots.id` the row was computed from; `None` exactly when `row` is `None`.
-    #: T61's decisions table keys on it so a re-run on the same capture never duplicates.
+    #: The `snapshots.id` the row was computed from; `None` when `row` is `None` or the row was
+    #: built from a live pull (T126). T61's decisions table keys on it so a re-run on the same
+    #: capture never duplicates -- and so a live row, which has no capture, is never recorded.
     snapshot_id: int | None = None
+    #: T126: the row was built from a live 0DTE pull rather than the latest stored snapshot.
+    live: bool = False
 
 
 def build_regime_rows(
-    parsed_filter: ExpiryFilter, *, symbols: Sequence[str] | None = None
+    parsed_filter: ExpiryFilter,
+    *,
+    symbols: Sequence[str] | None = None,
+    live: Mapping[str, _RegimeGexInputs] | None = None,
 ) -> list[RegimeBuild]:
     """The `/regime` pipeline, factored out (T60) so `/decisions` builds on the same rows.
 
@@ -1443,6 +1451,9 @@ def build_regime_rows(
     `symbols` narrows the output to those `Underlying` values (the single-symbol decisions
     route); the trend ranking is still over the whole universe, since a percentile against a
     universe of one is meaningless. Defaults to every `Underlying` member, in enum order.
+
+    `live` (T126) supplies GEX inputs already built from a live 0DTE pull
+    (`pull_live_zero_dte`); a symbol missing from it falls back to its stored snapshot.
     """
     bars_session_factory = get_session_factory()
     gex_session_factory = get_gex_session_factory()
@@ -1463,7 +1474,12 @@ def build_regime_rows(
         if bars is None:
             bars = read_bars(symbol, session_factory=bars_session_factory)
 
-        gex_inputs = _load_gex_inputs(symbol, parsed_filter, gex_session_factory)
+        live_inputs = None if live is None else live.get(symbol)
+        gex_inputs = (
+            live_inputs
+            if live_inputs is not None
+            else _load_gex_inputs(symbol, parsed_filter, gex_session_factory)
+        )
         if gex_inputs is None:
             builds.append(RegimeBuild(symbol, None, trend_pct, (), bars))
             continue
@@ -1499,10 +1515,102 @@ def build_regime_rows(
             stale=gex_inputs.stale,
         )
         builds.append(
-            RegimeBuild(symbol, row, trend_pct, gex_inputs.by_strike, bars, gex_inputs.snapshot_id)
+            RegimeBuild(
+                symbol,
+                row,
+                trend_pct,
+                gex_inputs.by_strike,
+                bars,
+                gex_inputs.snapshot_id,
+                live=live_inputs is not None,
+            )
         )
 
     return builds
+
+
+# --------------------------------------------------------------------------------------------
+# T126: live 0DTE inputs for `/decisions?filter=ZERO_DTE`. Same reasoning as the Explorer's
+# pull (`app.modules.gex.api.gex.get_live`): 0DTE is intraday, and the latest stored snapshot is
+# either 15 minutes old or a 16:00 backfill in which every PM-settled 0DTE contract has expired.
+# Request handling only -- nothing here is scheduled or stored (invariant 7).
+# --------------------------------------------------------------------------------------------
+
+#: Symbols pulled at once. ThetaData's terminal serves four concurrent requests and a live
+#: pull is two (greeks + open interest), so two symbols at a time never queue on it.
+LIVE_PULL_CONCURRENCY = 2
+
+
+def live_zero_dte_inputs(snapshot: ChainSnapshot, *, now: dt.datetime) -> _RegimeGexInputs:
+    """`_RegimeGexInputs` from one live pull of today's expiry.
+
+    The staleness clock is `now`, not the session close: a live 0DTE chain is judged by how
+    old its quotes are. Measured against the close (the stored path's EOD clock), every
+    intraday pull would be "hours stale" and the verdict suppressed for all of them.
+    """
+    result = compute_all(snapshot, ExpiryFilter.ZERO_DTE)
+    effective_at = effective_data_time(snapshot.captured_at, snapshot.delayed_minutes)
+    chain_age_minutes = max(0.0, (now - effective_at).total_seconds() / 60.0)
+    return _RegimeGexInputs(
+        snapshot_id=None,
+        levels=result.levels,
+        by_strike=result.by_strike,
+        zero_dte_by_strike=result.by_strike,
+        spot=result.spot,
+        as_of=snapshot.captured_at,
+        effective_at=effective_at,
+        chain_age_minutes=chain_age_minutes,
+        stale=chain_age_minutes > STALE_THRESHOLD_MINUTES,
+    )
+
+
+@dataclass(frozen=True, slots=True)
+class LivePull:
+    """What `pull_live_zero_dte` got. `inputs` holds the symbols that answered; `errors` names
+    every one that did not and why, so the page can say which rows fell back to the stored
+    snapshot. `unavailable` is set instead when nothing was attempted at all (a non-trading
+    day, no provider)."""
+
+    inputs: dict[str, _RegimeGexInputs]
+    errors: dict[str, str]
+    unavailable: str | None = None
+
+
+async def pull_live_zero_dte(symbols: Sequence[str], *, today: dt.date) -> LivePull:
+    """Pull today's expiry for every symbol from the configured provider, at most
+    `LIVE_PULL_CONCURRENCY` at a time. Never raises: a failure is reported, per symbol, as the
+    reason that symbol fell back to its stored snapshot."""
+    if not is_trading_day(today):
+        return LivePull({}, {}, f"{today} is not a trading day: no 0DTE session")
+    try:
+        provider = get_provider()
+    except ProviderError as exc:
+        return LivePull({}, {}, str(exc))
+
+    gate = asyncio.Semaphore(LIVE_PULL_CONCURRENCY)
+    inputs: dict[str, _RegimeGexInputs] = {}
+    errors: dict[str, str] = {}
+
+    async def one(symbol: str) -> None:
+        try:
+            async with gate:
+                snapshot = await provider.fetch_expiry(symbol, today)
+            if not snapshot.contracts:
+                errors[symbol] = f"lists no {today} expiry"
+                return
+            inputs[symbol] = live_zero_dte_inputs(snapshot, now=dt.datetime.now(dt.UTC))
+        except ProviderError as exc:  # SymbolNotSupported included
+            errors[symbol] = str(exc)
+        except Exception as exc:  # noqa: BLE001 - one bad chain must not cost the rest their rows
+            errors[symbol] = f"live pull failed: {exc}"
+
+    try:
+        await asyncio.gather(*(one(s) for s in symbols))
+    finally:
+        close = getattr(provider, "close", None)
+        if close is not None:
+            await close()
+    return LivePull(inputs, errors)
 
 
 # --------------------------------------------------------------------------------------------

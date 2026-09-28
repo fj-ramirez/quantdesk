@@ -93,9 +93,10 @@ capture-window guard. They also pin that T71's content dedupe skips a stale repo
 byte-identical to the previous session. Full suite: 1260 passed.
 
 ### T126: code landed, not yet run live (2026-09-25)
-Prod already ran `PROVIDER=thetadata`, which `get_provider` did not know, so every capture
-since the switch failed and the Explorer's 0DTE view had nothing but 16:00 ET backfills. At
-16:00, every PM-settled 0DTE contract is expired by definition.
+The Explorer's 0DTE view was blank. The latest snapshots were the 09-23/09-24 backfills
+stamped 16:00 ET, where every PM-settled 0DTE contract has already expired, and 0DTE belongs
+on a live pull anyway. `PROVIDER=thetadata` also had no live provider behind it. Prod was on
+`cboe` throughout; an earlier draft of this entry said otherwise.
 - `ThetaDataProvider` (registered as `thetadata`) reads `/v3/option/snapshot/greeks/first_order`
   + `/v3/option/snapshot/open_interest`. It uses `first_order` because `greeks/all` needs the
   Pro tier; the engine recomputes gamma from IV anyway. `captured_at` is the newest quote
@@ -114,3 +115,24 @@ since the switch failed and the Explorer's 0DTE view had nothing but 16:00 ET ba
   T26's were), and what `underlying_price` carries for SPX intraday without an Indices
   subscription.
 
+
+### T126 follow-up: Opportunities on 0DTE was still reading stored snapshots (2026-09-28)
+The live pull reached the Explorer only. `GET /api/gex/decisions?filter=ZERO_DTE` still built
+every row from the latest stored `gex_levels`, which is the same 16:00-backfill problem the
+Explorer had. Even an intraday snapshot would have been gated, because the regime layer ages a
+stored chain against its session's close: at 11:00 ET a chain is "300 min stale", so the
+verdict is suppressed and no suggestion is built.
+- `/decisions` and `/decisions/{u}` under `ZERO_DTE` now pull today's expiry for each symbol
+  (`api/scan.pull_live_zero_dte`, two symbols at a time, since the terminal serves four
+  requests and a pull is two). Each symbol falls back to its stored snapshot on failure, and
+  `live_errors` names why; `live_unavailable` covers a non-trading day or no provider.
+  `DecisionOut.live` says which source each row used.
+- A live chain is aged against now (`live_zero_dte_inputs`), using the same 30-minute
+  threshold. The stored path keeps its close-based clock.
+- Nothing live is recorded. The 17:45 job records `ALL`, and `/record` never pulls; a live row
+  has no `snapshot_id` to key on.
+- The Opportunities page polls every 60 s on 0DTE (the Explorer's 30 s is for one symbol) and
+  shows which symbols are live and which fell back.
+- Load: under `PROVIDER=cboe`, `fetch_expiry` falls back to the full chain, so each refresh
+  pulls about 28 whole Cboe chains while the page is open on 0DTE. Most symbols have no expiry
+  today and fall back.

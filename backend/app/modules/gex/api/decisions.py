@@ -21,20 +21,35 @@ lookback), never a second `read_bars`.
 `filter` is restricted to the persisted filters (`ALL`, `ZERO_DTE`, `EX_ZERO_DTE`) for the same
 reason `/regime` is: the levels are read from `gex_levels`/`gex_by_strike`, never recomputed
 from Parquet.
+
+**`ZERO_DTE` is the exception (T126):** on a trading day it pulls today's expiry live from the
+provider for every symbol (`app.modules.gex.api.scan.pull_live_zero_dte`), exactly as the
+Explorer's 0DTE view does, and falls back per symbol to the stored snapshot -- naming why in
+`live_errors` -- when a pull fails. Each `DecisionOut.live` says which it got. The 17:45 ET job
+records `ALL` only and a live row has no `snapshot_id`, so nothing live is ever recorded.
 """
 
 from __future__ import annotations
 
 import datetime as dt
 from typing import Annotated, Any
+from zoneinfo import ZoneInfo
 
 from fastapi import APIRouter, HTTPException, Query
+from fastapi.concurrency import run_in_threadpool
 from pydantic import BaseModel
 
+from app.core.config import settings
 from app.modules.gex.api.gex import _canonical_underlying
-from app.modules.gex.api.scan import _validate_regime_filter, build_regime_rows
+from app.modules.gex.api.scan import (
+    LivePull,
+    _validate_regime_filter,
+    build_regime_rows,
+    pull_live_zero_dte,
+)
 from app.modules.gex.gex.engine import ExpiryFilter
 from app.modules.gex.jobs.decisions import DecisionsJobResult, decide_build, record_decisions_job
+from app.modules.gex.models.chain import Underlying
 from app.modules.gex.scan.decisions import DecisionResult
 from app.modules.gex.scan.factors import (
     CORR_THRESHOLD,
@@ -112,10 +127,12 @@ class DecisionOut(BaseModel):
     positioning_ratio: float | None
     opportunities: list[OpportunityOut]
     no_trade_reasons: list[str]
+    #: T126: built from a live 0DTE pull, not the latest stored snapshot.
+    live: bool = False
 
     @classmethod
-    def from_result(cls, result: DecisionResult) -> DecisionOut:
-        return cls(**result.to_dict())
+    def from_result(cls, result: DecisionResult, *, live: bool = False) -> DecisionOut:
+        return cls(**result.to_dict(), live=live)
 
 
 class RankedOpportunityOut(OpportunityOut):
@@ -161,6 +178,11 @@ class DecisionsResponse(BaseModel):
     no_chain: list[str]
     #: T93. Measured over the non-rejected ranked opportunities -- see `get_decisions`.
     factors: FactorSummaryOut
+    #: T126, `ZERO_DTE` only: why no live pull was attempted at all (a non-trading day, no
+    #: provider), or `None`. Always `None` for the other filters, which never pull live.
+    live_unavailable: str | None = None
+    #: T126: per symbol, why its live pull failed and its row fell back to the stored snapshot.
+    live_errors: dict[str, str] = {}
 
 
 _DISCLAIMER = (
@@ -172,8 +194,19 @@ _DISCLAIMER = (
 _STATUS_RANK = {"active": 0, "watch": 1, "rejected": 2}
 
 
+def _exchange_today() -> dt.date:
+    return dt.datetime.now(ZoneInfo(settings.TZ)).date()
+
+
+async def _live_for(parsed_filter: ExpiryFilter, symbols: list[str]) -> LivePull | None:
+    """The live 0DTE pull for `symbols`, or `None` for a filter that never pulls live."""
+    if parsed_filter is not ExpiryFilter.ZERO_DTE:
+        return None
+    return await pull_live_zero_dte(symbols, today=_exchange_today())
+
+
 @router.get("", response_model=DecisionsResponse)
-def get_decisions(
+async def get_decisions(
     filter_: Annotated[str, Query(alias="filter", description=_FILTER_DESC)] = ExpiryFilter.ALL.value,
     min_score: Annotated[int, Query(ge=0, le=100, description=_MIN_SCORE_DESC)] = 0,
     corr_threshold: Annotated[
@@ -195,18 +228,23 @@ def get_decisions(
     (`RegimeBuild.bars`), so this costs no additional read.
     """
     parsed_filter = _validate_regime_filter(filter_)
+    live = await _live_for(parsed_filter, [u.value for u in Underlying])
+    # The regime pipeline is synchronous DB work; keep it off the event loop.
+    builds = await run_in_threadpool(
+        build_regime_rows, parsed_filter, live=None if live is None else live.inputs
+    )
 
     symbols: list[DecisionOut] = []
     no_chain: list[str] = []
     ranked: list[RankedOpportunityOut] = []
     bars_by_symbol: dict[str, Any] = {}
-    for build in build_regime_rows(parsed_filter):
+    for build in builds:
         if build.row is None:
             no_chain.append(build.symbol)
             continue
         bars_by_symbol[build.symbol] = build.bars
         result = decide_build(build)
-        out = DecisionOut.from_result(result)
+        out = DecisionOut.from_result(result, live=build.live)
         symbols.append(out)
         for opp in out.opportunities:
             if opp.score < min_score:
@@ -254,6 +292,8 @@ def get_decisions(
         symbols=symbols,
         no_chain=no_chain,
         factors=FactorSummaryOut(**summary.to_dict()),
+        live_unavailable=None if live is None else live.unavailable,
+        live_errors={} if live is None else live.errors,
     )
 
 
@@ -380,18 +420,23 @@ async def record_now(
 
 
 @router.get("/{underlying}", response_model=DecisionOut)
-def get_symbol_decisions(
+async def get_symbol_decisions(
     underlying: str,
     filter_: Annotated[str, Query(alias="filter", description=_FILTER_DESC)] = ExpiryFilter.ALL.value,
 ) -> DecisionOut:
     """One symbol's opportunities. 422 for an unknown symbol, 404 for one never captured."""
     canonical = _canonical_underlying(underlying)
     parsed_filter = _validate_regime_filter(filter_)
-
-    builds = build_regime_rows(parsed_filter, symbols=[canonical])
+    live = await _live_for(parsed_filter, [canonical])
+    builds = await run_in_threadpool(
+        build_regime_rows,
+        parsed_filter,
+        symbols=[canonical],
+        live=None if live is None else live.inputs,
+    )
     build = builds[0]
     if build.row is None:
         # Same `detail` string `app.modules.gex.api.gex._get_latest_row` raises: the frontend's empty
         # state (T37) matches on it, and this route must answer identically.
         raise HTTPException(status_code=404, detail=f"no snapshot captured yet for {canonical}")
-    return DecisionOut.from_result(decide_build(build))
+    return DecisionOut.from_result(decide_build(build), live=build.live)

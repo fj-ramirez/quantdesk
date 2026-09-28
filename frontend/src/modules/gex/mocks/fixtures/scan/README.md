@@ -207,6 +207,10 @@ two of them sharing the identical reason sentence, which is why `Decisions.test.
 handler ignores `filter` (one recording serves all three) and honours `min_score` so the
 toolbar's threshold visibly trims the table against the mock.
 
+T126 added `live` to every symbol and `live_unavailable`/`live_errors` to the response; they
+were added to the recording by hand as `false`/`null`/`{}` -- what the backend answers for
+`filter=ALL`, which never pulls live. Nothing else was edited.
+
 ## Decisions history fixture (T61)
 
 `decisions_history.json` is `GET /api/decisions/history`, recorded in-process on 2026-09-10

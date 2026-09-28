@@ -343,3 +343,144 @@ def test_a_single_symbol_has_no_measurable_factor_structure(client, session_fact
     assert not any(r["suppressed"] for r in body["ranked"])
     assert body["factors"]["independent_bets"] is None
     assert body["factors"]["mean_correlation"] is None
+
+
+# --- T126: ZERO_DTE opportunities are built from a live pull ----------------------------------
+
+LIVE_DAY = dt.date(2026, 9, 24)  # a Thursday
+_LIVE_GREEKS = (
+    "symbol,expiration,strike,right,timestamp,bid,ask,delta,theta,vega,rho,epsilon,lambda,"
+    "implied_vol,iv_error,underlying_timestamp,underlying_price\n"
+    "SPY,2026-09-24,505.000,CALL,2026-09-24T11:00:00.000,1,1.2,0.3,-1,5,0,0,0,0.18,0,2026-09-24T11:00:00.000,500\n"
+    "SPY,2026-09-24,495.000,PUT,2026-09-24T11:00:00.000,1,1.2,-0.3,-1,5,0,0,0,0.2,0,2026-09-24T11:00:00.000,500\n"
+)
+_LIVE_OI = (
+    "timestamp,symbol,expiration,strike,right,open_interest\n"
+    "2026-09-24T06:30:00,SPY,2026-09-24,505.000,CALL,4000\n"
+    "2026-09-24T06:30:00,SPY,2026-09-24,495.000,PUT,6000\n"
+)
+
+
+@pytest.fixture
+def live_terminal(monkeypatch):
+    """A real `ThetaDataProvider` over a mock terminal that lists a 0DTE expiry for SPY only
+    (every other root gets ThetaData's 472 no-data answer). Returns the requests it saw and a
+    switch that takes the terminal down."""
+    import httpx
+
+    from app.modules.gex.api import decisions as decisions_api
+    from app.modules.gex.providers import get_provider
+    from app.modules.gex.providers.thetadata import ThetaDataClient, ThetaDataProvider
+
+    seen: list[httpx.Request] = []
+    state = {"down": False}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen.append(request)
+        if state["down"]:
+            return httpx.Response(503)
+        if request.url.params["symbol"] != "SPY":
+            return httpx.Response(472)
+        body = _LIVE_GREEKS if request.url.path.endswith("/first_order") else _LIVE_OI
+        return httpx.Response(200, text=body)
+
+    def provider(*named):
+        if named:  # `_delayed_minutes_for_source(source)` on the stored path: the real registry
+            return get_provider(*named)
+        http = httpx.AsyncClient(transport=httpx.MockTransport(handler))
+        return ThetaDataProvider(ThetaDataClient(base_url="http://theta", client=http, backoff_seconds=0))
+
+    monkeypatch.setattr("app.modules.gex.api.scan.get_provider", provider)
+    monkeypatch.setattr(decisions_api, "_exchange_today", lambda: LIVE_DAY)
+    return seen, state
+
+
+def test_zero_dte_opportunities_come_from_the_live_pull(client, session_factory, live_terminal):
+    seen, _ = live_terminal
+    _seed_bars(session_factory, "SPY", 60)
+    _seed_fade_snapshot(session_factory)  # stored ALL rows only: nothing stored for ZERO_DTE
+
+    body = client.get("/api/gex/decisions", params={"filter": "ZERO_DTE"}).json()
+
+    spy = next(s for s in body["symbols"] if s["underlying"] == "SPY")
+    assert spy["live"] is True
+    assert spy["filter"] == "ZERO_DTE"
+    assert spy["spot"] == 500.0
+    assert spy["as_of"].startswith("2026-09-24T15:00:00")
+    assert body["live_unavailable"] is None
+    assert "SPY" not in body["live_errors"]
+    # Every other member was asked, listed no expiry today, and says so.
+    assert "no usable contracts for QQQ" in body["live_errors"]["QQQ"]
+    assert {r.url.params["expiration"] for r in seen} == {"20260924"}
+
+
+def test_live_rows_are_never_recorded(client, session_factory, live_terminal):
+    """The job records ALL only, but even a manual ZERO_DTE record must not store a live row:
+    it has no snapshot to key on. `/record` reads the stored snapshot, never the live pull."""
+    seen, _ = live_terminal
+    _seed_bars(session_factory, "SPY", 60)
+    _seed_fade_snapshot(session_factory)
+    assert client.post("/api/gex/decisions/record", params={"filter": "ZERO_DTE"}).json()["recorded"] == 0
+    assert seen == []
+
+
+def test_symbol_route_pulls_live_for_zero_dte(client, session_factory, live_terminal):
+    seen, _ = live_terminal
+    body = client.get("/api/gex/decisions/SPY", params={"filter": "ZERO_DTE"}).json()
+    assert body["live"] is True
+    assert {r.url.params["symbol"] for r in seen} == {"SPY"}
+
+
+def test_other_filters_never_ask_the_terminal(client, session_factory, live_terminal):
+    seen, _ = live_terminal
+    _seed_bars(session_factory, "SPY", 60)
+    _seed_fade_snapshot(session_factory)
+    body = client.get("/api/gex/decisions").json()
+    assert seen == []
+    assert body["live_unavailable"] is None and body["live_errors"] == {}
+    assert body["symbols"][0]["live"] is False
+
+
+def test_zero_dte_on_a_non_trading_day_says_so_without_asking(client, session_factory, live_terminal, monkeypatch):
+    from app.modules.gex.api import decisions as decisions_api
+
+    seen, _ = live_terminal
+    monkeypatch.setattr(decisions_api, "_exchange_today", lambda: dt.date(2026, 9, 26))  # Saturday
+    body = client.get("/api/gex/decisions", params={"filter": "ZERO_DTE"}).json()
+    assert "not a trading day" in body["live_unavailable"]
+    assert seen == []
+
+
+def test_a_failed_pull_falls_back_to_the_stored_snapshot_and_names_why(client, session_factory, live_terminal):
+    _, state = live_terminal
+    state["down"] = True
+    _seed_bars(session_factory, "SPY", 60)
+    _seed_fade_snapshot(session_factory)
+    body = client.get("/api/gex/decisions", params={"filter": "ZERO_DTE"}).json()
+    assert "Theta Terminal request failed" in body["live_errors"]["SPY"]
+    # The stored snapshot has no ZERO_DTE rows, so the fallback is "no chain" -- not a live row.
+    assert "SPY" in body["no_chain"]
+
+
+def test_a_live_chain_is_aged_against_now_not_the_close():
+    """Stored chains are aged against their session's close (an EOD clock). A live 0DTE pull
+    is aged against now -- otherwise every intraday pull is 'hours stale' and gated."""
+    import csv
+    import io
+
+    from app.modules.gex.api.scan import live_zero_dte_inputs
+    from app.modules.gex.providers.thetadata import build_live_snapshot
+
+    def rows(text):
+        return [("SPY", r) for r in csv.DictReader(io.StringIO(text))]
+
+    captured = _ny(2026, 9, 24, 11, 0)
+    snapshot = build_live_snapshot(
+        Underlying.SPY, rows(_LIVE_GREEKS), rows(_LIVE_OI), now=captured, source="thetadata"
+    )
+    assert snapshot.captured_at == captured
+    fresh = live_zero_dte_inputs(snapshot, now=captured + dt.timedelta(minutes=5))
+    assert fresh.snapshot_id is None
+    assert fresh.stale is False and fresh.chain_age_minutes == pytest.approx(5.0)
+    old = live_zero_dte_inputs(snapshot, now=captured + dt.timedelta(minutes=45))
+    assert old.stale is True

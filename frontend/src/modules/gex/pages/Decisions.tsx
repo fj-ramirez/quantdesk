@@ -42,10 +42,14 @@
  * reading order; the ranked table pages at fifteen rows, and the selected opportunity opens
  * in the (now overlay) `DetailDrawer`. The summary strip and toolbar stay above the tabs
  * because they govern all three.
+ *
+ * T126: under 0DTE every row is built from a live pull of today's expiry, re-pulled every
+ * minute; `LiveDecisionsNote` says so, and names each symbol that fell back to its stored
+ * snapshot and why.
  */
 import { useCallback, useMemo, useState } from 'react';
-import { useDecisions } from '../api/queries';
-import { EXPIRY_FILTER_LABELS, type ExpiryFilter } from '../api/types';
+import { LIVE_DECISIONS_REFRESH_MS, useDecisions } from '../api/queries';
+import { EXPIRY_FILTER_LABELS, type DecisionsResponse, type ExpiryFilter } from '../api/types';
 import { EmptyState } from '../components/EmptyState';
 import { ErrorState } from '../components/ErrorState';
 import { LoadingState } from '../components/LoadingState';
@@ -71,6 +75,39 @@ const MIN_SCORE_LABELS: Record<number, string> = { 0: 'All', 45: 'C+', 60: 'B+',
 
 const DECISION_TABS = ['ranked', 'notrade', 'record'] as const;
 type DecisionTab = (typeof DECISION_TABS)[number];
+
+/** T126: what the 0DTE view is built from. Same wording as the Explorer's live note. */
+function LiveDecisionsNote({ data }: { data: DecisionsResponse }) {
+  if (data.live_unavailable) {
+    return (
+      <p className="overview-note" role="status">
+        Live 0DTE unavailable: {data.live_unavailable}. Showing the latest stored snapshot.
+      </p>
+    );
+  }
+  const live = data.symbols.filter((s) => s.live).map((s) => s.underlying);
+  const fallbacks = Object.entries(data.live_errors);
+  return (
+    <div className="overview-note" role="status">
+      <p>
+        Live 0DTE · {live.length > 0 ? live.join(', ') : 'no symbol'} pulled live · refreshes every{' '}
+        {LIVE_DECISIONS_REFRESH_MS / 1000} s. Open interest is this morning&apos;s report (yesterday&apos;s close).
+      </p>
+      {fallbacks.length > 0 && (
+        <details>
+          <summary>{fallbacks.length} on the stored snapshot instead</summary>
+          <ul>
+            {fallbacks.map(([symbol, reason]) => (
+              <li key={symbol}>
+                {symbol}: {reason}
+              </li>
+            ))}
+          </ul>
+        </details>
+      )}
+    </div>
+  );
+}
 
 export function Decisions() {
   const { filter, setFilter } = useDashboardParams();
@@ -151,6 +188,8 @@ export function Decisions() {
           onChange={setMinScore}
         />
       </Toolbar>
+
+      {filter === 'ZERO_DTE' && decisions.data && <LiveDecisionsNote data={decisions.data} />}
 
       <Tabs
         label="Opportunities sections"
