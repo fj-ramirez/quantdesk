@@ -105,6 +105,42 @@ def test_short_fade_mirrors():
     assert out.result_r == pytest.approx(3.0)
 
 
+def test_intrabar_fill_bar_never_pays_the_target():
+    # T115: XLU 2026-10-06 -- short 41, target 40.5; opened 40.41, high 41.19, closed 41.16.
+    # The low was the open, before the fill, so the target is not the trade's.
+    spec = TradeSpec(setup="fade", side="SHORT", entry=41.0, stop=41.28, target=40.5)
+    out = evaluate(spec, _bars([(40.41, 41.19, 40.41, 41.16)]))
+    assert out.outcome == "pending"
+    assert out.fill == 41.0
+    assert out.result_r is None
+    assert out.mark_r == pytest.approx((41.0 - 41.16) / 0.28)
+    assert out.mfe_r == pytest.approx(0.0)  # bounded by the close, not the pre-fill low
+    assert out.mae_r == pytest.approx((41.0 - 41.19) / 0.28)
+    assert "not credited" in out.note
+
+
+def test_intrabar_fill_bar_target_is_credited_on_a_later_bar():
+    bars = _bars([(107, 108, 99.5, 101), (101, 106.5, 100.5, 105)])  # opened past the target
+    out = evaluate(LONG_FADE, bars)
+    assert out.outcome == "target"
+    assert out.resolved_on == bars["date"].iloc[1]
+    assert out.bars_held == 2
+    assert out.result_r == pytest.approx(3.0)  # at the target, not at the fill bar's 107 open
+
+
+def test_intrabar_fill_bar_can_still_stop_the_trade():
+    out = evaluate(LONG_FADE, _bars([(101, 101.5, 97.5, 98)]))  # the stop lies past the fill
+    assert out.outcome == "stop"
+    assert out.result_r == pytest.approx(-1.0)
+
+
+def test_gap_fill_bar_follows_the_fill_so_it_can_pay():
+    out = evaluate(LONG_FADE, _bars([(99.0, 107, 98.5, 106)]))
+    assert out.fill == 99.0
+    assert out.outcome == "target"
+    assert out.result_r == pytest.approx((106.0 - 99.0) / 2.0)
+
+
 def test_fade_untriggered_after_the_window():
     bars = _bars([(103, 104, 101, 103)] * TRIGGER_WINDOW_BARS)
     out = evaluate(LONG_FADE, bars)

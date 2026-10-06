@@ -1799,6 +1799,48 @@ universe pass is cached in-process on a fingerprint of `daily_bars` and `snapsho
 backfill: identical. Local, over HTTP: first load after new data 5.8 → 2.6 s, every later
 load 0.4–0.5 s. The homeserver needs `backfill --atm-iv` run once.
 
+## T115 · Opus · — (filed 2026-09-22 from audit A1, finished 2026-10-06)
+
+**Fade outcomes exited at a price printed before the fill.** On the bar a resting limit filled
+intrabar, the scorer checked the target against the whole range and exited at the bar's open.
+By 2026-10-06 that had produced eight false wins, not the audit's five: 19, 41 (XOP), 24, 47
+(USO), 28 (GLD), 78 (QQQ), 234, 265 (SLV), 306, 332 (XLU). Example: XLU short 41 scored +2.1R
+on a day that opened 40.41 and closed 41.16.
+
+*Judgment call 1, the same-bar rule:* the audit's rule, unchanged. On an intrabar fill, that bar
+can stop the trade but never pays it, because the adverse extreme lies past the entry and so
+followed the fill, while the favourable one may have come first. Its `mfe_r` is bounded by the
+close for the same reason. A gap fill is at the open, so all of that bar is still legal. A
+looser rule would need intraday bars, which the scorer does not read.
+
+*Judgment call 2, already-resolved rows:* they are re-evaluated by `python -m
+app.modules.gex.jobs.rescore --setup fade [--apply]`. It is a dry run by default, writes only
+the outcome columns, never the levels or payload, and skips pending-to-pending rows (the
+nightly job owns those). The record of the change is this entry plus each row's new note
+("…not credited, since it may have come first"). The nightly job still never re-scores a
+resolved row.
+
+Dry run against prod's 133 fade rows (exported read-only), 18 rows change:
+
+| ids | before | after |
+|---|---|---|
+| 24, 47 USO · 78 QQQ | target +2.26 / +2.13 / +1.46 | stop −1.00 |
+| 306, 332 XLU | target +2.10 / +2.11 | pending, mark −0.57 |
+| 19, 41 XOP | target +2.51 / +2.47 | target a bar later, +2.38 / +2.35 |
+| 28 GLD · 234, 265 SLV | target +2.26 / +1.60 / +1.74 | target a bar later, +2.60 / +1.76 / +1.91 |
+| 65, 168, 173, 197, 225, 230, 257, 261 | — | ≤ 0.05R each: daily bars revised since scoring, not this fix |
+
+The audit's re-score is reproduced (19/41 at +2.38, 24/47 at −1.0). The one difference is 28
+at +2.60 against +2.64, which is the bar revision.
+
+| `gex_track_record` | before | after (dry run, before `--apply` on prod) |
+|---|---|---|
+| FADE_CALL_WALL | n 26 · 6 wins · −0.416R · se 0.313 | n 24 · 2 wins · −0.899R · se 0.236 |
+| FADE_PUT_WALL | n 28 · 7 wins · −0.234R · se 0.292 | n 28 · 6 wins · −0.298R · se 0.293 |
+
+Both `se` figures still treat re-emissions as independent (T116) and still include the
+mislabelled pre-T99 rows (T117).
+
 ## Status corrections
 
 - **Done, no Done marker above:** T00–T14, T16, T27, T29, T30, T34–T41, T59 (all merged, per

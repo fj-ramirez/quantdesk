@@ -30,6 +30,7 @@ from app.modules.gex.scan.outcomes import Outcome, TradeSpec
 __all__ = [
     "DecisionRecord",
     "apply_outcome",
+    "by_setup",
     "decided_on_for",
     "get_session_factory",
     "read_history",
@@ -235,6 +236,17 @@ def unresolved(*, session_factory: sessionmaker[Session] | None = None) -> list[
     with factory() as session:
         rows = session.execute(
             select(Decision).where(Decision.outcome == "pending").order_by(Decision.decided_on, Decision.id)
+        ).scalars()
+        return [_record(r) for r in rows]
+
+
+def by_setup(setup: str, *, session_factory: sessionmaker[Session] | None = None) -> list[DecisionRecord]:
+    """Every row of one setup, resolved or not -- for a deliberate rescore after a scoring fix
+    (`app.modules.gex.jobs.rescore`), never for the nightly job, which scores `pending` only."""
+    factory = session_factory or get_session_factory()
+    with factory() as session:
+        rows = session.execute(
+            select(Decision).where(Decision.setup == setup).order_by(Decision.decided_on, Decision.id)
         ).scalars()
         return [_record(r) for r in rows]
 

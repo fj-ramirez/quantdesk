@@ -419,30 +419,8 @@ source survey. Spec:
 
 ## Audit findings (2026-09-22)
 
-Filed from [docs/audit-2026-09-22.md](docs/audit-2026-09-22.md). **Dispatch order:** T115 first (it
-is critical and blocks T112), then T116 and T117; T118 before T109; the rest are independent.
-
-### T115 · Opus · —
-**Fade outcomes must not exit at a price printed before the fill — audit A1, critical**
-
-`scan/outcomes.evaluate` starts the hold loop on the trigger bar (`outcomes.py:236`), checks the
-target against that bar's whole range (`:244`) and exits at `min/max(target, open)` (`:267`). For
-a resting limit that did not gap, the open printed *before* the fill. All five scored fade wins
-(ids 19, 24, 28, 41, 47) are this case; XOP 19 "exited" at a 194.7 open and then filled at 200.
-`mfe_r`/`mae_r` include the pre-fill excursion the same way (`:238-241`).
-
-**Judgment calls, name them and argue them:** (1) the same-bar rule for a non-gapped limit fill
-— the audit re-scored with "only the stop can resolve on the trigger bar, resume next bar"; a
-stricter or looser rule needs its reason. (2) What happens to **already-resolved** rows. The
-decision rows are append-only (T61), but `outcome`/`result_r` are an evaluation of them, and
-leaving a known-wrong evaluation in place is how the record keeps lying. The plan must say
-whether resolved outcomes are re-evaluated, and how that is recorded.
-
-Acceptance: a test with the target inside the trigger bar's range for a non-gapped fill (long
-and short), a gapped-fill test proving the open is still a legal exit there, and an MFE test.
-The audit's re-score of the five rows is reproduced, or the difference argued. `gex_track_record`
-before/after is recorded in the result. Also blocks T112 — calibrating against these columns
-would fit the bug.
+Filed from [docs/audit-2026-09-22.md](docs/audit-2026-09-22.md). **Dispatch order:** T115 landed
+2026-10-06 (see the archive's addendum); T116 and T117 next, both block T112; T118 before T109; the rest are independent.
 
 ### T116 · Opus · T115
 **Score a position once, not once per re-emission — audit A2**
