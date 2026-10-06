@@ -102,7 +102,8 @@ number to be true, it belongs in a plan file's *Result* heading or behind an MCP
 - ATR multiples are uncalibrated named constants; `no_trade_reasons` is non-empty exactly when
   nothing is emitted. — T60.
 - The stop is checked before the target on the same bar, and nothing is credited from before
-  the fill: a limit's trigger bar cannot exit at its own open. — T61; T115 (open).
+  the fill: a limit's intrabar fill bar can stop a trade but never pay it. A scorer fix
+  re-scores resolved rows (`jobs/rescore`), never their levels. — T61, T115.
 - **No threshold moves before ~100 resolved decisions**, and then only by the calibration task. — T61; T112.
 - Resolved means `result_r IS NOT NULL`; `untriggered` is not a loss. — T106.
 - The factor cap marks and explains, never removes; correlation is side-adjusted. — T93.

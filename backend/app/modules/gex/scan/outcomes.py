@@ -25,6 +25,12 @@ flatters the engine:
   order, and the honest reading of an ambiguous bar is the losing one.
 * A gap through the stop exits at the open (worse than the stop; recorded as such). A gap
   through the target exits at the open (better; recorded as such).
+* The bar a resting limit fills on **intrabar** can stop the trade but never pays it (T115).
+  The adverse extreme lies past the entry, so it printed at or after the touch; the
+  favourable one may have printed before it -- the open itself, when the bar opened past the
+  target. Crediting that bar's target scored a short at 41 as a +2.1R win on a day that
+  opened at 40.41 and closed at 41.16. Its `mfe_r` is bounded by the close for the same
+  reason. A bar that gaps through the wall fills at the open, so all of it follows the fill.
 * After :data:`MAX_HOLD_BARS` bars without resolution the trade is ``expired`` and marked at
   that bar's close. While bars remain and nothing has resolved it is ``pending`` with `mark_r`
   carrying the unrealized R at the last close.
@@ -193,6 +199,7 @@ def evaluate(
     # --- trigger -------------------------------------------------------------------------
     fill: float | None = None
     trigger_index: int | None = None
+    filled_intrabar = False
     if spec.setup == "continuation":
         fill = float(opens[0])
         trigger_index = 0
@@ -222,6 +229,7 @@ def evaluate(
                 )
             return _pending(bars=bars, note=f"resting limit not yet touched ({n} of {trigger_window} bars)")
         gapped = fill != spec.entry
+        filled_intrabar = not gapped
         trigger_note = "filled at the open (gapped through the wall)" if gapped else "filled at the wall"
 
     assert fill is not None and trigger_index is not None
@@ -235,18 +243,26 @@ def evaluate(
     held = 0
     for j in range(trigger_index, n):
         held = j - trigger_index + 1
+        # On an intrabar fill only the adverse side of the fill bar is known to follow the fill.
+        fill_bar = filled_intrabar and j == trigger_index
         favourable = highs[j] if direction > 0 else lows[j]
         adverse = lows[j] if direction > 0 else highs[j]
-        mfe = max(mfe, r_of(float(favourable)))
+        if fill_bar:
+            mfe = max(mfe, 0.0, r_of(float(closes[j])))
+        else:
+            mfe = max(mfe, r_of(float(favourable)))
         mae = min(mae, r_of(float(adverse)))
 
         stop_hit = lows[j] <= spec.stop if direction > 0 else highs[j] >= spec.stop
-        target_hit = highs[j] >= spec.target if direction > 0 else lows[j] <= spec.target
+        target_touched = highs[j] >= spec.target if direction > 0 else lows[j] <= spec.target
+        target_hit = target_touched and not fill_bar
+        if fill_bar and target_touched and not stop_hit:
+            trigger_note += " (the fill bar also touched the target: not credited, since it may have come first)"
 
         if stop_hit:
             exit_price = float(min(spec.stop, opens[j]) if direction > 0 else max(spec.stop, opens[j]))
             note = f"{trigger_note}; stop hit"
-            if target_hit:
+            if target_touched:
                 note += " (bar also touched the target: scored as a stop, since daily bars carry no intrabar order)"
             elif exit_price != spec.stop:
                 note += " (gapped through the stop: exited at the open)"

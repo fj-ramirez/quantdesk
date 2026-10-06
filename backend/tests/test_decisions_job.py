@@ -11,8 +11,10 @@ import pytest
 
 from app.core.db import get_engine, get_sessionmaker
 from app.modules.gex.jobs.decisions import record_decisions_job
+from app.modules.gex.jobs.rescore import rescore
 from app.modules.gex.models.bars import DailyBar as DailyBarIn
 from app.modules.gex.models.db import Base
+from app.modules.gex.scan.outcomes import Outcome
 from app.modules.gex.storage import decisions_repository as repo
 from app.modules.gex.storage.bars_repository import upsert_bars
 from tests.test_decisions_api import _seed_bars, _seed_fade_snapshot
@@ -80,6 +82,39 @@ async def test_job_scores_a_recorded_fade_against_later_bars(session_factory):
     third = await record_decisions_job(session_factory=session_factory, bars_session_factory=session_factory)
     assert third.evaluated == 1  # only the put-wall fade is still pending
     assert repo.unresolved(session_factory=session_factory)[0].key == "FADE_PUT_WALL"
+
+
+async def test_rescore_corrects_a_resolved_row_the_old_scorer_got_wrong(session_factory):
+    # T115: a resolved row is final to the nightly job, so a scorer fix needs `rescore`.
+    _seed_bars(session_factory, "SPY", 60)
+    _seed_fade_snapshot(session_factory)
+    await record_decisions_job(session_factory=session_factory, bars_session_factory=session_factory)
+    # Opens below the 98.5 target, rallies to the 101.5 wall and closes there: the low came first.
+    upsert_bars(
+        [DailyBarIn(symbol="SPY", date=dt.date(2026, 1, 6), open=98.0, high=101.8, low=98.0, close=101.6, volume=1, source="test")],
+        session_factory=session_factory,
+    )
+    short = next(r for r in repo.read_history(session_factory=session_factory) if r.key == "FADE_CALL_WALL")
+    # What the scorer wrote before T115: a +3.5R target "exited at the open", before the fill.
+    repo.apply_outcome(
+        short.id,
+        Outcome("target", 101.5, dt.date(2026, 1, 6), dt.date(2026, 1, 6), 1, 3.5, -0.3, 3.5, None,
+                dt.date(2026, 1, 6), "filled at the wall; target hit (gapped through the target: exited at the open)"),
+        session_factory=session_factory,
+    )
+
+    dry = rescore("fade", session_factory=session_factory, bars_session_factory=session_factory)
+    change = next(c for c in dry if c.record.id == short.id)
+    assert change.scored_differently and change.new.outcome == "pending"
+    assert next(  # a dry run writes nothing
+r for r in repo.read_history(session_factory=session_factory) if r.id == short.id).outcome == "target"
+
+    rescore("fade", apply=True, session_factory=session_factory, bars_session_factory=session_factory)
+    fixed = next(r for r in repo.read_history(session_factory=session_factory) if r.id == short.id)
+    assert fixed.outcome == "pending" and fixed.result_r is None
+    assert fixed.mark_r == pytest.approx(-0.1)  # (101.5 - 101.6) / 1.0
+    assert fixed.entry == 101.5 and fixed.target == 98.5  # the committed levels never move
+    assert rescore("fade", session_factory=session_factory, bars_session_factory=session_factory) == []
 
 
 async def test_job_never_raises_when_the_pipeline_fails(session_factory, monkeypatch):
