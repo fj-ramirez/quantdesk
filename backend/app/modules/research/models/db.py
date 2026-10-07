@@ -30,7 +30,7 @@ from __future__ import annotations
 
 import datetime as dt
 
-from sqlalchemy import Date, Float, Index, Integer, MetaData, String
+from sqlalchemy import Boolean, Date, Float, Index, Integer, MetaData, String
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 from sqlalchemy.types import JSON
@@ -38,7 +38,7 @@ from sqlalchemy.types import JSON
 from app.core.schemas import SCHEMA_RESEARCH
 from app.modules.gex.models.db import UTCDateTime
 
-__all__ = ["Base", "PaperCandidate", "PaperScore", "Trial"]
+__all__ = ["Base", "PaperCandidate", "PaperScore", "SignalEvent", "Trial"]
 
 #: `JSONB` on Postgres, plain `JSON` on SQLite. The tests run offline against SQLite (same
 #: arrangement as gex -- see `app.core.db.get_engine`), and `JSONB` is a Postgres-only type that
@@ -204,3 +204,46 @@ class PaperScore(Base):
         # prefix; the descending `scored_at` matches the order both read in.
         Index("ix_paper_scores_hash_scored_at", "hash", scored_at.desc()),
     )
+
+
+class SignalEvent(Base):
+    """One transition of one live price signal on one symbol (T135, plans/signal-alerts/).
+
+    The forward record of the demo forward test: every ENTER and EXIT that
+    `app.modules.research.signals` reports, whether or not it was alerted. A Telegram message is
+    not evidence; this row is.
+
+    **Append-only, keyed `(signal, symbol, bar_ts, action)`.** Each run re-reads a window of
+    bars so a missed run loses nothing, and the key makes those repeats a no-op rather than a
+    duplicate. A row is never updated: if the rule changes, the old rows stay as what the old
+    rule said at the time -- the decision log's rule (T61) and invariant 10's.
+
+    `late` is true when the event's bar was not the newest bar at the time it was recorded --
+    a transition caught up after a gap. It is recorded, never alerted as if it were fresh.
+    """
+
+    __tablename__ = "signal_events"
+
+    #: The NinjaTrader class name the signal was backtested as, e.g.
+    #: `ZScoreDip_N160_E1p5_X0p5_HighVol` or `ContinuationProxy_Short`.
+    signal: Mapped[str] = mapped_column(String(64), primary_key=True)
+    symbol: Mapped[str] = mapped_column(String(32), primary_key=True)
+    #: The bar the decision was taken on, as its source stamps it (Yahoo's 1h bar start; the
+    #: session date at midnight UTC for daily bars). An ENTER fills at the *next* bar's open.
+    bar_ts: Mapped[dt.datetime] = mapped_column(UTCDateTime(timezone=True), primary_key=True)
+    action: Mapped[str] = mapped_column(String(8), primary_key=True)
+
+    family: Mapped[str] = mapped_column(String(32), nullable=False)
+    timeframe: Mapped[str] = mapped_column(String(8), nullable=False)
+    side: Mapped[str] = mapped_column(String(8), nullable=False)
+    #: The signal bar's close: the reference stop and target are computed from, not a fill.
+    price: Mapped[float] = mapped_column(Float, nullable=False)
+    #: Continuation proxy only; null for the z-score family, which has neither.
+    stop: Mapped[float | None] = mapped_column(Float)
+    target: Mapped[float | None] = mapped_column(Float)
+    reason: Mapped[str] = mapped_column(String(256), nullable=False)
+    params: Mapped[dict] = mapped_column(_ParamsJSON, nullable=False)
+    late: Mapped[bool] = mapped_column(Boolean, nullable=False)
+    recorded_at: Mapped[dt.datetime] = mapped_column(UTCDateTime(timezone=True), nullable=False)
+
+    __table_args__ = (Index("ix_signal_events_recorded_at", "recorded_at"),)

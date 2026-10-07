@@ -149,6 +149,8 @@ number to be true, it belongs in a plan file's *Result* heading or behind an MCP
   opt-in and off by default, so the notifier cannot fail the way the thing it watches does. — T104.
 - Every alert goes through `core/notify` and quantdesk owns all of them. One message per run,
   changes only, and nothing for a rejected row. NinjaTrader only backtests. — T134.
+- A live signal calls the code its backtest scored, never a re-implementation; its events are
+  append-only in `research.signal_events`. — T135.
 - Reuse the in-hand snapshot only on a fresh write, never the duplicate path, so levels stay
   reproducible from Parquet. — T87.
 

@@ -63,3 +63,9 @@ all backend services share one environment block, so `gex-capture` and `research
 already receive `TELEGRAM_*`. Prod had neither variable set, so delivery is logged-only until
 the bot token and chat id are in the server's `.env` and the containers are recreated. Details
 are in the archive's addendum.
+
+**T135 (2026-10-06).** Landed as specified. The measured alert volume changes T136: across the
+four futures, hours with an event carry a median of 9 and up to 87 transitions, because grid
+variants share thresholds and fire together. The digest therefore gives counts per instrument
+and action, and names only the three paper-watchlist variants. Every event is still recorded
+individually in `research.signal_events`.
