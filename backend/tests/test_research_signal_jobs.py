@@ -13,9 +13,9 @@ from app.core.db import get_engine, get_sessionmaker
 from app.modules.gex.models.bars import DailyBar
 from app.modules.gex.models.db import Base as GexBase
 from app.modules.gex.storage.bars_repository import upsert_bars
+from app.modules.gex.storage.gamma_context import GammaContext
 from app.modules.research.jobs import signals as job
 from app.modules.research.models.db import Base as ResearchBase
-from app.modules.gex.storage.gamma_context import GammaContext
 from app.modules.research.signals import SignalEvent
 
 T0 = dt.datetime(2026, 10, 6, 14, tzinfo=dt.UTC)

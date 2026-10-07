@@ -1908,6 +1908,26 @@ exit, and it never adds, so forward-test one variant per account. Gates are writ
 ("only while below its 200-bar average"). The paper-watchlist variant is written as an order:
 BUY 1 at the next open, with its own exit rule. The engine and the record are unchanged.
 
+## T138 · Opus · T137 (filed and finished 2026-10-07)
+
+**The gamma regime is recorded beside every price signal, as context and never as a filter.**
+The user asked whether the price signals watch regime. They watch only their own gate (the
+200-bar average, or vol above its median). They never read the desk's dealer-gamma regime: it
+was left out so that what alerts is exactly what NinjaTrader can backtest.
+
+`gex.storage.gamma_context` reads a proxy's latest ALL-filter levels captured at or before the
+bar's close (ES→SPY, NQ→QQQ, YM→DIA, RTY→IWM; an ETF signal reads its own chain).
+- A monthly opex since the capture voids the read, the desk's rule, as does a capture more than
+  5 days old. Either way the numbers are null and `gamma_note` says why.
+- Six nullable `gamma_*` columns on `research.signal_events` (migration `d2e3f4a5b6c7`); no
+  backfill.
+- Each digest gets one line per symbol: "dealer gamma (IWM, 10-06 capture): SHORT (amplifies
+  moves), spot … below flip … -- context, not a filter".
+
+The point is the later split: whether signals taken in long-gamma regimes beat those taken in
+short-gamma ones. On 2026-10-07 the RTY dip-buys that prompted this were taken with IWM dealers
+at −4.3bn, spot 281.19 below the 293.18 flip.
+
 ## Status corrections
 
 - **Done, no Done marker above:** T00–T14, T16, T27, T29, T30, T34–T41, T59 (all merged, per

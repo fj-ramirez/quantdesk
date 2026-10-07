@@ -151,6 +151,8 @@ number to be true, it belongs in a plan file's *Result* heading or behind an MCP
   changes only, and nothing for a rejected row. NinjaTrader only backtests. — T134.
 - A live signal calls the code its backtest scored, never a re-implementation; its events are
   append-only in `research.signal_events`. — T135.
+- Dealer gamma is recorded beside a price signal, point-in-time and voided by a passed opex;
+  it is never a filter until the forward record shows it helps. — T138.
 - Reuse the in-hand snapshot only on a fresh write, never the duplicate path, so levels stay
   reproducible from Parquet. — T87.
 
