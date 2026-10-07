@@ -36,14 +36,29 @@ def test_futures_digest_counts_ranges_and_names_only_the_watchlist():
         _ev("NQ=F", "ZScoreDip_N160_E1p5_X0p5_HighVol"),  # the ES watchlist row, but on NQ
     ])
     assert msg is not None
-    assert msg.startswith("quantdesk signals: 1h bar 2026-10-06 14:00 UTC")
-    assert "ES=F 6500.25: ENTER LONG ×2, EXIT ×1" in msg
-    assert "★ ZScoreDip_N160_E1p5_X0p5_HighVol ENTER" in msg
+    assert msg.startswith("quantdesk signals · 1h bar 2026-10-06 14:00 UTC")
+    assert "1 contract, one entry, one exit, it never adds" in msg  # T137: each variant stands alone
+    assert "ES=F at 6500.25" in msg
+    assert (
+        "★ ZScoreDip_N160_E1p5_X0p5_HighVol (paper watchlist): BUY 1 at the next open. "
+        "z -1.62 < -1.5. Exit when z rises above -0.5, or when the gate closes "
+        "(only while hourly vol is above its median)." in msg
+    )
     assert msg.count("★") == 1  # not named on NQ, where it was never promoted
-    assert "enters: n 80,160 · entry_z 1,1.5 · exit_z 0,0.5 · any,high_vol" in msg
+    assert "other variants that entered long: 1 (lookback 80 bars · z fell below -1 · gate: none)" in msg
+    assert "other variants that exited: 1 (lookback 240 bars · gate: none)" in msg
+    assert "variants that entered long: 1 (lookback 160 bars · z fell below -1.5 · gate: only while hourly vol" in msg
+    assert "trend_down" not in msg and "high_vol" not in msg  # gates in words, never raw names
     assert "ZScoreDip_N80_E1_X0_Any" not in msg  # counted, not listed
     assert "roll" in msg
     assert job.futures_digest([]) is None
+
+
+def test_trend_down_gate_reads_as_a_condition_not_a_direction():
+    # T137: three RTY alerts on 2026-10-07 said "ENTER LONG" beside "trend_down".
+    msg = job.futures_digest([_ev("RTY=F", "ZScoreDip_N80_E1_X0_TrendDown", n=80, entry_z=1.0, exit_z=0.0, regime="trend_down")])
+    assert "gate: only while below its 200-bar average" in msg
+    assert "Long-only dip-buy variants" in msg
 
 
 def test_continuation_digest_reads_like_orders():
@@ -86,7 +101,7 @@ def test_hourly_run_alerts_fresh_events_once(factories, sent):
     df = _hourly_with_a_dip_on_the_last_bar()
     loader = {"ES=F": df}.get  # the other three have no data: skipped, not failed
     first = job.run_futures_signals(refresh=False, loader=loader, session_factory=factories)
-    assert first > 0 and len(sent) == 1 and "ES=F" in sent[0] and "ENTER LONG" in sent[0]
+    assert first > 0 and len(sent) == 1 and "ES=F" in sent[0] and "entered long" in sent[0]
 
     again = job.run_futures_signals(refresh=False, loader=loader, session_factory=factories)
     assert again == 0 and len(sent) == 1  # the same bar re-read: recorded once, sent once

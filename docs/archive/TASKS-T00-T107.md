@@ -1894,6 +1894,20 @@ refresh write the same parquet files. Compose and `.env.example` carry the three
 keys. Replayed against the local cache, three bars back from the newest, one run produced one
 message for ten YM exits on one line.
 
+## T137 · Opus · T136 (filed and finished 2026-10-07)
+
+**The hourly digest read as a contradiction.** The first live alerts (RTY, 2026-10-07: 06:00,
+10:00 and 11:00 bars) printed "ENTER LONG" beside a raw gate list such as `any,trend_down`. A
+variant's `regime` parameter is a gate on when it may trade, computed from the instrument's own
+price, but beside the alert it read as the market's direction. The three messages were also
+read as one signal repeated. In fact they were three groups of variants crossing deeper
+thresholds as RTY fell (2838.9 → 2830.1 → 2825.1); none repeated.
+
+The digest now states the rule: one variant is one strategy, 1 contract, one entry and one
+exit, and it never adds, so forward-test one variant per account. Gates are written in words
+("only while below its 200-bar average"). The paper-watchlist variant is written as an order:
+BUY 1 at the next open, with its own exit rule. The engine and the record are unchanged.
+
 ## Status corrections
 
 - **Done, no Done marker above:** T00–T14, T16, T27, T29, T30, T34–T41, T59 (all merged, per
