@@ -8,6 +8,9 @@ in the database when today's decisions are written and yesterday's are scored):
    `app.modules.gex.storage.decisions_repository.record_decisions`, which is a no-op for a
    `(snapshot, filter, key)` already stored -- so a manual re-run, or the safety-net capture
    producing no new snapshot, never duplicates a row.
+   **Alert (T134).** The rows this run inserted -- found by the id watermark taken before it,
+   since this job is the table's only writer -- go out as one `app.core.notify` message, active
+   and watch only. A re-run inserts nothing, so it sends nothing.
 2. **Evaluate.** For every `pending` row, read the daily bars strictly after its
    `decided_on` and hand them to `app.modules.gex.scan.outcomes.evaluate`; write whatever it says back.
    A resolved row is never re-evaluated (it is not `pending` any more), so a resolved
@@ -33,6 +36,7 @@ from typing import Any
 
 from sqlalchemy.orm import Session, sessionmaker
 
+from app.core import notify
 from app.modules.gex.api.scan import RegimeBuild, build_regime_rows
 from app.modules.gex.gex.engine import ExpiryFilter
 from app.modules.gex.scan.breakouts import (
@@ -48,7 +52,13 @@ from app.modules.gex.scan.outcomes import evaluate
 from app.modules.gex.storage import decisions_repository as repo
 from app.modules.gex.storage.bars_repository import read_bars
 
-__all__ = ["DecisionsJobResult", "breakout_summary_for", "decide_build", "record_decisions_job"]
+__all__ = [
+    "DecisionsJobResult",
+    "breakout_summary_for",
+    "decide_build",
+    "opportunities_message",
+    "record_decisions_job",
+]
 
 logger = logging.getLogger("app.modules.gex.jobs.decisions")
 
@@ -84,14 +94,64 @@ class DecisionsJobResult:
     evaluated: int
     resolved: int
     errors: tuple[str, ...] = field(default=())
+    #: Opportunities named in this run's alert (T134); 0 when there was nothing new to send.
+    alerted: int = 0
 
     def to_dict(self) -> dict[str, Any]:
         return {
             "recorded": self.recorded,
             "evaluated": self.evaluated,
             "resolved": self.resolved,
+            "alerted": self.alerted,
             "errors": list(self.errors),
         }
+
+
+#: Statuses worth a message. `rejected` rows are recorded -- they are the honest answer to
+#: "why nothing on SPY" -- but a rejected trade is not one to take on a demo account.
+ALERT_STATUSES = ("active", "watch")
+
+
+def _price(x: float) -> str:
+    return f"{x:.2f}".rstrip("0").rstrip(".")
+
+
+def opportunities_message(records: list[repo.DecisionRecord]) -> str | None:
+    """The Telegram text for newly recorded opportunities, or `None` when none is worth one.
+
+    Pure, so the format is tested without a network. Grouped by status (active first), then
+    grade, then symbol -- the order a reader would act in.
+    """
+    rows = [r for r in records if r.status in ALERT_STATUSES]
+    if not rows:
+        return None
+    rows.sort(key=lambda r: (ALERT_STATUSES.index(r.status), r.grade, r.underlying, r.key))
+    session = max(r.decided_on for r in rows)
+    lines = [f"quantdesk: {len(rows)} new opportunit{'y' if len(rows) == 1 else 'ies'} ({session} close)"]
+    for status in ALERT_STATUSES:
+        group = [r for r in rows if r.status == status]
+        if not group:
+            continue
+        lines.append("")
+        lines.append(status.upper())
+        for r in group:
+            risk = abs(r.entry - r.stop)
+            rr = abs(r.target - r.entry) / risk if risk > 0 else float("nan")
+            lines.append(
+                f"• {r.underlying} {r.key} {r.side} [{r.grade}] entry {_price(r.entry)} · "
+                f"stop {_price(r.stop)} · target {_price(r.target)} ({rr:.1f}R)"
+            )
+    lines.append("")
+    lines.append("Unproven setups: check gex_track_record per key before sizing. Analysis only.")
+    return "\n".join(lines)
+
+
+def _alert(new_records: list[repo.DecisionRecord]) -> int:
+    message = opportunities_message(new_records)
+    if message is None:
+        return 0
+    notify.send(message, level=logging.INFO)
+    return sum(1 for r in new_records if r.status in ALERT_STATUSES)
 
 
 def _record(filter_: ExpiryFilter, session_factory: sessionmaker[Session] | None) -> int:
@@ -140,18 +200,27 @@ async def record_decisions_job(
             monkeypatch exactly as `test_scan_api.py` does.
     """
     errors: list[str] = []
-    recorded = evaluated = resolved = 0
+    recorded = evaluated = resolved = alerted = 0
+    new_records: list[repo.DecisionRecord] = []
     try:
+        watermark = await asyncio.to_thread(repo.latest_id, session_factory=session_factory)
         recorded = await asyncio.to_thread(_record, filter_, session_factory)
+        if recorded:
+            new_records = await asyncio.to_thread(repo.inserted_after, watermark, session_factory=session_factory)
     except Exception as exc:  # the capture must be structurally unaffected by anything here
         logger.exception("record_decisions_job: recording failed")
         errors.append(f"record: {exc}")
+    try:
+        alerted = await asyncio.to_thread(_alert, new_records)
+    except Exception as exc:  # notify.send never raises; formatting a bad row still must not
+        logger.exception("record_decisions_job: alert failed")
+        errors.append(f"alert: {exc}")
     try:
         evaluated, resolved = await asyncio.to_thread(_evaluate, session_factory, bars_session_factory)
     except Exception as exc:
         logger.exception("record_decisions_job: evaluation failed")
         errors.append(f"evaluate: {exc}")
 
-    result = DecisionsJobResult(recorded, evaluated, resolved, tuple(errors))
+    result = DecisionsJobResult(recorded, evaluated, resolved, tuple(errors), alerted)
     logger.info(json.dumps({"event": "decisions_job_summary", **result.to_dict()}))
     return result

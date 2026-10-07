@@ -147,6 +147,8 @@ number to be true, it belongs in a plan file's *Result* heading or behind an MCP
 - Every service has a memory limit; `MALLOC_ARENA_MAX=2`. — T86.
 - Alert on a universe-wide capture gap, never on ordinary per-symbol staleness. Delivery is
   opt-in and off by default, so the notifier cannot fail the way the thing it watches does. — T104.
+- Every alert goes through `core/notify` and quantdesk owns all of them. One message per run,
+  changes only, and nothing for a rejected row. NinjaTrader only backtests. — T134.
 - Reuse the in-hand snapshot only on a fresh write, never the duplicate path, so levels stay
   reproducible from Parquet. — T87.
 

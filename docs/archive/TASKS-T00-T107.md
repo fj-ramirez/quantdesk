@@ -1841,6 +1841,19 @@ at +2.60 against +2.64, which is the bar revision.
 Both `se` figures still treat re-emissions as independent (T116) and still include the
 mislabelled pre-T99 rows (T117).
 
+## T134 · Opus · T104 (filed and finished 2026-10-06, [plans/signal-alerts/](../../plans/signal-alerts/README.md))
+
+**Desk opportunities to Telegram.** `record_decisions_job` takes an id watermark before it
+records (it is the table's only writer), reads back the rows above it, and sends one
+`app.core.notify` message. The message covers active and watch rows only, ordered by status,
+then grade, then symbol, each with entry, stop, target and R:R. Rejected rows are recorded but
+never sent; a re-run inserts nothing and sends nothing. The alert step is fenced like the other
+two, so a failure lands in `errors` and recording and scoring still run (tested).
+`DecisionsJobResult.alerted` counts what was named. Compose needed no change: every backend
+service shares one environment block, so `gex-capture` already receives `TELEGRAM_*`. Prod had
+neither variable set on 2026-10-06, so delivery stays logged-only until both are in the
+server's `.env` and the containers are recreated.
+
 ## Status corrections
 
 - **Done, no Done marker above:** T00–T14, T16, T27, T29, T30, T34–T41, T59 (all merged, per

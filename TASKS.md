@@ -23,10 +23,28 @@ How to use this file:
   `context/decisions.md` if it settled a rule. A finished block does not stay here.
 - New work gets the next free ID and is filed here, never fixed silently.
 
-**Next free ID: T128.** (T108 was allocated retroactively — see the archive's addendum;
+**Next free ID: T137.** (T108 was allocated retroactively — see the archive's addendum;
 T109–T114 were filed on 2026-09-22 from the task-history audit, T115–T121 from the logic audit;
 T122–T124 were filed and finished on 2026-09-23 — see the addendum; T125–T127 were filed on
-2026-09-25 for the ThetaData initiative, [plans/thetadata/](plans/thetadata/README.md).)
+2026-09-25 for the ThetaData initiative, [plans/thetadata/](plans/thetadata/README.md); T128–T133
+on feature branches; T134–T136 on 2026-10-06 for [plans/signal-alerts/](plans/signal-alerts/README.md).)
+
+---
+
+## Signal alerts (2026-10-06)
+
+> Initiative: [plans/signal-alerts/README.md](plans/signal-alerts/README.md). Every opportunity
+> to Telegram for demo forward-testing; quantdesk owns every alert, NinjaTrader only backtests.
+> T134 landed 2026-10-06 (see the archive's addendum).
+
+### T135 · Opus · T134
+**Price-signal engine and its append-only record** — the 120 z-score variants on ES/NQ/YM/RTY
+1h through `research.strategies`, and the continuation proxy on daily bars for a configured
+universe; each transition written once to `research.signal_events`. Spec in the plan file.
+
+### T136 · Sonnet · T135
+**Price-signal alerts on a schedule** — hourly at :05 while futures trade, daily after the 17:30
+bars job; one digest per run, grouped per instrument, roll-gap caveat included.
 
 ---
 

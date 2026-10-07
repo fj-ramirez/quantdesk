@@ -18,7 +18,7 @@ from dataclasses import dataclass
 from typing import Any
 from zoneinfo import ZoneInfo
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session, sessionmaker
 
 from app.core.config import settings
@@ -33,6 +33,8 @@ __all__ = [
     "by_setup",
     "decided_on_for",
     "get_session_factory",
+    "inserted_after",
+    "latest_id",
     "read_history",
     "record_decisions",
     "unresolved",
@@ -236,6 +238,27 @@ def unresolved(*, session_factory: sessionmaker[Session] | None = None) -> list[
     with factory() as session:
         rows = session.execute(
             select(Decision).where(Decision.outcome == "pending").order_by(Decision.decided_on, Decision.id)
+        ).scalars()
+        return [_record(r) for r in rows]
+
+
+def latest_id(*, session_factory: sessionmaker[Session] | None = None) -> int:
+    """The highest `decisions.id`, or 0 for an empty table -- the watermark a caller takes
+    before `record_decisions` so `inserted_after` can say which rows that run added (T134)."""
+    factory = session_factory or get_session_factory()
+    with factory() as session:
+        return session.execute(select(func.max(Decision.id))).scalar() or 0
+
+
+def inserted_after(
+    decision_id: int, *, session_factory: sessionmaker[Session] | None = None
+) -> list[DecisionRecord]:
+    """Every row with an id above `decision_id`, oldest first. The decisions job is the only
+    writer, so the rows above its own watermark are exactly the ones its run inserted."""
+    factory = session_factory or get_session_factory()
+    with factory() as session:
+        rows = session.execute(
+            select(Decision).where(Decision.id > decision_id).order_by(Decision.id)
         ).scalars()
         return [_record(r) for r in rows]
 
