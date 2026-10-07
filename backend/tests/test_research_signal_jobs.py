@@ -15,9 +15,14 @@ from app.modules.gex.models.db import Base as GexBase
 from app.modules.gex.storage.bars_repository import upsert_bars
 from app.modules.research.jobs import signals as job
 from app.modules.research.models.db import Base as ResearchBase
+from app.modules.gex.storage.gamma_context import GammaContext
 from app.modules.research.signals import SignalEvent
 
 T0 = dt.datetime(2026, 10, 6, 14, tzinfo=dt.UTC)
+
+
+def _long_gamma(proxy: str, as_of: dt.datetime) -> GammaContext:
+    return GammaContext(proxy, dt.date(2026, 10, 6), 1.2e9, 650.0, 640.0)
 
 
 def _ev(symbol: str, signal: str, action: str = "ENTER", **params) -> SignalEvent:
@@ -100,10 +105,11 @@ def _hourly_with_a_dip_on_the_last_bar() -> pd.DataFrame:
 def test_hourly_run_alerts_fresh_events_once(factories, sent):
     df = _hourly_with_a_dip_on_the_last_bar()
     loader = {"ES=F": df}.get  # the other three have no data: skipped, not failed
-    first = job.run_futures_signals(refresh=False, loader=loader, session_factory=factories)
+    first = job.run_futures_signals(refresh=False, loader=loader, session_factory=factories, gamma_lookup=_long_gamma)
     assert first > 0 and len(sent) == 1 and "ES=F" in sent[0] and "entered long" in sent[0]
+    assert "dealer gamma (SPY, 10-06 capture): LONG (dampens moves), spot 650 above flip 640 -- context, not a filter" in sent[0]
 
-    again = job.run_futures_signals(refresh=False, loader=loader, session_factory=factories)
+    again = job.run_futures_signals(refresh=False, loader=loader, session_factory=factories, gamma_lookup=_long_gamma)
     assert again == 0 and len(sent) == 1  # the same bar re-read: recorded once, sent once
 
 
@@ -117,7 +123,9 @@ def test_daily_run_reads_gex_bars_and_alerts_the_proxy(factories, sent):
         day += dt.timedelta(days=1)
     upsert_bars(rows, session_factory=factories)
 
-    n = job.run_continuation_signals(universe=["HYG", "XLU"], bars_session_factory=factories, session_factory=factories)
+    n = job.run_continuation_signals(
+        universe=["HYG", "XLU"], bars_session_factory=factories, session_factory=factories, gamma_lookup=_long_gamma
+    )
     # On the last session the previous short reaches its target and the same close signals again.
     assert n == 2 and len(sent) == 1
     assert "HYG SHORT at the next open" in sent[0] and "HYG short exit: target" in sent[0]
@@ -140,3 +148,19 @@ async def test_a_failing_run_never_reaches_the_scheduler(monkeypatch, caplog):
     monkeypatch.setattr(job, "run_futures_signals", boom)
     await job.hourly_signals_job()
     assert "signals hourly run failed" in caplog.text
+
+
+def test_gamma_is_looked_up_once_per_proxy_and_moment_and_never_after_the_bar():
+    # T138: point-in-time -- a late event is annotated with what was knowable at its bar.
+    calls: list[tuple[str, dt.datetime]] = []
+
+    def lookup(proxy, as_of):
+        calls.append((proxy, as_of))
+        return GammaContext(proxy, note="no capture before this bar")
+
+    now = T0 + dt.timedelta(hours=5)
+    events = [_ev("RTY=F", "A"), _ev("RTY=F", "B"), _ev("ES=F", "C")]
+    out = job.with_gamma(events, job.GAMMA_PROXY.__getitem__, lookup, now)
+    assert calls == [("IWM", T0 + dt.timedelta(hours=1)), ("SPY", T0 + dt.timedelta(hours=1))]
+    assert [e.gamma_proxy for e in out] == ["IWM", "IWM", "SPY"]
+    assert all(e.gamma_net_gex is None and e.gamma_note for e in out)  # unknown, never zero

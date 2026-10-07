@@ -90,6 +90,15 @@ class SignalEvent:
     params: dict[str, Any] = field(default_factory=dict)
     stop: float | None = None
     target: float | None = None
+    #: T138: the dealer-gamma read of `gamma_proxy` at this bar -- context, never a filter. Filled
+    #: by the job (this module stays pure); every field `None` when unknown, with `gamma_note`
+    #: saying why.
+    gamma_proxy: str | None = None
+    gamma_session_date: dt.date | None = None
+    gamma_net_gex: float | None = None
+    gamma_spot: float | None = None
+    gamma_flip_point: float | None = None
+    gamma_note: str | None = None
 
     @property
     def key(self) -> tuple[str, str, dt.datetime, str]:
