@@ -41,6 +41,7 @@ from app.core.db import get_engine
 from app.core.schemas import SCHEMA_RESEARCH
 from app.core.version import record_service_version
 from app.modules.research.jobs.scheduler import build_research_scheduler
+from app.modules.research.jobs.signals import add_signal_jobs
 
 logger = logging.getLogger("app.workers.research_search")
 
@@ -130,6 +131,7 @@ async def run(*, stop: asyncio.Event | None = None, wait_for_schema: bool = True
     stop = stop if stop is not None else asyncio.Event()
 
     scheduler = build_research_scheduler()
+    add_signal_jobs(scheduler)  # T136: live price signals, independent of the search schedule
     scheduler.start()
     jobs = [job.id for job in scheduler.get_jobs()]
     logger.info(

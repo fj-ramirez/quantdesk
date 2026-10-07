@@ -15,6 +15,7 @@ Two sources:
 from __future__ import annotations
 
 import logging
+import threading
 import time
 from pathlib import Path
 
@@ -32,6 +33,11 @@ _RESAMPLE_RULE = {"1h": "1h", "4h": "4h", "1d": "1D"}
 _BAR_DURATION = {"1h": pd.Timedelta(hours=1), "4h": pd.Timedelta(hours=4), "1d": pd.Timedelta(days=1)}
 # Skip a Yahoo refetch if the cache is younger than this.
 _YAHOO_STALENESS = {"1h": pd.Timedelta(hours=1), "1d": pd.Timedelta(hours=6)}
+
+#: Serialises the 1h read-merge-write. Two jobs in the research worker write the same parquet
+#: files -- the nightly search's `update_all` and the hourly signals refresh (T136) -- and a
+#: merge that reads one writer's half-written file loses bars.
+_WRITE_LOCK = threading.Lock()
 
 
 def cache_path(market: str, symbol: str, timeframe: str) -> Path:
@@ -102,7 +108,10 @@ def _update_ccxt(market: str, mcfg: dict) -> None:
 
 # --------------------------------------------------------------- yahoo source
 
-def _update_yahoo(market: str, mcfg: dict) -> None:
+def _update_yahoo(market: str, mcfg: dict, *, force: bool = False) -> None:
+    """Refetch every (symbol, timeframe) in `mcfg` older than its staleness window, or all of
+    them when `force` -- the hourly signals job needs the bar that closed minutes ago, and its
+    own previous write is usually just under an hour old."""
     import yfinance as yf
 
     now = pd.Timestamp.now(tz="UTC")
@@ -110,7 +119,7 @@ def _update_yahoo(market: str, mcfg: dict) -> None:
         ticker = yf.Ticker(symbol)
         for tf in mcfg["timeframes"]:
             path = cache_path(market, symbol, tf)
-            if path.exists():
+            if path.exists() and not force:
                 age = now - pd.Timestamp(path.stat().st_mtime, unit="s", tz="UTC")
                 if age < _YAHOO_STALENESS[tf]:
                     continue
@@ -136,12 +145,13 @@ def _update_yahoo(market: str, mcfg: dict) -> None:
                 # (Bars older than the window keep their adjustment as of when
                 # they were fetched — a small, accepted inconsistency. Daily
                 # data is always a full refetch, so it stays fully adjusted.)
-                if tf == "1h" and path.exists():
-                    cached = pd.read_parquet(path)
-                    df = pd.concat([cached, df])
-                    df = df[~df.index.duplicated(keep="last")].sort_index()
-                path.parent.mkdir(parents=True, exist_ok=True)
-                df.to_parquet(path)
+                with _WRITE_LOCK:
+                    if tf == "1h" and path.exists():
+                        cached = pd.read_parquet(path)
+                        df = pd.concat([cached, df])
+                        df = df[~df.index.duplicated(keep="last")].sort_index()
+                    path.parent.mkdir(parents=True, exist_ok=True)
+                    df.to_parquet(path)
                 log.info("%s/%s %s: total %d bars", market, symbol, tf, len(df))
             except Exception:
                 log.exception("failed to update %s/%s %s; using cached data",
@@ -158,6 +168,11 @@ def update_all(cfg: dict) -> None:
             _update_yahoo(market, mcfg)
         else:
             raise ValueError(f"unknown data source: {mcfg['source']}")
+
+
+def refresh(market: str, mcfg: dict, symbols: list[str], timeframe: str) -> None:
+    """Force-refetch `symbols` at `timeframe` for one Yahoo market (T136's hourly refresh)."""
+    _update_yahoo(market, {**mcfg, "symbols": symbols, "timeframes": [timeframe]}, force=True)
 
 
 def cache_ages(cfg: dict) -> dict[str, tuple[int, float | None]]:

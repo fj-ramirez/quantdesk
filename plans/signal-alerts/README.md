@@ -69,3 +69,13 @@ four futures, hours with an event carry a median of 9 and up to 87 transitions, 
 variants share thresholds and fire together. The digest therefore gives counts per instrument
 and action, and names only the three paper-watchlist variants. Every event is still recorded
 individually in `research.signal_events`.
+
+**T136 (2026-10-06).** Landed, with three departures from the spec:
+- The hourly job runs on every day, not only during futures hours, because a closed market
+  yields no new bar and therefore no message.
+- The daily job runs twice (17:50 and 20:00 ET), so a late bars job is caught the same evening.
+- The jobs register through their own `add_signal_jobs`, leaving the search scheduler's pinned
+  policy untouched.
+
+The initiative is complete. To turn delivery on, set `TELEGRAM_BOT_TOKEN` and
+`TELEGRAM_CHAT_ID` in the server's `.env` and redeploy.
