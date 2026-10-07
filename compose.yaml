@@ -140,6 +140,12 @@ services:
       TELEGRAM_CHAT_ID: ${TELEGRAM_CHAT_ID:-}
       CAPTURE_WATCH_INTERVAL_MINUTES: ${CAPTURE_WATCH_INTERVAL_MINUTES:-60}
       CAPTURE_WATCH_HEARTBEAT_DAYS: ${CAPTURE_WATCH_HEARTBEAT_DAYS:-0}
+      # T136. Live price signals for demo forward-testing (plans/signal-alerts/), run by
+      # `research-search` and delivered through the same Telegram settings above. Crontab lines in
+      # TZ, or `off`.
+      SIGNALS_HOURLY_CRON: ${SIGNALS_HOURLY_CRON:-5 * * * *}
+      SIGNALS_DAILY_CRON: ${SIGNALS_DAILY_CRON:-50 17,20 * * 1-5}
+      SIGNALS_CONTINUATION_UNIVERSE: ${SIGNALS_CONTINUATION_UNIVERSE:-HYG,XLU,XLB,XLE,XOP,EEM}
       # T76. The read-only role the T82 MCP connector authenticates as. `alembic upgrade head`
       # creates the role and its grants; `app.core.ro_role` (the boot step after it, see
       # backend/Dockerfile) gives it LOGIN with this password. Defaulted in dev and required in

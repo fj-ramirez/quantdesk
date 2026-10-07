@@ -39,7 +39,7 @@ plans/
     05-mcp-connector.md             T82  read-only MCP over all three schemas
   thetadata/                        ThetaData Options Standard (2026-09-25) — T125, T26, T126, T127
     README.md                       what the subscription gives, the five rules, dependency graph
-  signal-alerts/                    every opportunity to Telegram for demo forward-testing (2026-10-06) — T135, T136 open
+  signal-alerts/                    every opportunity to Telegram for demo forward-testing (2026-10-06) — complete
     README.md                       the five rules, T134-T136 specs, Result
   capture-memory/                   the capture worker's heap (2026-09-21) — complete (T89 not needed)
     README.md                       the measurements, the anon/page-cache distinction, the gate

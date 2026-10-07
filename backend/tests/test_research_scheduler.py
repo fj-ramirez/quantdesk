@@ -140,6 +140,7 @@ async def test_worker_starts_the_scheduler_and_stops_on_signal(monkeypatch):
 
     fake = _FakeScheduler()
     monkeypatch.setattr(worker, "build_research_scheduler", lambda: fake)
+    monkeypatch.setattr(worker, "add_signal_jobs", lambda _s: [])  # T136; tested on its own
 
     stop = asyncio.Event()
     task = asyncio.create_task(worker.run(stop=stop, wait_for_schema=False))
@@ -167,6 +168,7 @@ async def test_worker_warns_when_it_has_no_jobs(monkeypatch, caplog):
             pass
 
     monkeypatch.setattr(worker, "build_research_scheduler", lambda: _EmptyScheduler())
+    monkeypatch.setattr(worker, "add_signal_jobs", lambda _s: [])
 
     stop = asyncio.Event()
     with caplog.at_level("WARNING", logger="app.workers.research_search"):
