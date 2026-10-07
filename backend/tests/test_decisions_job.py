@@ -5,12 +5,13 @@ module-level factories are monkeypatched onto it exactly as `test_decisions_api.
 
 from __future__ import annotations
 
+import dataclasses
 import datetime as dt
 
 import pytest
 
 from app.core.db import get_engine, get_sessionmaker
-from app.modules.gex.jobs.decisions import record_decisions_job
+from app.modules.gex.jobs.decisions import opportunities_message, record_decisions_job
 from app.modules.gex.jobs.rescore import rescore
 from app.modules.gex.models.bars import DailyBar as DailyBarIn
 from app.modules.gex.models.db import Base
@@ -115,6 +116,68 @@ r for r in repo.read_history(session_factory=session_factory) if r.id == short.i
     assert fixed.mark_r == pytest.approx(-0.1)  # (101.5 - 101.6) / 1.0
     assert fixed.entry == 101.5 and fixed.target == 98.5  # the committed levels never move
     assert rescore("fade", session_factory=session_factory, bars_session_factory=session_factory) == []
+
+
+def _rec(**kw) -> repo.DecisionRecord:
+    base = repo.DecisionRecord(
+        id=1, underlying="SPY", filter="ALL", snapshot_id=1, key="FADE_CALL_WALL",
+        decided_on=dt.date(2026, 10, 6), as_of=dt.datetime(2026, 10, 6, 20, 20, tzinfo=dt.UTC),
+        setup="fade", side="SHORT", status="active", score=60, grade="B", entry=785.0,
+        stop=788.5, target=780.0, target_2=None, spot=779.6, atr14=7.0, outcome="pending",
+        fill=None, triggered_on=None, resolved_on=None, bars_held=None, mfe_r=None, mae_r=None,
+        result_r=None, mark_r=None, evaluated_through=None, outcome_note=None, opportunity={},
+    )
+    return dataclasses.replace(base, **kw)
+
+
+def test_message_names_active_then_watch_and_drops_rejected():
+    # T134
+    msg = opportunities_message([
+        _rec(underlying="SPX", status="watch", grade="B", entry=8000.0, stop=8035.0, target=7800.0),
+        _rec(underlying="SMH", status="active", grade="C", entry=650.0, stop=657.1, target=640.0),
+        _rec(underlying="QQQ", status="rejected"),
+    ])
+    assert msg is not None
+    assert msg.startswith("quantdesk: 2 new opportunities (2026-10-06 close)")
+    assert msg.index("ACTIVE") < msg.index("SMH") < msg.index("WATCH") < msg.index("SPX")
+    assert "QQQ" not in msg
+    assert "entry 8000 · stop 8035 · target 7800 (5.7R)" in msg
+    assert "stop 657.1 ·" in msg
+
+
+def test_message_is_none_when_nothing_is_worth_sending():
+    assert opportunities_message([]) is None
+    assert opportunities_message([_rec(status="rejected")]) is None
+
+
+async def test_job_alerts_each_new_opportunity_once(session_factory, monkeypatch):
+    # T134: one message for what this run inserted; a re-run inserts nothing and says nothing.
+    sent: list[str] = []
+    monkeypatch.setattr("app.modules.gex.jobs.decisions.notify.send", lambda m, **_: sent.append(m))
+    _seed_bars(session_factory, "SPY", 60)
+    _seed_fade_snapshot(session_factory)
+
+    first = await record_decisions_job(session_factory=session_factory, bars_session_factory=session_factory)
+    rows = repo.read_history(session_factory=session_factory)
+    expected = sum(1 for r in rows if r.status in ("active", "watch"))
+    assert expected > 0, f"the seed should emit an alertable fade: {[r.status for r in rows]}"
+    assert first.alerted == expected
+    assert len(sent) == 1 and "SPY FADE_" in sent[0]
+
+    second = await record_decisions_job(session_factory=session_factory, bars_session_factory=session_factory)
+    assert second.alerted == 0 and len(sent) == 1
+
+
+async def test_job_survives_a_failing_alert(session_factory, monkeypatch):
+    def boom(_records):
+        raise RuntimeError("bad row")
+
+    monkeypatch.setattr("app.modules.gex.jobs.decisions.opportunities_message", boom)
+    _seed_bars(session_factory, "SPY", 60)
+    _seed_fade_snapshot(session_factory)
+    result = await record_decisions_job(session_factory=session_factory, bars_session_factory=session_factory)
+    assert result.recorded == 2 and result.evaluated == 2  # recording and scoring still ran
+    assert any(e.startswith("alert: bad row") for e in result.errors)
 
 
 async def test_job_never_raises_when_the_pipeline_fails(session_factory, monkeypatch):
