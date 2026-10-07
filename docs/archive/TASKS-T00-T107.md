@@ -1874,6 +1874,26 @@ Over the last ~20 days they produced 3,714 events. About 14% of hours carry at l
 with a median of 9 events and a maximum of 87. So T136's digest must summarise rather than
 list.
 
+## T136 · Sonnet · T135 (filed and finished 2026-10-06, [plans/signal-alerts/](../../plans/signal-alerts/README.md))
+
+**Price-signal alerts on a schedule.** `app.modules.research.jobs.signals` registers two jobs
+on the `research-search` scheduler through `add_signal_jobs`. They are kept separate from
+`build_research_scheduler`, whose one-job, no-catch-up policy its tests pin.
+- **Hourly at :05**, every day. It force-refreshes the four 1h futures series and runs the 120
+  variants. A closed market produces no new bar, so no message, and there is no market-hours
+  calendar to get wrong.
+- **Weekdays at 17:50 and 20:00 ET**, the continuation proxy over
+  `SIGNALS_CONTINUATION_UNIVERSE`. The 20:00 run is the safety net for a late bars job.
+
+Only fresh events are sent, and each run's digest summarises: counts per instrument and
+action, the parameter ranges that fired, and a name only for the paper-watchlist variant on
+its own symbol. A run fails into the log, never into the scheduler.
+
+`data._update_yahoo` gained `force` and a write lock, because the nightly search and the hourly
+refresh write the same parquet files. Compose and `.env.example` carry the three `SIGNALS_*`
+keys. Replayed against the local cache, three bars back from the newest, one run produced one
+message for ten YM exits on one line.
+
 ## Status corrections
 
 - **Done, no Done marker above:** T00–T14, T16, T27, T29, T30, T34–T41, T59 (all merged, per

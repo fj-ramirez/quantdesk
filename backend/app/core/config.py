@@ -109,6 +109,18 @@ class Settings(BaseSettings):
     RESEARCH_CRON: str = "0 2 * * *"
     RESEARCH_INTERVAL_MINUTES: int = 60
 
+    # --- T136: live price signals for demo forward-testing (plans/signal-alerts/) --------------
+    # Crontab lines in `settings.TZ`, or `off`. Hourly at :05 on every day rather than only while
+    # futures trade: a closed market yields no new bar, so no new event and no message, and a
+    # market-hours calendar would be one more thing to get wrong. Daily twice after the 17:30 bars
+    # job: the 20:00 run is the safety net for a late bars job, and costs nothing when 17:50
+    # already recorded the session (the store's key makes it a no-op).
+    SIGNALS_HOURLY_CRON: str = "5 * * * *"
+    SIGNALS_DAILY_CRON: str = "50 17,20 * * 1-5"
+    # The continuation proxy's universe. Small on purpose: over the full scan universe a
+    # five-session-return rule signals on roughly half the symbols every day.
+    SIGNALS_CONTINUATION_UNIVERSE: str = "HYG,XLU,XLB,XLE,XOP,EEM"
+
     # --- T79: the terminal module (xactx) ------------------------------------------------------
     # Folded in from the standalone repo's own pydantic-settings class, **keeping its `XA_`
     # environment-variable names exactly**: `XA_FRED_API_KEY`, `XA_ZSCORE_WINDOW` and the rest
