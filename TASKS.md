@@ -35,12 +35,7 @@ on feature branches; T134–T136 on 2026-10-06 for [plans/signal-alerts/](plans/
 
 > Initiative: [plans/signal-alerts/README.md](plans/signal-alerts/README.md). Every opportunity
 > to Telegram for demo forward-testing; quantdesk owns every alert, NinjaTrader only backtests.
-> T134 landed 2026-10-06 (see the archive's addendum).
-
-### T135 · Opus · T134
-**Price-signal engine and its append-only record** — the 120 z-score variants on ES/NQ/YM/RTY
-1h through `research.strategies`, and the continuation proxy on daily bars for a configured
-universe; each transition written once to `research.signal_events`. Spec in the plan file.
+> T134 and T135 landed 2026-10-06 (see the archive's addendum).
 
 ### T136 · Sonnet · T135
 **Price-signal alerts on a schedule** — hourly at :05 while futures trade, daily after the 17:30
