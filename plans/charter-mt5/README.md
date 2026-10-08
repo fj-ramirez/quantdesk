@@ -260,3 +260,27 @@ what it is.
   **on this branch**, with the reason, rather than deleted.
 - **Step 5, the live journal** (demo fills compared with the backtest, kill-rule status).
 - MT5's Strategy Tester. EdgeLab is the one backtester.
+
+## Result
+
+### T146 — landed 2026-10-08
+
+- `app/modules/gex/scan/price_action.py` provides `swings`, `structure`, `breaks` (BOS/CHoCH),
+  `zones`, `bar_patterns` (inside, outside, pin, engulfing) and `sweeps`. Every event is an
+  `Event` with integer bar positions `occurred` and `confirmed`, and no timestamps (see the
+  module docstring for why).
+- The lookahead property test runs every detector on `bars[: t + 1]` across 8 seeded random
+  walks and compares against the full run filtered to `confirmed <= t`.
+  - **Mutation-checked:** stamping swing highs as confirmed when they occur fails the test on
+    all 8 seeds.
+  - The restored code passes, along with 31 module tests in total. The full backend suite
+    passed (1382), and ruff is clean.
+- Judgment calls:
+  - Ties: a swing is strictly beyond its left window and at least level with its right window,
+    so a flat top gives one swing, at its first bar.
+  - An equal high is `LH` and an equal low is `HL`.
+  - Highs and lows share zone clusters, so a broken resistance can become support.
+  - A swing whose ATR is still `NaN` is left out of zones rather than clustered against a
+    tolerance that was made up.
+  - A close through a swing retires it for `sweeps`, because it has become a `breaks` event.
+- Not yet run on real bars. T147 is the first consumer.
