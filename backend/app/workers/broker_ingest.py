@@ -76,7 +76,10 @@ async def main() -> int:
                       max_instances=1, coalesce=True)
     scheduler.start()
     logger.info("broker_ingest: scheduler started; jobs=%s", [j.id for j in scheduler.get_jobs()])
-    await ingestor.run_hour()
+    try:
+        await ingestor.run_hour()
+    except Exception:  # the boot run is a convenience; the scheduled one retries
+        logger.exception("broker_ingest: boot run of the hourly job failed")
 
     stop = asyncio.Event()
     loop = asyncio.get_running_loop()

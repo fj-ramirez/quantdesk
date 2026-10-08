@@ -183,6 +183,11 @@ class Ingestor:
                 await self.ticks(symbol, now)
             except BridgeError as e:
                 logger.warning("broker: ticks %s failed: %s", symbol, e)
+            except OSError:
+                # A tick file that cannot be written must not take the bars down with it: on
+                # 2026-10-08 an unwritable /data/broker crash-looped the whole worker, and the
+                # history walk with it. Logged loudly; the hour is retried next run.
+                logger.exception("broker: ticks %s could not be written", symbol)
 
     # ------------------------------------------------------------------ bars
 

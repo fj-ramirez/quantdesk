@@ -307,3 +307,16 @@ async def test_backward_walk_waits_out_history_still_downloading(factory, tmp_pa
     with factory() as s:
         assert s.scalar(sa.select(sa.func.min(Bar.ts))) == start
         assert s.scalar(sa.select(sa.func.count()).select_from(Bar)) == _open_minutes(start, now)
+
+
+async def test_an_unwritable_tick_dir_is_logged_not_fatal(factory, tmp_path, caplog):
+    now = dt.datetime(2026, 10, 8, 14, 30, tzinfo=UTC)
+    bridge = FakeBridge(now - dt.timedelta(days=1))
+    bridge.now = now
+    blocker = tmp_path / "file-not-dir"
+    blocker.write_text("")
+    ing = _ingestor(bridge, factory, blocker, tick_hours=1)  # data_dir is a file: mkdir fails
+    await _confirm_clock(ing, bridge, factory)
+    with caplog.at_level(logging.ERROR):
+        await ing.run_hour(now)
+    assert "could not be written" in caplog.text
