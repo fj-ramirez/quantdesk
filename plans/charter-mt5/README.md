@@ -45,8 +45,22 @@ reused here rather than rewritten.
 | Basis at each desk 5-minute close | `broker.basis` | Computed once, read by `broker_levels` and the event study |
 | Event-study trials | `research.trials` through `Registry` | One registry, invariant 9 |
 
-Symbols: **US500, NAS100, US30, XAUUSD**. Axi's exact symbol names and suffixes are verified at
-first contact, not assumed. They live in config (`BROKER_SYMBOLS`), never in code.
+Symbols: the **futures-based** Axi CFDs for the three indices, plus `XAUUSD`. The user said on
+2026-10-08 that cash CFDs have a 1-lot minimum on live accounts, against 0.01 for the futures-based
+ones, so the futures-based ones are what gets traded. Names are as Axi spells them, verified at
+first contact (see the T143 result). They live in config (`BROKER_SYMBOLS`), never in code.
+
+What futures-based means for the plan:
+
+- **Rolls.** The contracts expire. Their price history jumps at each roll, and EdgeLab's
+  futures roll-gap caveat (invariant 9) applies to T147. Specs carry `start_time` and
+  `expiration_time`, so T144 can detect a roll and T147 can refuse to hold a trade across one,
+  or price the jump explicitly.
+- **Basis** to SPX/NDX/DJI includes the futures' fair value. It decays toward expiry and jumps
+  at the roll. T145 resets its basis series at a detected roll instead of smoothing over the
+  jump.
+- **Swap** may be zero or different on these contracts. Read it from the spec snapshots; never
+  carry it over from the cash CFD.
 
 ## Design decisions (judgment calls, named as such)
 
@@ -58,9 +72,10 @@ first contact, not assumed. They live in config (`BROKER_SYMBOLS`), never in cod
    is the ordinary backend image and is the bridge's only client. The bridge stays thin: it
    translates MT5 calls and holds no logic.
 2. **For this round the bridge exposes read operations only.** These are `account`, `symbols`,
-   `spec`, `rates_range`, `ticks_range` and `tick`. There is no `order_send` path. The terminal
-   should log in with the account's **investor password**, which MT5 itself refuses to trade
-   from. Step 4 changes that deliberately, in its own task, and at the same time amends the
+   `spec`, `rates_range`, `ticks_range` and `tick`. There is no `order_send` path, and the
+   terminal's ini disables Experts and live trading. Axi demo accounts offer no investor
+   password (user, 2026-10-08), so the login is the full one, and the code is the guard.
+   Step 4 changes that deliberately, in its own task, and at the same time amends the
    invariant on this branch. Until then, "no order routing" holds unchanged.
 3. **MT5 timestamps are server wall-clock, not UTC** (charter's `client.py` documents it).
    Axi's server runs on a broker timezone that moves with DST. The offset is **measured, never
@@ -327,3 +342,15 @@ what it is.
   - the container turns healthy;
   - `account` reports the Axi demo login with `trade_mode == "demo"`;
   - `rates_range` returns M1 bars for the four symbols, with their Axi names recorded here.
+
+**First contact on the homeserver, 2026-10-08:**
+- The first login failed because `MT5_SERVER` was mis-capitalised. The user fixed it, logged in
+  over VNC, and the bridge then attached.
+- Before the fix, the bridge's 60 s `initialize` outlasted the healthcheck, and the late answer
+  hit a closed socket. Fixed in `8f029e5`: initialize now waits 10 s and the healthcheck 25 s.
+- `account` returned login `10067647` on `Axi-US50-Demo`, `trade_mode: demo`, leverage 1:1000.
+  The user says live leverage is the same. `trade_allowed` is false, but that comes from
+  Experts being disabled; this demo account has no investor password.
+- Symbols matched by the first search: `US30`, `US500`, `NAS100.fs`, `XAUUSD`, `XAUUSD-PERP`
+  and gold crosses. **The futures-based S&P and Dow names had not been found yet.** They are not
+  `US500.fs` or `US30.fs`.

@@ -56,6 +56,9 @@ SPEC_FIELDS = (
     "swap_mode", "swap_long", "swap_short", "swap_rollover3days", "currency_base",
     "currency_profit", "currency_margin", "trade_mode", "spread", "spread_float",
     "description", "path",
+    # Futures-based CFDs (the `.fs` symbols the user trades) expire and roll. Their dates are
+    # how a roll is detected, so the price jump at a roll is not mistaken for a move.
+    "start_time", "expiration_time",
 )
 
 
