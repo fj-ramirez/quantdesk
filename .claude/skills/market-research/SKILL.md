@@ -124,8 +124,23 @@ once so awkward for the board that raw SQL was genuinely easier. Reaching for `q
 also skips the caveats the domain tools carry, so preferring them is an honesty habit rather
 than a tidiness one.
 
+**`spot` in `gex_levels` is the price at capture time, not the price now.** During a session,
+read the live price from `gex.intraday_bars` (5-minute bars, latest `ts` per symbol, polled from
+09:30 ET) and put it beside the snapshot spot before saying where anything sits. Between the
+prior close and the first intraday capture (09:45 ET), the newest snapshot is yesterday's EOD
+book while the bars are already today's. On 2026-10-07 a read called QQQ "on the 760 wall" off
+Tuesday's 760.2 while the bars already printed 754.3, and GLD had broken through its flip
+unremarked. Only the symbols in `INTRADAY_BARS_SYMBOLS` have bars. For any other symbol, say
+the price is the capture's and give its time. Do not present it as current.
+
 Spot relative to `flip_point` is the regime: above it dealers dampen moves, below it they
-amplify. Spot sitting *on* the flip is a pivot to watch, not a direction to trade — say so.
+amplify. Spot sitting *on* the flip is a pivot to watch, not a direction to trade — say so. Use
+the live price for this comparison. The flip itself is still the snapshot's.
+
+**An EOD capture has no 0DTE profile for the next session.** Its `ZERO_DTE` rows are null
+because that day's expiries are gone, and the next session's 0DTE contracts are filed under
+`net_gex_this_week`, mixed with the rest of the week's. A real 0DTE read needs that session's
+first intraday capture. Before it lands, say so instead of reading the null.
 
 **A wall is not one number.** Each `by_strike` row now carries `net_gex_0dte`,
 `net_gex_this_week`, `net_gex_next_30d` and `net_gex_beyond_30d`, which sum to `net_gex`
