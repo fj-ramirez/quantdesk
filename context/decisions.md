@@ -131,6 +131,12 @@ number to be true, it belongs in a plan file's *Result* heading or behind an MCP
 - Graph nodes with no series are fed from data already captured, through a named cross-module
   adapter, never a second ingest. — T91.
 - A GET never writes (T85 is the open violation). — T85.
+- The economic calendar is `terminal.releases`, one row per `(release_id, as_of)` vintage, so a
+  reschedule, revised forecast or dropped event adds a row; the FOMC calendar lives there too,
+  and its JSON file is gone. — T139.
+- faireconomy.media's weekly feed is an approved source and its forecast is stored as
+  `consensus`, but only when first seen strictly before the event; a past event is frozen. —
+  T139, user decision 2026-10-07.
 
 ## MCP connector
 

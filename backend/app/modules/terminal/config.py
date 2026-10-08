@@ -22,7 +22,6 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import date
-from pathlib import Path
 
 from app.core.config import settings as _core
 
@@ -58,12 +57,9 @@ class Settings:
     corr_history_window: int
     log_level: str
 
-    #: Where the cached FOMC calendar JSON lives. This is the one path the module still
-    #: needs: the calendar is a fetched artifact, not a series, so it has no row to live in.
-    #: It resolves under `DATA_DIR` -- the directory that used to hold the `.duckdb` file,
-    #: so the cache keeps the location it had before the port -- and is derived here rather
-    #: than at the two call sites so a deployment has one place to look.
-    fomc_calendar_path: Path
+    # `fomc_calendar_path` was here until T139: the FOMC calendar was a JSON file under
+    # `DATA_DIR` because it "has no row to live in". It has one now, in `terminal.releases`, and
+    # the path was removed rather than left as a second source of truth.
 
 
 def load_settings() -> Settings:
@@ -90,5 +86,4 @@ def load_settings() -> Settings:
         beta_window=_core.XA_BETA_WINDOW,
         corr_history_window=_core.XA_CORR_HISTORY_WINDOW,
         log_level=_core.XA_LOG_LEVEL,
-        fomc_calendar_path=Path(_core.DATA_DIR) / "fomc_calendar.json",
     )

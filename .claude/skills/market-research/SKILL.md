@@ -41,6 +41,24 @@ already caused a wrong read here:
 
 If there is a gap, say so before the analysis, not after.
 
+## Check the calendar before saying what to expect
+
+**Call `terminal_calendar`** for any question with a horizon ("tomorrow", "this week"). It
+returns US releases, Treasury auctions, Fed speakers and FOMC meetings, with consensus and
+prior, point-in-time (T139). On 2026-10-07 a "what to expect tomorrow" read was written without
+it, and the event that mattered most, a 30-year auction at 13:01 ET, had to be added by hand
+after the user pasted the feed's URL.
+
+- **Read the last-fetch line in its note.** The feed covers one week at a time and refreshes
+  nightly. A fetch days old means missing events, not a quiet week.
+- **`impact` is the publisher's generic rating, not this desk's.** It rated that 30-year auction
+  "Low". Judge relevance from the thesis: when equities are at the extreme of their rate
+  sensitivity, an auction outranks a "Medium" sentiment print.
+- **Consensus is the forecast as first seen before the event.** Null means none was published
+  or the event was first seen afterwards. An auction's `consensus_raw` such as `5.31|2.6` is
+  high yield and bid-to-cover, not one number. There are no actuals, so the desk cannot say
+  whether a release surprised.
+
 ## The honesty rules — these are the product
 
 Each of these belongs to a module and travels with its data. Breaking one produces output that

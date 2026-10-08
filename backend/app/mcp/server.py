@@ -5,7 +5,7 @@ pointed at. This is that connector.
 
 **Domain tools first, `query_sql` as the escape hatch.** A server exposing only raw SQL makes
 the model guess at a schema it has never seen, and the failure mode is a confidently wrong
-query rather than an error. The ten tools below encode the questions actually worth asking;
+query rather than an error. The domain tools below encode the questions actually worth asking;
 `query_sql` covers everything else and is deliberately the least convenient option.
 
 **A domain tool that is awkward for the common case costs more than the calls it wastes**
@@ -669,6 +669,69 @@ def terminal_edges(conflicts_only: bool = False, limit: int = DEFAULT_ROW_LIMIT)
     return render_result(run_query(sql, limit=limit), note=note)
 
 
+@server.tool(
+    description=(
+        "The economic calendar: US data releases, Treasury auctions, Fed speakers and FOMC "
+        "meetings scheduled from midnight ET on `as_of`'s date through `days` ahead, with the "
+        "published consensus and prior. Point-in-time: pass `as_of` to see the calendar and "
+        "consensus as they were known then. `impact` filters by the publisher's rating, e.g. "
+        "'High,Medium'. Read it before any 'what to expect' answer."
+    )
+)
+def terminal_calendar(
+    days: int = 7,
+    as_of: str | None = None,
+    impact: str | None = None,
+    limit: int = DEFAULT_ROW_LIMIT,
+) -> str:
+    """Scheduled releases in a window, as known at `as_of` (T139)."""
+    instant, explicit = _parse_as_of(as_of)
+    days = max(1, min(int(days), 60))
+    impacts = [i.strip().lower() for i in impact.split(",") if i.strip()] if impact else None
+    impact_filter = "AND lower(r.impact) = ANY(%(impacts)s)" if impacts else ""
+    sql = f"""
+        SELECT r.scheduled_at, r.title, r.country, r.impact, r.consensus, r.consensus_raw,
+               r.prior, r.prior_raw, r.consensus_as_of, r.source, r.as_of
+        FROM (
+            SELECT DISTINCT ON (release_id) *
+            FROM {SCHEMA_TERMINAL}.releases
+            WHERE as_of <= %(as_of)s
+            ORDER BY release_id, as_of DESC
+        ) r
+        WHERE r.status = 'scheduled'
+          AND r.scheduled_at >= (date_trunc('day', %(as_of)s AT TIME ZONE 'America/New_York')
+                                 AT TIME ZONE 'America/New_York')
+          AND r.scheduled_at < (date_trunc('day', %(as_of)s AT TIME ZONE 'America/New_York')
+                                AT TIME ZONE 'America/New_York') + make_interval(days => %(days)s)
+          {impact_filter}
+        ORDER BY r.scheduled_at, r.title
+    """
+    params = {"as_of": instant, "days": days, "impacts": impacts}
+    fetch_sql = f"""
+        SELECT adapter AS source, MAX(finished_at) AS last_clean_fetch
+        FROM {SCHEMA_TERMINAL}.ingest_batches
+        WHERE adapter IN ('federalreserve', 'faireconomy') AND status = 'ok'
+        GROUP BY adapter ORDER BY adapter
+    """
+    fetches = run_query(fetch_sql, limit=10)
+    fetch_line = (
+        ", ".join(f"{src} {ts:%Y-%m-%d %H:%M} UTC" for src, ts in fetches.rows)
+        if fetches.rows
+        else "never: the calendar has not been fetched yet"
+    )
+    note = (
+        _as_of_note(instant, explicit)
+        + "\n\n**Times are UTC.** `consensus` is the publisher's forecast as first seen "
+        "*before* the event (`consensus_as_of`); null means none was published, it was first "
+        "seen after the event, or it is not a single number (`consensus_raw` keeps the text, "
+        "e.g. an auction's `5.31|2.6` = high yield | bid-to-cover). Null is never zero. "
+        "Actuals are not stored. `impact` is the publisher's generic rating, not the desk's "
+        "judgment; it has rated a 30-year auction 'Low'. The weekly feed covers the current "
+        f"week only. Last clean fetch per source: {fetch_line}."
+    )
+    return render_result(run_query(sql, params, limit=limit), note=note)
+
+
 # --- the escape hatch --------------------------------------------------------------------------
 
 
@@ -764,7 +827,10 @@ def schema_resource() -> str:
             f"- **`{SCHEMA_TERMINAL}`** — xactx cross-asset. `observations` is **point-in-time**: "
             "its primary key is `(series_id, value_date, as_of)`, a revision adds a row and never "
             "overwrites one. Any query without an `as_of <= ...` filter silently returns "
-            "latest-known, which is a look-ahead answer to a historical question."
+            "latest-known, which is a look-ahead answer to a historical question. `releases` "
+            "(T139) follows the same rule: one row per `(release_id, as_of)` vintage, so take "
+            "the newest vintage per release at or before your cutoff and drop `status = "
+            "'removed'`. Prefer the `terminal_calendar` tool, which does exactly that."
         ),
         "",
         "## Columns",

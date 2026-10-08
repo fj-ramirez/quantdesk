@@ -3,11 +3,12 @@
 One generated Markdown file answering spec 5's five questions in order. Static
 by design: "Interactive UI is a later concern and adds no analytical value."
 
-TWO OF THE FIVE QUESTIONS CANNOT BE ANSWERED YET, AND THE BRIEF SAYS SO
------------------------------------------------------------------------
-Section 3 ("what's expected") needs a consensus vendor, which spec 1.2 calls the
-one genuinely necessary paid input. Nothing has been bought, the releases table
-is empty, and the surprise indices do not exist.
+PARTS OF TWO QUESTIONS CANNOT BE ANSWERED YET, AND THE BRIEF SAYS SO
+--------------------------------------------------------------------
+Section 3 ("what's expected") lists the coming week's releases with consensus
+and prior from `terminal.releases` (T139, a free feed rather than the paid
+vendor spec 1.2 assumed). Its surprise indices still do not exist, because no
+source provides actuals.
 
 Section 4's first item ("implied policy path vs. one week ago") needs a week of
 stored strips, and CME publishes no settlement archive.
@@ -283,30 +284,52 @@ def section_why(
 
 
 def section_expected(conn: Connection, as_of: datetime) -> Section:
-    n_releases = conn.execute("SELECT COUNT(*) FROM releases").fetchone()[0]
-    if n_releases == 0:
+    """The next week's scheduled releases, as the calendar was known at `as_of` (T139).
+
+    The surprise indices of spec 2.3 still do not exist: they need actuals, and neither
+    calendar source publishes them. The section says so rather than leaving it implied.
+    """
+    from . import releases
+
+    rows = releases.upcoming(conn, as_of, days=7)
+    if not rows:
+        fetched = releases.last_successful_fetch(conn, releases.SOURCE_FAIRECONOMY)
         return Section(
             "3. What's expected", "", False,
-            "This section needs an economic-calendar and consensus vendor, which "
-            "spec 1.2 calls *\"the one genuinely necessary paid input\"* "
-            "(~$30-100/mo: Trading Economics, Econoday or FMP). Nothing is "
-            "subscribed, the `releases` table is empty, and the growth, "
-            "inflation and labour surprise indices of spec 2.3 do not exist.\n\n"
-            "When a vendor is connected this section will carry the next five "
-            "scheduled releases with consensus, prior and historical surprise "
-            "beta, plus the three surprise indices tracked separately — spec 2.3 "
-            "is explicit that a single composite destroys the divergence between "
-            "them, which is the informative part.\n\n"
-            "One thing must be built alongside it: the vendor's consensus has to "
-            "be **snapshotted daily** into `releases.consensus_as_of`. Spec 7 "
-            "warns that some vendors overwrite consensus after the release, "
-            "which would silently turn every event study into hindsight.",
+            "No scheduled releases are known for the coming week as of this brief's `as_of`. "
+            + (
+                f"The weekly calendar last fetched cleanly at {fetched:%Y-%m-%d %H:%M} UTC, so "
+                "an empty week is either genuine or a fetch that has since failed."
+                if fetched
+                else "The calendar has never been fetched: run the `calendar` step (T139)."
+            ),
         )
-    return Section(
-        "3. What's expected", "", False,
-        f"The `releases` table holds {n_releases} rows but no surprise-index "
-        "machinery exists yet (spec 2.3, phase 4).",
-    )
+
+    lines = [
+        (
+            "Scheduled releases, as the calendar was known at this brief's `as_of`. Times are "
+            "ET. Consensus is the publisher's forecast as first seen before the event; `·` "
+            "means none was published. Impact is the publisher's generic rating, not this desk's."
+        ),
+        "",
+        "| When (ET) | Release | Impact | Consensus | Prior |",
+        "| --- | --- | --- | --- | --- |",
+    ]
+    for r in rows:
+        when = r["scheduled_at"].astimezone(releases.ET).strftime("%a %m-%d %H:%M")
+        lines.append(
+            f"| {when} | {r['title']} | {r['impact'] or '·'} | "
+            f"{r['consensus_raw'] or '·'} | {r['prior_raw'] or '·'} |"
+        )
+    lines += [
+        "",
+        (
+            "The surprise indices of spec 2.3 (growth, inflation and labour, tracked "
+            "separately) are not computed: they need actuals, and neither calendar source "
+            "publishes them."
+        ),
+    ]
+    return Section("3. What's expected", "\n".join(lines))
 
 
 # --- 4. what's priced --------------------------------------------------------

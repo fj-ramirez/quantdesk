@@ -120,26 +120,59 @@ class Observation(Base):
 
 
 class Release(Base):
-    """Scheduled releases and their consensus. **Empty, and knowingly so.**
+    """Scheduled releases and their consensus, point-in-time (T139).
 
-    Phase 4 is blocked on a paid consensus vendor, and moving house does not unblock it. The
-    table comes across so the schema is whole and the constraint stays documented; the UI says
-    so wherever a consensus would otherwise appear, rather than rendering a blank that looks
-    like a zero.
+    Empty from T79 until T139, "knowingly so", because the spec assumed a paid consensus
+    vendor. Filled now from faireconomy.media's weekly feed and the Fed's FOMC calendar; see
+    `releases.py`. The user decided on 2026-10-07 that the feed's forecast is stored as
+    `consensus`, overturning the old "stays null" rule.
+
+    **Same rule as `observations`: a change adds a vintage and never overwrites one.** The
+    primary key is `(release_id, as_of)`, where `as_of` is when our fetch first saw that
+    version. A reschedule, a revised forecast or an event dropped from the feed (`status =
+    'removed'`) each adds a row. T79's version keyed on `release_id` alone, which could only
+    have been written by overwriting.
     """
 
     __tablename__ = "releases"
 
     release_id: Mapped[str] = mapped_column(Text, primary_key=True)
-    series_id: Mapped[str] = mapped_column(Text, nullable=False)
+    as_of: Mapped[dt.datetime] = mapped_column(UTCDateTime(timezone=True), primary_key=True)
+    #: 'faireconomy' | 'federalreserve'.
+    source: Mapped[str] = mapped_column(Text, nullable=False)
+    title: Mapped[str] = mapped_column(Text, nullable=False)
+    #: The feed's code: 'USD', or 'All' for cross-country events such as OPEC meetings.
+    country: Mapped[str] = mapped_column(Text, nullable=False)
+    #: The publisher's generic rating, kept as given. Not the desk's judgment of importance.
+    impact: Mapped[str | None] = mapped_column(Text)
+    #: 'scheduled' | 'removed'.
+    status: Mapped[str] = mapped_column(Text, nullable=False)
     scheduled_at: Mapped[dt.datetime] = mapped_column(UTCDateTime(timezone=True), nullable=False)
+    #: First day of a multi-day event (an FOMC meeting); null for a single moment.
+    starts_on: Mapped[dt.date | None] = mapped_column(Date)
+    #: The terminal series this release prints into, where one exists. Null for speeches,
+    #: auctions and most of the feed: nullable since T139, because T79's NOT NULL had no answer
+    #: for an event that is not a series.
+    series_id: Mapped[str | None] = mapped_column(Text)
     consensus: Mapped[float | None] = mapped_column(Float)
-    #: Spec 2.3: must be strictly before `scheduled_at`. Enforced by the loader when this table
-    #: starts being written, not by a CHECK, so the violation can name the offending release.
+    #: The forecast exactly as published, kept beside the parse so a compound or bounded value
+    #: (`"5.31|2.6"`, `"<0.1%"`) is never lost or guessed into a number.
+    consensus_raw: Mapped[str | None] = mapped_column(Text)
+    #: Spec 2.3: must be strictly before `scheduled_at`. Enforced by `releases.persist`, not by
+    #: a CHECK, so the violation can name the offending release.
     consensus_as_of: Mapped[dt.datetime | None] = mapped_column(UTCDateTime(timezone=True))
     prior: Mapped[float | None] = mapped_column(Float)
+    prior_raw: Mapped[str | None] = mapped_column(Text)
+    #: Neither source publishes actuals; null until one does.
     actual: Mapped[float | None] = mapped_column(Float)
     actual_as_of: Mapped[dt.datetime | None] = mapped_column(UTCDateTime(timezone=True))
+    source_batch: Mapped[str] = mapped_column(Text, nullable=False)
+
+    __table_args__ = (
+        # `upcoming` filters a time window after picking each release's newest vintage.
+        Index("releases_scheduled_at", "scheduled_at"),
+        Index("releases_source_asof", "source", "as_of"),
+    )
 
 
 class IngestBatch(Base):

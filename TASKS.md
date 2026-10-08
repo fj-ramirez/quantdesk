@@ -23,12 +23,12 @@ How to use this file:
   `context/decisions.md` if it settled a rule. A finished block does not stay here.
 - New work gets the next free ID and is filed here, never fixed silently.
 
-**Next free ID: T139.** (T108 was allocated retroactively — see the archive's addendum;
+**Next free ID: T140.** (T108 was allocated retroactively — see the archive's addendum;
 T109–T114 were filed on 2026-09-22 from the task-history audit, T115–T121 from the logic audit;
 T122–T124 were filed and finished on 2026-09-23 — see the addendum; T125–T127 were filed on
 2026-09-25 for the ThetaData initiative, [plans/thetadata/](plans/thetadata/README.md); T128–T133
 on feature branches; T134–T136 on 2026-10-06 for [plans/signal-alerts/](plans/signal-alerts/README.md); T137 and T138 filed and
-finished 2026-10-07, see the addendum.)
+finished 2026-10-07, see the addendum; T139 filed 2026-10-07, split from T96, and finished 2026-10-08, see the addendum.)
 
 ---
 
@@ -403,6 +403,10 @@ finished, tested, and has never produced a row because its input is a hand-suppl
 that their terms forbid fetching. Calendar first (free sources, solved problem), then an OIS
 source survey. Spec:
 [plans/decision-inputs/06-calendar-and-policy-path.md](plans/decision-inputs/06-calendar-and-policy-path.md).
+
+> **2026-10-08:** half one (the calendar) was split out as **T139** and has landed:
+> `terminal.releases` holds the FOMC meetings and the weekly feed, point-in-time. T96 is now
+> only the policy-path half: the OIS source survey.
 
 ---
 

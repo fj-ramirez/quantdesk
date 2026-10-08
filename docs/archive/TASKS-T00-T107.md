@@ -1928,6 +1928,33 @@ The point is the later split: whether signals taken in long-gamma regimes beat t
 short-gamma ones. On 2026-10-07 the RTY dip-buys that prompted this were taken with IWM dealers
 at −4.3bn, spot 281.19 below the 293.18 flip.
 
+## T139 · Sonnet · — (filed 2026-10-07 from T96, finished 2026-10-08)
+
+**The desk has an economic calendar.** A "what to expect tomorrow" read on 2026-10-07 had to be
+finished by hand from faireconomy.media's weekly feed: a 30-year auction at 13:01 ET, Fed
+speakers at 04:30 and 13:40, claims at 08:30. The user approved the feed (ForexFactory's own
+publisher, single-user desk) and decided its forecast is stored as consensus.
+
+- `terminal.releases` became a point-in-time table: primary key `(release_id, as_of)`, plus
+  title, country, impact, status, `starts_on` and the raw text of forecast and prior. It was
+  recreated by migration `e6f7a8b9c0d1`, which refuses to run on a non-empty table.
+- `releases.py` holds the rules: a reschedule, a revised forecast or an event dropped from the
+  feed each adds a vintage; a past event is frozen; a forecast first seen after its event is not
+  stored as consensus (spec 2.3). Values that are not one number (`"5.31|2.6"`) stay null, with
+  the text kept beside them.
+- `adapters/faireconomy.py` fetches the feed, US and `All` rows only. The FOMC calendar moved
+  off its JSON file into the same table (`fomc.load_meetings`), and the file path was removed.
+- The nightly step `fomc` became `calendar`, which refreshes both sources in separate batches.
+  The old step only *loaded* the JSON file and never refreshed it.
+- Read through `GET /api/terminal/calendar`, the MCP tool `terminal_calendar`, and the brief's
+  section 3, which had been a documented absence since T79.
+
+Verified offline: the parsers against rows recorded from the live feed, and the vintage rules
+as a pure function. A live fetch on 2026-10-08 parsed 24 US/All events and 54 FOMC meetings.
+The Postgres tests for `upcoming` skip without a database; the first nightly run after deploy
+is their real check. Open: the feed has no actuals, so spec 2.3's surprise indices still do not
+exist.
+
 ## Status corrections
 
 - **Done, no Done marker above:** T00–T14, T16, T27, T29, T30, T34–T41, T59 (all merged, per
