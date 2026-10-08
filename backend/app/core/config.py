@@ -219,6 +219,13 @@ class Settings(BaseSettings):
     # close and after the sources publish, and an hour clear of the research search at 02:00 so
     # two CPU- and network-heavy jobs do not contend on a single-box deployment.
     XA_INGEST_CRON: str = "0 3 * * *"
+    # T139. The weekly calendar feed (faireconomy.media) is one free JSON file whose publisher
+    # may rate-limit. The nightly step fetches it once; this floor is for everything else -- a
+    # hand-run `calendar`, or a later same-day trigger. A fetch attempted less than this many
+    # minutes after the previous *attempt* (failed ones count: retrying a refusal is what earns a
+    # longer one) is skipped unless `--force` is passed. The database is the cache: every reader
+    # serves from `terminal.releases` and none of them touches the feed.
+    XA_CALENDAR_MIN_INTERVAL_MINUTES: int = 60
 
     # --- T82: the MCP connector -----------------------------------------------------------------
     # The read-only DSN the connector authenticates with, as `quantdesk_ro` (created in T76 with

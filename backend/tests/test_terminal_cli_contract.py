@@ -117,21 +117,22 @@ def test_store_takes_no_path_argument() -> None:
     assert params["read_only"].kind is inspect.Parameter.KEYWORD_ONLY
 
 
-def test_fomc_calendar_path_resolves_under_data_dir() -> None:
-    """The one path the module still owns, and it is derived in exactly one place.
+def test_the_fomc_calendar_has_no_file_path_any_more() -> None:
+    """T139 moved the FOMC calendar into `terminal.releases` and removed the JSON file.
 
-    The calendar is a fetched artifact rather than a series, so it has no row to live in. It
-    used to be `db_path.parent / "fomc_calendar.json"`; with `db_path` gone it resolves under
-    `DATA_DIR`, which is the same directory, so an existing cache is still found.
+    This test used to pin `fomc_calendar_path` under `DATA_DIR`, back when the calendar was
+    "a fetched artifact rather than a series" with "no row to live in". It has a row now. A path
+    left behind beside it would be a second source of truth for one calendar, which invariant 9
+    refuses.
     """
-    from app.core.config import settings as core_settings
+    from app.modules.terminal import fomc
 
-    path = load_settings().fomc_calendar_path
-    assert path.name == "fomc_calendar.json"
-    assert path.parent == Path(core_settings.DATA_DIR)
+    assert not hasattr(load_settings(), "fomc_calendar_path")
+    assert not hasattr(fomc, "load_calendar")
+    assert not hasattr(fomc, "save_calendar")
 
 
-@pytest.mark.parametrize("command", ["ingest", "derive", "edges"])
+@pytest.mark.parametrize("command", ["ingest", "derive", "calendar", "edges"])
 def test_worker_sequence_steps_are_real_subcommands(command: str) -> None:
     """The worker's `SEQUENCE` names must be commands the CLI actually dispatches.
 

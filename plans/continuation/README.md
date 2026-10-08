@@ -119,13 +119,28 @@ the tables already cut to a top-N, so the marginal cost of a wider universe is j
 (linear, ~0.5 s/symbol → about a minute for 120) and nothing else. What the user has to supply
 is *which* names: the broker's CFD list is the natural source and only they have it.
 
-### 2. Three ETF families have no free flow source
+### 2. Three ETF families have no free flow source — resolved by T59 (2026-09-10)
 
-`docs/etf-flows-sources.md` (survey done 2026-09-09) covers SPDR and iShares — 23 of the 27
-symbols. **VanEck (SMH, GDX), Invesco (QQQ) and USCF (USO)** all render shares outstanding
-client-side from an internal API, so T53's page will list those four under "no flow data".
-Chasing their private endpoints is possible but is scraping undocumented JSON that can change
-without notice. Say the word if those four matter enough to spend a task on.
+> **Resolved.** T59 found a public, unauthenticated endpoint for each of the three families,
+> and providers for all three now ship in `modules/gex/providers/etf_flows.py`:
+> `VanEckFundDetailsProvider` (SMH, GDX), `InvescoShareclassProvider` (QQQ) and
+> `USCFDailyPriceProvider` (USO). `UNSUPPORTED_SYMBOLS` is empty, and all 27 symbols are covered.
+> The endpoints and their traps are in [docs/etf-flows-sources.md](../../docs/etf-flows-sources.md).
+>
+> **Verified at the data level 2026-10-07:** `gex.etf_shares_outstanding` holds rows for all
+> four from 2026-09-09. SMH, GDX and USO run through 2026-10-06 (15 rows each), and QQQ through
+> 2026-10-05 (14 rows). Two kinds of gap:
+> - **09-11 to 09-17**, every family: the capture outage of that week, not a per-source fault.
+> - **QQQ alone has missed five sessions since then:** 09-18, 09-25, 09-30, 10-02 and 10-06.
+>   The Invesco endpoint returns only the current day, so a missed fetch is a session lost for
+>   good. Filed as T141.
+>
+> The original question, kept for the record: `docs/etf-flows-sources.md` (survey done
+> 2026-09-09) covered SPDR and iShares, 23 of the 27 symbols. **VanEck (SMH, GDX), Invesco (QQQ)
+> and USCF (USO)** all render shares outstanding client-side from an internal API, so T53's page
+> would list those four under "no flow data". Chasing their private endpoints is possible, but it
+> means scraping undocumented JSON that can change without notice. Say the word if those four
+> matter enough to spend a task on.
 
 ### 3. Does `/overview` become the landing page?
 

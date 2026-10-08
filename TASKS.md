@@ -23,12 +23,12 @@ How to use this file:
   `context/decisions.md` if it settled a rule. A finished block does not stay here.
 - New work gets the next free ID and is filed here, never fixed silently.
 
-**Next free ID: T139.** (T108 was allocated retroactively — see the archive's addendum;
+**Next free ID: T142.** (T108 was allocated retroactively — see the archive's addendum;
 T109–T114 were filed on 2026-09-22 from the task-history audit, T115–T121 from the logic audit;
 T122–T124 were filed and finished on 2026-09-23 — see the addendum; T125–T127 were filed on
 2026-09-25 for the ThetaData initiative, [plans/thetadata/](plans/thetadata/README.md); T128–T133
 on feature branches; T134–T136 on 2026-10-06 for [plans/signal-alerts/](plans/signal-alerts/README.md); T137 and T138 filed and
-finished 2026-10-07, see the addendum.)
+finished 2026-10-07, see the addendum; T139 filed 2026-10-07, split from T96, and finished 2026-10-08, see the addendum; T140 and T141 filed 2026-10-08.)
 
 ---
 
@@ -302,6 +302,26 @@ Filed 2026-09-22 from T92's result
 `score_symbol`'s "never raises" contract. The answer for zero variance is *undefined*, so it
 should be `None`/NaN, never `0` or `1`. Add the flat-series test first.
 
+### T141 · Sonnet · —
+
+**QQQ flows miss sessions: the Invesco fetch fails intermittently**
+
+Verified 2026-10-07 against `gex.etf_shares_outstanding`: after the shared 09-11 to 09-17
+outage, QQQ alone has no row for 09-18, 09-25, 09-30, 10-02 and 10-06, while the other 26
+symbols do. The Invesco endpoint (`dng-api.invesco.com`, `InvescoShareclassProvider`) returns
+only the current day, so each miss is a session of QQQ flow lost for good, on the symbol that
+matters most to this desk. `docs/etf-flows-sources.md` recorded transient `406 Not Acceptable`
+responses from this endpoint during T59. That is a candidate cause, not a confirmed one.
+
+- Read the `gex-capture`/flows job log for those five dates and find the actual failure.
+- Fix the cause; if it is transient, retry within the job's run with backoff (same shape as the
+  other providers), so one bad response does not cost the day.
+- The health block already reports per-family freshness. Make sure a single-symbol miss inside
+  a healthy family is visible there too, since this one hid behind 26 healthy symbols.
+
+**Acceptance:** the cause is named from the log, not inferred; a recorded-fixture test covers
+the failure and the retry; QQQ has a row for the next five sessions after deploy.
+
 ---
 
 ## Platform and modules
@@ -403,6 +423,49 @@ finished, tested, and has never produced a row because its input is a hand-suppl
 that their terms forbid fetching. Calendar first (free sources, solved problem), then an OIS
 source survey. Spec:
 [plans/decision-inputs/06-calendar-and-policy-path.md](plans/decision-inputs/06-calendar-and-policy-path.md).
+
+> **2026-10-08:** half one (the calendar) was split out as **T139** and has landed:
+> `terminal.releases` holds the FOMC meetings and the weekly feed, point-in-time. T96 is now
+> only the policy-path half: the OIS source survey.
+
+### T140 · Sonnet · T139
+
+**Same-day actuals for calendar releases, from FRED**
+
+The calendar (T139) carries schedule, consensus and prior, but the weekly feed publishes **no
+actual value**. Verified 2026-10-07: all 83 rows carry only `title, country, date, impact,
+forecast, previous`, including Monday's ISM Services after its release. So surprise (actual
+minus consensus) cannot be computed, and spec 2.3's surprise indices do not exist. The user
+asked for same-day updates: once CPI prints, the desk should know the number that day.
+
+FRED already serves the actuals. `macro.cpi` (`CPIAUCSL`), `macro.core_cpi` (`CPILFESL`),
+`macro.payrolls` (`PAYEMS`) and `macro.unrate` are ingested nightly with ALFRED vintages, and
+FRED usually posts within an hour or so of an 08:30 release.
+
+- **Map releases to series and a transform**, in one table in code: "CPI m/m" → `macro.cpi`
+  month over month; "Core CPI m/m" → `macro.core_cpi`; "CPI y/y" → `macro.cpi` year over year;
+  "Non-Farm Employment Change" → `macro.payrolls` monthly difference (thousands);
+  "Unemployment Rate" → `macro.unrate` level. Add weekly claims (`ICSA`) to the universe for
+  "Unemployment Claims". Set `releases.series_id` from the map.
+- **A same-day job in `terminal-ingest`**, never the API (invariant 7): weekdays, every 15
+  minutes from 08:00 to 17:00 ET. It finds mapped releases whose `scheduled_at` has passed with
+  no actual, ingests only those series from FRED, and stops for a release once it has a value or
+  the day ends. It must not fetch the weekly feed (T139's interval floor stays the only feed
+  access besides the nightly step).
+- **The actual is a new vintage** of the release row (`actual`, `actual_as_of` = when the desk
+  learned it), never an update. Keep the observation's own ALFRED vintage as the source of truth
+  for the number.
+- **Rounding:** BLS publishes changes rounded to 0.1, while a change computed from FRED's index
+  can be 0.24 where the headline said 0.2. Round the derived figure to the precision the
+  release publishes (from `consensus_raw`/`prior_raw`'s decimals), and keep the unrounded figure
+  beside it, so no surprise is invented by rounding.
+
+**Acceptance:** after a CPI release, the release row gains an `actual` vintage the same day, at
+the published precision; `terminal_calendar` shows it; a re-run adds nothing; a release with no
+mapping is left alone; the job never touches the weekly feed.
+
+**Out of scope:** surprise indices themselves (a follow-up once actuals accrue), and actuals for
+releases FRED does not carry.
 
 ---
 

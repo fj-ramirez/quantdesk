@@ -71,6 +71,13 @@ something that is not the market's.
 consensus figure is a different dataset with different licensing, and the `releases` table has
 a consensus column that should stay null rather than get filled with a guess.
 
+> **Superseded 2026-10-07 by the user (T139).** The calendar half moved to T139, sourced from
+> faireconomy.media's weekly feed, ForexFactory's own publisher. It is approved for this
+> single-user desk, and its `forecast` is stored as `consensus`. The point-in-time rule
+> survives: `consensus_as_of` is the fetch time and must precede `scheduled_at`. What still
+> holds from this section is that the desk doesn't *produce* a forecast of its own. T139 landed
+> on 2026-10-08; its record is in the archive's addendum.
+
 ## Tasks
 
 ## T96 · Opus · T90

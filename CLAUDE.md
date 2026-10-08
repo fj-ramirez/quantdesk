@@ -50,10 +50,12 @@ backend/app/
                — one container each
   mcp/         the read-only MCP connector over all three schemas (T82)
   modules/terminal/   xactx, ported in T79; its screens are T80
-    api/         board.py, edges.py — board, regime, edges, policy, brief, series; all take `as_of`
+    api/         board.py, edges.py, calendar.py — board, regime, edges, policy, brief, series,
+                 calendar (T139); all take `as_of`
     store/db.py  the ONLY module that knows the engine — a DuckDB-shaped facade over psycopg
     tables.py    the six tables (named tables.py, not models/, because xactx owns models.py)
     analytics/ adapters/ brief.py graph.py policy.py derive.py — the science, carried over
+    releases.py  the economic calendar, point-in-time (T139): FOMC meetings + the weekly feed
     cli.py       a debugging side-door; the product is the screen
   modules/research/
     router.py    APIRouter(prefix="/research") — leaderboard, trials, paper, status

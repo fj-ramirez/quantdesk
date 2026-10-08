@@ -6,13 +6,14 @@
     python -m xactx derive            -- compute the derived series
     python -m xactx board             -- normalized change board (spec 3.1)
     python -m xactx fomc              -- FOMC meeting calendar
+    python -m xactx calendar          -- refresh FOMC meetings and the weekly feed (T139)
     python -m xactx policy            -- implied policy path (spec 2.1)
     python -m xactx factors           -- factor decomposition (spec 3.2)
     python -m xactx regime            -- regime classification (spec 3.4)
     python -m xactx edges             -- transmission graph (spec 4)
     python -m xactx brief             -- the daily brief (spec 5)
 
-argparse rather than a CLI framework: eleven subcommands do not justify a
+argparse rather than a CLI framework: twelve subcommands do not justify a
 dependency.
 """
 
@@ -243,23 +244,96 @@ def cmd_derive(args: argparse.Namespace, settings: Settings) -> int:
     return 1 if failures else 0
 
 
+def _refresh_releases(
+    source: str, settings: Settings, store: Store, *, force: bool = False
+) -> int:
+    """Fetch one calendar source into `terminal.releases`, inside its own ingest batch.
+
+    Returns 0 or 1 rather than raising, so `calendar` can run both sources and report each:
+    the Fed page and the weekly feed are independent, and one being down must not cost the
+    other (T97's rule, one level down).
+
+    The weekly feed is skipped, not fetched, when the last attempt was less than
+    `calendar_min_interval_minutes` ago, unless `force`. The skip is checked before the batch
+    starts, because starting a batch is itself an attempt.
+    """
+    from datetime import UTC, timedelta
+
+    from . import fomc, releases
+    from .adapters import faireconomy
+
+    if source == releases.SOURCE_FAIRECONOMY and not force:
+        wait = faireconomy.too_soon(
+            releases.last_fetch_attempt(store.conn, source),
+            datetime.now(UTC),
+            timedelta(minutes=settings.calendar_min_interval_minutes),
+        )
+        if wait is not None:
+            minutes = int(wait.total_seconds() // 60) + 1
+            log.info("%s: last attempt too recent; next fetch allowed in %d min", source, minutes)
+            print(f"  {source:15s} skipped: fetched within the last "
+                  f"{settings.calendar_min_interval_minutes} min (allowed again in {minutes} "
+                  "min; --force overrides). Readers serve the stored calendar.")
+            return 0
+
+    loader = Loader(store)
+    batch = loader.start_batch(source)
+    try:
+        fetched_at = datetime.now(UTC)
+        if source == releases.SOURCE_FED:
+            records = fomc.meetings_to_records(fomc.fetch_calendar(settings.http_timeout_seconds))
+        else:
+            body = faireconomy.fetch_body(settings.http_timeout_seconds)
+            faireconomy.save_raw(body, settings.calendar_raw_path)
+            records = faireconomy.records_from_body(body)
+        result = releases.persist(
+            store.conn, records, source=source, fetched_at=fetched_at, source_batch=batch
+        )
+    except Exception as e:
+        log.exception("%s: calendar fetch failed", source)
+        loader.finish_batch(batch, "failed", str(e)[:500])
+        print(f"  FAIL {source}: {str(e)[:160]}")
+        return 1
+    loader.finish_batch(batch, "ok")
+    print(f"  {source:15s} {result.fetched:4d} fetched, {result.inserted:4d} new vintages "
+          f"({result.removed} removed), {result.unchanged:4d} unchanged")
+    return 0
+
+
+def cmd_calendar(args: argparse.Namespace, settings: Settings) -> int:
+    """Refresh the economic calendar: the Fed's FOMC meetings and the weekly feed (T139).
+
+    The nightly step. Each source runs in its own batch and a failure in one does not stop the
+    other; the exit code is non-zero if either failed.
+    """
+    from . import releases
+
+    sources = (
+        [releases.SOURCE_FED, releases.SOURCE_FAIRECONOMY]
+        if args.source == "all"
+        else [args.source]
+    )
+    with Store() as store:
+        failures = sum(
+            _refresh_releases(source, settings, store, force=args.force) for source in sources
+        )
+    return 1 if failures else 0
+
+
 def cmd_fomc(args: argparse.Namespace, settings: Settings) -> int:
     """Fetch or show the FOMC meeting calendar (spec 2.1).
 
-    The calendar is the input most likely to be wrong, so it is fetched from the
-    Federal Reserve and cached with the moment it was fetched, never typed from
-    memory.
+    The calendar is the input most likely to be wrong, so it is fetched from the Federal
+    Reserve and stored with the moment it was fetched, never typed from memory. Since T139 it
+    lives in `terminal.releases` (`calendar` refreshes it nightly) rather than a JSON file.
     """
-    from . import fomc
+    from . import fomc, releases
 
-    path = settings.fomc_calendar_path
-    if args.refresh:
-        meetings = fomc.fetch_calendar(settings.http_timeout_seconds)
-        fomc.save_calendar(meetings, path)
-        print(f"saved {len(meetings)} meetings to {path}")
-    else:
-        meetings = fomc.load_calendar(path)
-        print(f"{len(meetings)} meetings, fetched {fomc.calendar_fetched_at(path)}")
+    with Store(read_only=not args.refresh) as store:
+        if args.refresh and _refresh_releases(releases.SOURCE_FED, settings, store):
+            return 1
+        meetings = fomc.load_meetings(store.conn)
+        print(f"{len(meetings)} meetings, last fetched {fomc.calendar_fetched_at(store.conn)}")
 
     today = datetime.now(ZoneInfo(settings.snapshot_tz)).date()
     upcoming = [m for m in meetings if m.effective > today][:8]
@@ -283,8 +357,9 @@ def cmd_policy(args: argparse.Namespace, settings: Settings) -> int:
     from .adapters.cme import CmeFileAdapter, parse_contract_month
     from .store.query import get
 
-    calendar_path = settings.fomc_calendar_path
-    meetings = fomc.load_calendar(calendar_path)
+    with Store(read_only=True) as store:
+        meetings = fomc.load_meetings(store.conn)
+        calendar_fetched = fomc.calendar_fetched_at(store.conn)
 
     adapter = CmeFileAdapter(snapshot_tz=settings.snapshot_tz)
     trade_date = args.trade_date
@@ -322,7 +397,7 @@ def cmd_policy(args: argparse.Namespace, settings: Settings) -> int:
         )
 
         print(f"trade date {trade_date}   spot {spot:.4f}% ({spot_note})")
-        print(f"calendar fetched {fomc.calendar_fetched_at(calendar_path)}")
+        print(f"calendar fetched {calendar_fetched}")
         print(f"strip: {len(settles)} contract months")
         print()
         print(f"{'#':>2} {'effective':11s} {'implied':>9s} {'chg':>7s} {'cum':>7s} "
@@ -711,6 +786,14 @@ def main(argv: list[str] | None = None) -> int:
     p_fomc.add_argument("--refresh", action="store_true",
                         help="re-fetch from federalreserve.gov")
 
+    p_cal = sub.add_parser("calendar",
+                           help="refresh the economic calendar into terminal.releases")
+    p_cal.add_argument("--source", default="all",
+                       choices=["all", "federalreserve", "faireconomy"])
+    p_cal.add_argument("--force", action="store_true",
+                       help="fetch the weekly feed even if it was tried within "
+                            "XA_CALENDAR_MIN_INTERVAL_MINUTES")
+
     p_pol = sub.add_parser("policy",
                            help="implied policy path from a ZQ settlement file")
     p_pol.add_argument("settlements", help="local CSV or JSON settlement file")
@@ -778,6 +861,7 @@ def main(argv: list[str] | None = None) -> int:
         "status": cmd_status,
         "derive": cmd_derive,
         "fomc": cmd_fomc,
+        "calendar": cmd_calendar,
         "policy": cmd_policy,
         "board": cmd_board,
         "factors": cmd_factors,

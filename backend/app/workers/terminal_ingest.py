@@ -10,7 +10,9 @@ it stored:
 2. `derive`  — compute the derived series (breakevens, spreads, ratios) from what was just
                ingested. A derived value computed before its inputs land would be wrong or
                absent, not late.
-3. `fomc`    — refresh the meeting calendar, which `policy` reads.
+3. `calendar` — refresh `terminal.releases`: the Fed's FOMC meetings, which `policy` reads, and
+               the weekly economic calendar (T139). Until T139 this step was `fomc`, which
+               only *loaded* a JSON file it never refreshed; `fomc --refresh` was hand-run.
 4. `edges`   — the transmission graph's empirical half, which needs the full panel.
 
 **`policy` is deliberately not in that list any more (T90), and its absence is load-bearing.**
@@ -34,7 +36,10 @@ run until a signal, shut down without waiting. Two module-specific decisions:
 
 * **No catch-up.** Unlike GEX's unbackfillable Cboe snapshot, every source here serves history:
   FRED and ALFRED serve vintages, Treasury and CFTC serve archives. A missed night refills on
-  the next run, so catch-up machinery would add a failure mode and buy nothing.
+  the next run, so catch-up machinery would add a failure mode and buy nothing. The one
+  exception is the weekly calendar feed (T139), which serves only the current week: a missed
+  night loses that night's forecast vintages, and a week of missed nights loses the week. The
+  next run still picks up the rest of the week.
 * **`max_instances=1` and a generous misfire grace**, for the same reasons the research worker
   has them — a run is minutes of HTTP against five sources, and APScheduler's one-second
   default grace silently skips a job that fires late on a busy host.
@@ -70,7 +75,7 @@ SCHEMA_SENTINEL_TABLE = "observations"
 MISFIRE_GRACE_SECONDS = 3600
 
 #: The ordered nightly sequence. A list, not a set, because the order is semantic.
-SEQUENCE: tuple[str, ...] = ("ingest", "derive", "fomc", "edges")
+SEQUENCE: tuple[str, ...] = ("ingest", "derive", "calendar", "edges")
 
 #: Steps that exist as CLI commands but cannot run unattended, and why. Logged once per run at
 #: WARNING so the gap is stated rather than inferred from an absence -- which is exactly how
