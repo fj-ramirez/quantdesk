@@ -33,15 +33,21 @@ start_display() {
 
 # The login comes from the environment, written to a private ini the terminal reads at start.
 # AllowLiveTrading=0 and Experts disabled: this terminal is a data source (decision 2 of the
-# plan). With an investor password MT5 refuses to trade regardless.
+# plan). The Axi demo has no investor password, so the bridge's missing order path is the guard.
+#
+# MaxBars is set here, not in the GUI. The terminal starts with this file as its config, and a
+# "Max bars in chart" change made over VNC did not survive a restart (2026-10-08). The API serves
+# history only up to that limit, and the default of 100k is about three months of M1.
 write_ini() {
   : "${MT5_ACCOUNT:?set MT5_ACCOUNT in .env}"
   : "${MT5_PASSWORD:?set MT5_PASSWORD in .env}"
   : "${MT5_SERVER:?set MT5_SERVER in .env}"
+  : "${MT5_MAX_BARS:=2147483647}"
   umask 077
   printf '%s\r\n' \
     "[Common]" "Login=$MT5_ACCOUNT" "Password=$MT5_PASSWORD" "Server=$MT5_SERVER" \
     "KeepPrivate=1" "NewsEnable=0" \
+    "[Charts]" "MaxBars=$MT5_MAX_BARS" \
     "[Experts]" "Enabled=0" "AllowLiveTrading=0" "AllowDllImport=0" >"$INI"
 }
 

@@ -316,6 +316,9 @@ services:
       MT5_PASSWORD: ${MT5_PASSWORD:-}
       MT5_SERVER: ${MT5_SERVER:-}
       VNC_PASSWORD: ${MT5_VNC_PASSWORD:-}
+      # "Max bars in chart", which also caps the history the API serves. Written into the startup
+      # ini because the GUI setting does not survive a restart. Empty uses the entrypoint default.
+      MT5_MAX_BARS: ${MT5_MAX_BARS:-}
       TZ: UTC
     volumes:
       - ./mt5:/mt5
