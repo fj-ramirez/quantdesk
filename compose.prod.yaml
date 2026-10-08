@@ -262,6 +262,24 @@ services:
         max-size: 10m
         max-file: "3"
 
+  # T144. See compose.yaml.
+  broker-ingest:
+    image: broker-ingest:prod
+    environment: *prod_backend_environment
+    networks:
+      internal: {}
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: "0.5"
+          memory: 512M
+    logging:
+      driver: json-file
+      options:
+        max-size: 10m
+        max-file: "3"
+
   # T143. See compose.yaml. The healthcheck asks the bridge for `account` and fails on anything
   # but a demo login. No host ports here (CI checks this); VNC for a first login is the opt-in
   # compose.mt5-vnc.yaml.

@@ -78,11 +78,18 @@ What futures-based means for the plan:
    Step 4 changes that deliberately, in its own task, and at the same time amends the
    invariant on this branch. Until then, "no order routing" holds unchanged.
 3. **MT5 timestamps are server wall-clock, not UTC** (charter's `client.py` documents it).
-   Axi's server runs on a broker timezone that moves with DST. The offset is **measured, never
-   configured**: the bridge reports `tick().time` against the container's UTC clock, rounded to
-   the nearest 15 minutes, and every ingest batch records the offset it used. Everything is
-   stored in tz-aware UTC (invariant 4). A batch that runs while the measured offset changes is
-   rejected and re-run, because that is the DST boundary.
+   Axi's server runs on a broker timezone that moves with DST. **Revised 2026-10-08:** a
+   measured offset describes only the present, and backfilled bars from last summer were
+   stamped under a different one. So conversion uses the **New York close convention**: server
+   time = New York + 7 h, UTC+2 in US winter and UTC+3 in US summer
+   (`app/modules/broker/servertime.py`). It is used **only while a fresh measurement confirms
+   it**. A measurement is taken from a tick that changed since the previous poll, so it is at
+   most about a minute old, and is rounded to the quarter-hour. Bars and ticks are written only
+   when a confirming check was made in the last 8 days and no fresh check disagreed since. A
+   disagreement stops writes and is logged as an error. Every bar stores the `offset_s` it was
+   converted with, and every check is recorded in `broker.clock_checks`. Everything is stored
+   in tz-aware UTC (invariant 4). T144's live acceptance adds a data-level check: `S&P.fs`
+   lines up with the desk's SPX 5-minute bars at lag 0, not at ±1 h.
 4. **The forming bar is never stored.** Same rule as EdgeLab's `_drop_forming_bar` and charter's
    `copy_rates_from_pos(…, 1, …)`.
 5. **Spec snapshots add rows.** Each check compares against the latest row and inserts only on
@@ -171,8 +178,8 @@ What futures-based means for the plan:
 - Idempotent: a re-run of any window is a no-op. Bars upsert on `(symbol, timeframe, ts)`. These
   are market prices, not point-in-time observations, but a *changed* closed bar is logged as a
   warning.
-- Health: `GET /api/broker/health` reports the last bar per symbol and the measured server
-  offset.
+- Health is the worker's log and `query_sql` on `broker.*`, not an API route. An API route would
+  mean deploying the backend from this branch, and decision 11 keeps it on `main`.
 - **Acceptance:**
   - After 24 hours on the homeserver, `broker.bars` has no gap longer than the broker's own
     session break.
@@ -354,3 +361,47 @@ what it is.
 - Symbols matched by the first search: `US30`, `US500`, `NAS100.fs`, `XAUUSD`, `XAUUSD-PERP`
   and gold crosses. **The futures-based S&P and Dow names had not been found yet.** They are not
   `US500.fs` or `US30.fs`.
+
+### T144 — code landed 2026-10-08; homeserver acceptance open
+
+- Code:
+  - `app/modules/broker/servertime.py` (the convention, pure);
+  - `tables.py` (`bars`, `symbol_specs`, `tick_files`, `clock_checks`, plus `ensure_schema`
+    with the read-only grants);
+  - `ingest.py`;
+  - `app/workers/broker_ingest.py`;
+  - the `broker-ingest` service in compose, behind the `broker` profile.
+- Defaults: `BROKER_SYMBOLS=S&P.fs,NAS100.fs,DJ30.fs,XAUUSD,US2000`. US2000 is for price
+  action only and has no desk counterpart. `S&P.fs` is stored under the slug `s-p.fs` in
+  Parquet paths.
+- History depth is discovered. The first run takes a week, then the worker walks back a week
+  per request until two empty chunks in a row, and repeats that walk once a day.
+- 17 tests run on SQLite against a fake bridge with labelled synthetic bars. They cover:
+  - US DST dates;
+  - New York close = server midnight;
+  - round trips across both switches;
+  - the gate: nothing before a confirmation, nothing after a disagreement, no measurement
+    from stale ticks;
+  - the forming bar being skipped;
+  - the backward walk stopping;
+  - a backfill across 2026-11-01 converting the weekend to 50 h 01 m, i.e. DST honoured;
+  - changed bars being logged;
+  - specs written only on change;
+  - ticks written once per closed hour.
+
+  The full backend suite passes (1409), and ruff is clean.
+- A bug the tests caught: `offset_s` was computed as if `ts` were held in nanoseconds, but this
+  pandas version keeps seconds. It now uses a unit-independent subtraction.
+- **Not verified:** the Postgres paths (`CREATE SCHEMA`, the grants, `ON CONFLICT` on
+  Postgres), and everything against the real bridge. Both get their first run on the
+  homeserver.
+- **A likely first-contact failure:** MT5's *Max bars in chart* setting (Tools → Options →
+  Charts). The API serves only as many bars as a chart may hold, which by default is about
+  100k, roughly three months of M1. If the backward walk stops at about three months, raise it
+  to *Unlimited* over VNC and the next day's walk continues.
+- Still to do on the homeserver:
+  - `broker.clock_checks` shows `agrees = true`;
+  - bars arrive each minute for all five symbols;
+  - the depth found is recorded here;
+  - `S&P.fs` against SPX 5-minute bars lines up at lag 0;
+  - 24 hours with no gap beyond the session break.

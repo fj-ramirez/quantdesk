@@ -322,6 +322,30 @@ services:
     shm_size: 256m
     stop_grace_period: 40s
 
+  # T144. Reads the `mt5` bridge and writes the `broker.` schema: M1 bars and a clock check every
+  # minute, specs and an hour of ticks every hour. Same image as the other workers. Behind the
+  # same `broker` profile as `mt5`, and it creates its own schema rather than migrating (decision
+  # 10 of plans/charter-mt5/README.md), so deploying it never touches `alembic_version`.
+  broker-ingest:
+    profiles: ["broker"]
+    build:
+      context: ./backend
+      target: runtime
+      args: *build_stamp
+    command: ["python", "-m", "app.workers.broker_ingest"]
+    environment:
+      <<: *backend_environment
+      BROKER_BRIDGE_ADDR: mt5:18812
+      BROKER_SYMBOLS: ${BROKER_SYMBOLS:-S&P.fs,NAS100.fs,DJ30.fs,XAUUSD,US2000}
+      BROKER_TICK_HOURS: ${BROKER_TICK_HOURS:-168}
+    volumes:
+      - ./data:/data
+    depends_on:
+      postgres:
+        condition: service_healthy
+      mt5:
+        condition: service_started
+
   frontend:
     build:
       context: ./frontend
