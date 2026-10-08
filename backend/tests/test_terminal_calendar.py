@@ -386,3 +386,41 @@ def test_upcoming_hides_a_release_whose_newest_vintage_is_removed(pg_conn):
     after = {r["release_id"] for r in releases.upcoming(pg_conn, FETCH_WED, start=_at(5, 0))}
     assert rid in before
     assert rid not in after
+
+
+# --- the rate-limit floor and the raw copy --------------------------------------------------
+
+_HOUR = dt.timedelta(minutes=60)
+
+
+def test_a_first_ever_fetch_is_never_too_soon():
+    assert faireconomy.too_soon(None, FETCH_TUE, _HOUR) is None
+
+
+def test_a_fetch_inside_the_interval_is_too_soon_and_says_how_long():
+    wait = faireconomy.too_soon(FETCH_TUE, FETCH_TUE + dt.timedelta(minutes=20), _HOUR)
+    assert wait == dt.timedelta(minutes=40)
+
+
+def test_a_fetch_after_the_interval_is_allowed():
+    assert faireconomy.too_soon(FETCH_TUE, FETCH_TUE + _HOUR, _HOUR) is None
+
+
+def test_the_raw_copy_is_written_whole(tmp_path):
+    target = tmp_path / "terminal" / "faireconomy_latest.json"
+    faireconomy.save_raw('[{"title": "x"}]', target)
+    assert target.read_text(encoding="utf-8") == '[{"title": "x"}]'
+    assert not target.with_suffix(".json.tmp").exists()
+
+
+def test_a_failed_raw_copy_never_costs_the_calendar(tmp_path):
+    """A debug copy that cannot be written is logged and ignored, never raised."""
+    blocker = tmp_path / "terminal"
+    blocker.write_text("a file where the directory should be", encoding="utf-8")
+    faireconomy.save_raw("[]", blocker / "faireconomy_latest.json")
+
+
+def test_the_body_path_rejects_a_week_with_no_us_events():
+    body = '[{"title": "Bank Holiday", "country": "AUD", "date": "2026-10-04T16:00:00-04:00"}]'
+    with pytest.raises(EmptyFetchError, match="no US events"):
+        faireconomy.records_from_body(body)

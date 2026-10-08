@@ -49,6 +49,7 @@ __all__ = [
     "SOURCE_FED",
     "PersistResult",
     "ReleaseRecord",
+    "last_fetch_attempt",
     "last_successful_fetch",
     "latest_vintages",
     "make_release_id",
@@ -305,6 +306,15 @@ def last_successful_fetch(conn, source: str) -> datetime | None:
     row = conn.execute(
         "SELECT MAX(finished_at) FROM ingest_batches WHERE adapter = ? AND status = 'ok'",
         [source],
+    ).fetchone()
+    return row[0] if row else None
+
+
+def last_fetch_attempt(conn, source: str) -> datetime | None:
+    """When `source` was last *tried*, whatever the outcome. The rate-limit floor counts from
+    here, so a failed attempt is not followed by an immediate retry."""
+    row = conn.execute(
+        "SELECT MAX(started_at) FROM ingest_batches WHERE adapter = ?", [source]
     ).fetchone()
     return row[0] if row else None
 

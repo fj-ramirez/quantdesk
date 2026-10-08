@@ -3,7 +3,9 @@
     https://nfs.faireconomy.media/ff_calendar_thisweek.json
 
 ForexFactory's own publisher, approved by the user for this single-user desk on 2026-10-07.
-Fetched once per night by the `calendar` step, never polled.
+Fetched once per night by the `calendar` step, never polled. The publisher may rate-limit, so
+any other fetch respects `XA_CALENDAR_MIN_INTERVAL_MINUTES` since the last attempt (`too_soon`);
+the database is the cache, and no reader touches the feed.
 
 The feed's shape as observed on 2026-10-07: a JSON array of
 `{title, country, date, impact, forecast, previous}`, about 11 KB for every country.
@@ -26,7 +28,8 @@ from __future__ import annotations
 
 import json
 from collections.abc import Iterable
-from datetime import datetime
+from datetime import datetime, timedelta
+from pathlib import Path
 
 import httpx
 
@@ -109,7 +112,22 @@ def decode(body: str) -> list[dict]:
     return payload
 
 
-def fetch_feed(timeout: float = 30.0) -> list[ReleaseRecord]:
+def too_soon(
+    last_attempt: datetime | None, now: datetime, min_interval: timedelta
+) -> timedelta | None:
+    """How long until the feed may be fetched again, or None if it may be fetched now.
+
+    Measured from the last *attempt*, failed ones included: retrying straight after a refusal is
+    exactly what earns a longer one.
+    """
+    if last_attempt is None:
+        return None
+    wait = last_attempt + min_interval - now
+    return wait if wait > timedelta(0) else None
+
+
+def fetch_body(timeout: float = 30.0) -> str:
+    """One request to the feed. The caller enforces the interval and parses the body."""
     response = httpx.get(
         FEED_URL,
         timeout=timeout,
@@ -117,7 +135,27 @@ def fetch_feed(timeout: float = 30.0) -> list[ReleaseRecord]:
         headers={"User-Agent": "xactx/0.1 (personal research)"},
     )
     response.raise_for_status()
-    records = parse_feed(decode(response.text))
+    return response.text
+
+
+def save_raw(body: str, path: Path) -> None:
+    """Keep the last response for debugging a parse failure without another request.
+
+    Best effort: a full disk or a read-only mount is logged and ignored, because a debug copy
+    must never cost the calendar itself. Written to a temporary file and renamed, so a reader
+    never sees half a file. Nothing in the module reads this file back.
+    """
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        tmp = path.with_suffix(path.suffix + ".tmp")
+        tmp.write_text(body, encoding="utf-8")
+        tmp.replace(path)
+    except OSError as exc:
+        log.warning("faireconomy: could not keep the raw response at %s: %s", path, exc)
+
+
+def records_from_body(body: str) -> list[ReleaseRecord]:
+    records = parse_feed(decode(body))
     if not records:
         raise EmptyFetchError("faireconomy: the feed carried no US events this week")
     log.info("faireconomy: %d events for %s", len(records), sorted(FEED_COUNTRIES))

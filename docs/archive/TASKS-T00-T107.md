@@ -1948,6 +1948,10 @@ publisher, single-user desk) and decided its forecast is stored as consensus.
   The old step only *loaded* the JSON file and never refreshed it.
 - Read through `GET /api/terminal/calendar`, the MCP tool `terminal_calendar`, and the brief's
   section 3, which had been a documented absence since T79.
+- The database is the cache: no reader touches the feed. Any fetch less than
+  `XA_CALENDAR_MIN_INTERVAL_MINUTES` (default 60) after the previous *attempt* is skipped unless
+  `calendar --force`, because the publisher may rate-limit. The last raw response is kept at
+  `DATA_DIR/terminal/faireconomy_latest.json` for debugging; nothing reads it back.
 
 Verified offline: the parsers against rows recorded from the live feed, and the vintage rules
 as a pure function. A live fetch on 2026-10-08 parsed 24 US/All events and 54 FOMC meetings.

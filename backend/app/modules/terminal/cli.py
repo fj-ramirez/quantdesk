@@ -244,17 +244,37 @@ def cmd_derive(args: argparse.Namespace, settings: Settings) -> int:
     return 1 if failures else 0
 
 
-def _refresh_releases(source: str, settings: Settings, store: Store) -> int:
+def _refresh_releases(
+    source: str, settings: Settings, store: Store, *, force: bool = False
+) -> int:
     """Fetch one calendar source into `terminal.releases`, inside its own ingest batch.
 
     Returns 0 or 1 rather than raising, so `calendar` can run both sources and report each:
     the Fed page and the weekly feed are independent, and one being down must not cost the
     other (T97's rule, one level down).
+
+    The weekly feed is skipped, not fetched, when the last attempt was less than
+    `calendar_min_interval_minutes` ago, unless `force`. The skip is checked before the batch
+    starts, because starting a batch is itself an attempt.
     """
-    from datetime import UTC
+    from datetime import UTC, timedelta
 
     from . import fomc, releases
     from .adapters import faireconomy
+
+    if source == releases.SOURCE_FAIRECONOMY and not force:
+        wait = faireconomy.too_soon(
+            releases.last_fetch_attempt(store.conn, source),
+            datetime.now(UTC),
+            timedelta(minutes=settings.calendar_min_interval_minutes),
+        )
+        if wait is not None:
+            minutes = int(wait.total_seconds() // 60) + 1
+            log.info("%s: last attempt too recent; next fetch allowed in %d min", source, minutes)
+            print(f"  {source:15s} skipped: fetched within the last "
+                  f"{settings.calendar_min_interval_minutes} min (allowed again in {minutes} "
+                  "min; --force overrides). Readers serve the stored calendar.")
+            return 0
 
     loader = Loader(store)
     batch = loader.start_batch(source)
@@ -263,7 +283,9 @@ def _refresh_releases(source: str, settings: Settings, store: Store) -> int:
         if source == releases.SOURCE_FED:
             records = fomc.meetings_to_records(fomc.fetch_calendar(settings.http_timeout_seconds))
         else:
-            records = faireconomy.fetch_feed(settings.http_timeout_seconds)
+            body = faireconomy.fetch_body(settings.http_timeout_seconds)
+            faireconomy.save_raw(body, settings.calendar_raw_path)
+            records = faireconomy.records_from_body(body)
         result = releases.persist(
             store.conn, records, source=source, fetched_at=fetched_at, source_batch=batch
         )
@@ -292,7 +314,9 @@ def cmd_calendar(args: argparse.Namespace, settings: Settings) -> int:
         else [args.source]
     )
     with Store() as store:
-        failures = sum(_refresh_releases(source, settings, store) for source in sources)
+        failures = sum(
+            _refresh_releases(source, settings, store, force=args.force) for source in sources
+        )
     return 1 if failures else 0
 
 
@@ -766,6 +790,9 @@ def main(argv: list[str] | None = None) -> int:
                            help="refresh the economic calendar into terminal.releases")
     p_cal.add_argument("--source", default="all",
                        choices=["all", "federalreserve", "faireconomy"])
+    p_cal.add_argument("--force", action="store_true",
+                       help="fetch the weekly feed even if it was tried within "
+                            "XA_CALENDAR_MIN_INTERVAL_MINUTES")
 
     p_pol = sub.add_parser("policy",
                            help="implied policy path from a ZQ settlement file")

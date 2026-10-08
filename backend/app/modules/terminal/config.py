@@ -22,6 +22,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import date
+from pathlib import Path
 
 from app.core.config import settings as _core
 
@@ -57,6 +58,13 @@ class Settings:
     corr_history_window: int
     log_level: str
 
+    #: T139. Minimum minutes between attempts on the weekly calendar feed; see
+    #: `XA_CALENDAR_MIN_INTERVAL_MINUTES`.
+    calendar_min_interval_minutes: int
+    #: T139. The last raw response from the weekly feed, kept for debugging a parse failure
+    #: without fetching again. **Nothing reads it back**: `terminal.releases` is the only store.
+    calendar_raw_path: Path
+
     # `fomc_calendar_path` was here until T139: the FOMC calendar was a JSON file under
     # `DATA_DIR` because it "has no row to live in". It has one now, in `terminal.releases`, and
     # the path was removed rather than left as a second source of truth.
@@ -86,4 +94,6 @@ def load_settings() -> Settings:
         beta_window=_core.XA_BETA_WINDOW,
         corr_history_window=_core.XA_CORR_HISTORY_WINDOW,
         log_level=_core.XA_LOG_LEVEL,
+        calendar_min_interval_minutes=_core.XA_CALENDAR_MIN_INTERVAL_MINUTES,
+        calendar_raw_path=Path(_core.DATA_DIR) / "terminal" / "faireconomy_latest.json",
     )
