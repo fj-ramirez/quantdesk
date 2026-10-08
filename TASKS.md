@@ -23,11 +23,12 @@ How to use this file:
   `context/decisions.md` if it settled a rule. A finished block does not stay here.
 - New work gets the next free ID and is filed here, never fixed silently.
 
-**Next free ID: T137.** (T108 was allocated retroactively — see the archive's addendum;
+**Next free ID: T138.** (T108 was allocated retroactively — see the archive's addendum;
 T109–T114 were filed on 2026-09-22 from the task-history audit, T115–T121 from the logic audit;
 T122–T124 were filed and finished on 2026-09-23 — see the addendum; T125–T127 were filed on
 2026-09-25 for the ThetaData initiative, [plans/thetadata/](plans/thetadata/README.md); T128–T133
-on feature branches; T134–T136 on 2026-10-06 for [plans/signal-alerts/](plans/signal-alerts/README.md).)
+on feature branches; T134–T136 on 2026-10-06 for [plans/signal-alerts/](plans/signal-alerts/README.md); T137 filed and
+finished 2026-10-07, see the addendum.)
 
 ---
 

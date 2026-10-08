@@ -83,9 +83,45 @@ def _p(x: float | None) -> str:
     return "·" if x is None else f"{x:.2f}".rstrip("0").rstrip(".")
 
 
+#: A variant's `regime` parameter is a gate on *when it may trade*, computed from the
+#: instrument's own price -- never a reading of the market's direction. T137: the first digest
+#: printed the raw names ("any,trend_down"), and a long alert beside "trend_down" read as a
+#: contradiction. Plain words instead.
+GATE_WORDS = {
+    "any": "none",
+    "trend_down": "only while below its 200-bar average",
+    "high_vol": "only while hourly vol is above its median",
+}
+
+_FUTURES_RULE = (
+    "Long-only dip-buy variants. Each variant is its own strategy: 1 contract, one entry, one "
+    "exit, it never adds. Different variants firing are not a signal to add size -- forward-test "
+    "one variant per account."
+)
+
+
 def _values(events: Sequence[SignalEvent], key: str) -> str:
     vals = sorted({e.params[key] for e in events}, key=lambda v: (isinstance(v, str), v))
-    return ",".join(f"{v:g}" if isinstance(v, float) else str(v) for v in vals)
+    return "/".join(f"{v:g}" if isinstance(v, float) else str(v) for v in vals)
+
+
+def _thresholds(events: Sequence[SignalEvent]) -> str:
+    return " or ".join(f"-{v:g}" for v in sorted({e.params["entry_z"] for e in events}))
+
+
+def _gates(events: Sequence[SignalEvent]) -> str:
+    return " / ".join(GATE_WORDS[g] for g in sorted({e.params["regime"] for e in events}))
+
+
+def _watchlist_line(e: SignalEvent) -> str:
+    p = e.params
+    if e.action == "ENTER":
+        return (
+            f"  ★ {e.signal} (paper watchlist): BUY 1 at the next open. {e.reason}. "
+            + ("Exit when z rises back to 0 (its mean)" if p["exit_z"] == 0 else f"Exit when z rises above -{p['exit_z']:g}")
+            + ("." if p["regime"] == "any" else f", or when the gate closes ({GATE_WORDS[p['regime']]}).")
+        )
+    return f"  ★ {e.signal} (paper watchlist): SELL 1 at the next open, closing its long. {e.reason}."
 
 
 def futures_digest(events: Sequence[SignalEvent]) -> str | None:
@@ -93,29 +129,24 @@ def futures_digest(events: Sequence[SignalEvent]) -> str | None:
     if not events:
         return None
     newest = max(e.bar_ts for e in events)
-    lines = [f"quantdesk signals: 1h bar {newest:%Y-%m-%d %H:%M} UTC"]
+    lines = [f"quantdesk signals · 1h bar {newest:%Y-%m-%d %H:%M} UTC", _FUTURES_RULE]
     for symbol in FUTURES_SYMBOLS:
         sym = [e for e in events if e.symbol == symbol]
         if not sym:
             continue
-        enters = [e for e in sym if e.action == "ENTER"]
-        exits = [e for e in sym if e.action == "EXIT"]
-        counts = ", ".join(
-            part for part in (
-                f"ENTER LONG ×{len(enters)}" if enters else "",
-                f"EXIT ×{len(exits)}" if exits else "",
-            ) if part
-        )
         lines.append("")
-        lines.append(f"{symbol} {_p(sym[0].price)}: {counts}")
-        for e in sym:
-            if WATCHLIST.get(symbol) == e.signal:
-                lines.append(f"  ★ {e.signal} {e.action} ({e.reason}) [paper watchlist]")
-        for label, group in (("enters", enters), ("exits", exits)):
+        lines.append(f"{symbol} at {_p(sym[0].price)}")
+        starred = [e for e in sym if WATCHLIST.get(symbol) == e.signal]
+        lines.extend(_watchlist_line(e) for e in starred)
+        rest = [e for e in sym if e not in starred]
+        for verb, action in (("entered long", "ENTER"), ("exited", "EXIT")):
+            group = [e for e in rest if e.action == action]
             if group:
                 lines.append(
-                    f"  {label}: n {_values(group, 'n')} · entry_z {_values(group, 'entry_z')} · "
-                    f"exit_z {_values(group, 'exit_z')} · {_values(group, 'regime')}"
+                    f"  {'other ' if starred else ''}variants that {verb}: {len(group)} "
+                    f"(lookback {_values(group, 'n')} bars · "
+                    + (f"z fell below {_thresholds(group)} · " if action == "ENTER" else "")
+                    + f"gate: {_gates(group)})"
                 )
     lines.append("")
     lines.append(_FUTURES_CAVEAT)
