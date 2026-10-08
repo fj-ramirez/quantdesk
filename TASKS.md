@@ -23,12 +23,13 @@ How to use this file:
   `context/decisions.md` if it settled a rule. A finished block does not stay here.
 - New work gets the next free ID and is filed here, never fixed silently.
 
-**Next free ID: T142.** (T108 was allocated retroactively — see the archive's addendum;
+**Next free ID: T143.** (T108 was allocated retroactively — see the archive's addendum;
 T109–T114 were filed on 2026-09-22 from the task-history audit, T115–T121 from the logic audit;
 T122–T124 were filed and finished on 2026-09-23 — see the addendum; T125–T127 were filed on
 2026-09-25 for the ThetaData initiative, [plans/thetadata/](plans/thetadata/README.md); T128–T133
 on feature branches; T134–T136 on 2026-10-06 for [plans/signal-alerts/](plans/signal-alerts/README.md); T137 and T138 filed and
-finished 2026-10-07, see the addendum; T139 filed 2026-10-07, split from T96, and finished 2026-10-08, see the addendum; T140 and T141 filed 2026-10-08.)
+finished 2026-10-07, see the addendum; T139 filed 2026-10-07, split from T96, and finished 2026-10-08, see the addendum; T140 and T141 filed 2026-10-08; T142 filed 2026-10-08 from
+[docs/read-review-2026-10-08.md](docs/read-review-2026-10-08.md).)
 
 ---
 
@@ -321,6 +322,49 @@ responses from this endpoint during T59. That is a candidate cause, not a confir
 
 **Acceptance:** the cause is named from the log, not inferred; a recorded-fixture test covers
 the failure and the retry; QQQ has a row for the next five sessions after deploy.
+
+### T142 · Opus · —
+
+**Log intraday flip crosses forward as scored signals, with the rule frozen now**
+
+Filed 2026-10-08 from [docs/read-review-2026-10-08.md](docs/read-review-2026-10-08.md) §4. A
+backtest over 12 sessions (SPX, SPY, QQQ, GLD, DIA) found that the flip-cross rule as first
+proposed (enter on the cross, exit on the re-cross) loses: −1.9 ± 2.3 bps per trade, 27% wins.
+It also found a leaning: 60 minutes after a **down-cross** price continued (+5.2 ± 7.4 bps per
+session, 7 of 9 sessions), and after an **up-cross** it reversed (−9.1 ± 5.4, 2 of 9). Neither
+clears two standard errors, and the leaning was found after trying four variants, so the only
+honest next step is to **record it forward on sessions it was not found on**, and not to re-fit it.
+
+The decision engine can't hold this as written: `scan/decisions.py` emits once per EOD capture,
+and `scan/outcomes.py` scores against daily bars. This needs its own small, insert-only log.
+
+- **Freeze the definition in code, exactly as tested** (see the doc's §5 query):
+  - The flip is `gex_levels.flip_point`, filter `ALL`, from the latest in-session capture with
+    `captured_at <= bar close`. Never use the previous EOD flip.
+  - A cross is two consecutive 5-minute closes on the new side, with the close two bars earlier on the old side.
+  - Record both directions, `FLIP_CROSS_DOWN` and `FLIP_CROSS_UP`, because the up-cross
+    reversal is half the hypothesis.
+  - Log each event's spot, flip, the capture's `net_gex`, and SPX's own flip and side, because
+    the SPX/SPY disagreement may matter.
+- **A pure detector** in `app/modules/gex/scan/` (no I/O, same contract as the other scan
+  modules), plus a step in the `gex-capture` worker after each intraday bar poll. Never in the API
+  (invariant 7). Write to a new insert-only table in the `gex` schema, migrated with Alembic.
+- **Fixed-horizon scoring from `gex.intraday_bars`**, in the direction of the cross: 15 minutes,
+  30 minutes, 60 minutes and the session close. Leave it null until the bar exists. Null is not zero.
+- **Read path:** extend `gex_track_record` (or add a sibling MCP tool) to report these keys with
+  `n`, `n_sessions`, the mean, and the standard error **clustered by session**. Same-day crosses
+  across SPX, SPY and DIA are one event, and a per-event standard error overstates certainty, as
+  §4 showed.
+- **Do not change the rule** after it ships. A variant is a new key with its own start date.
+
+**Acceptance:** the detector reproduces the doc's event counts on the 9/21–10/08 history (as a
+test against stored fixtures, not a live query); events are written forward from the deploy date
+only, so the backtest sessions are never mixed into the forward record; the track-record read
+reports a session-clustered standard error. Re-read the forward record after 30 sessions. Until
+then, quote it as a leaning.
+
+**Out of scope:** any alert or trade suggestion built on it, and IWM (it has no intraday bars;
+add it to `INTRADAY_BARS_SYMBOLS` separately if wanted).
 
 ---
 
