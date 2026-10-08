@@ -102,6 +102,19 @@ first contact, not assumed. They live in config (`BROKER_SYMBOLS`), never in cod
    (rejection at a wall, sweep through the flip) can only use data since the capture began in
    mid-September. They are reported as **leanings that feed a stage-0 spec**, never as gate
    passes.
+10. **No Alembic migration while this is an experiment.** The homeserver runs one database. A
+    migration on this branch would move its `alembic_version` to a revision `main` has never
+    seen, and the next deploy from `main` would fail `alembic upgrade head` in the backend's
+    boot step, taking the API down. So `broker-ingest` (T144) creates `broker.` and its tables
+    itself with an idempotent `create_all` and grants `SELECT` to the read-only role. This is
+    the one place the module breaks the repo's migration convention, and only until merge: if
+    the experiment merges, the tables become a proper migration in the same PR. Dropping the
+    schema undoes the whole experiment.
+11. **Deploying from the branch deploys only the broker services.** `deploy.sh` pulls whichever
+    branch is checked out and, by default, rebuilds the whole stack. On a branch other than
+    `main` it now refuses unless services are named (`scripts/deploy.sh mt5`, later
+    `mt5 broker-ingest`) or `--any-branch` is passed. Capture, the API and the other workers
+    keep running `main`'s images.
 
 ## Tasks
 
@@ -111,8 +124,7 @@ first contact, not assumed. They live in config (`BROKER_SYMBOLS`), never in cod
   - `docker/mt5/` (Dockerfile, entrypoint, bridge)
   - `compose.yaml`, `compose.override.yaml`, `compose.prod.yaml`
   - `backend/app/modules/broker/{__init__,client}.py`
-  - `backend/app/core/schemas.py`
-  - one migration creating schema `broker` and extending the read-only role's grants
+  - `scripts/deploy.sh` (the off-main guard, decision 11)
 - Port carbon-copy's Wine and embedded-Python image stages (pinned versions as carbon-copy has
   them) and its template-login flow over VNC. Use a VNC port other than 5900, which carbon-copy
   holds on the homeserver. One terminal only.
@@ -133,8 +145,10 @@ first contact, not assumed. They live in config (`BROKER_SYMBOLS`), never in cod
 - Paths:
   - `backend/app/workers/broker_ingest.py`
   - `backend/app/modules/broker/{tables,ingest,store}.py`
-  - its migration
+  - `compose*.yaml` (the `broker-ingest` service, `broker` profile)
   - tests
+- Owns the `broker` schema per decision 10 (`create_all` plus the read-only grant). `broker`
+  goes into `app.core.schemas.SCHEMAS` only at merge, with the migration.
 - Backfill M1 bars as deep as Axi serves them (record the depth found), then poll every minute.
   Ticks are pulled per closed hour into Parquet. Spec snapshots are checked hourly (decision 5).
 - Server-time handling as decision 3, with a unit test across a DST boundary built from a
@@ -284,3 +298,32 @@ what it is.
     tolerance that was made up.
   - A close through a swing retires it for `sweeps`, because it has become a `breaks` event.
 - Not yet run on real bars. T147 is the first consumer.
+
+### T143 — code landed 2026-10-08; homeserver acceptance open
+
+- `docker/mt5/` contains:
+  - the image, ported from carbon-copy (same Wine, Python 3.13.16 and `MetaTrader5==5.0.6231`);
+  - `entrypoint.sh`, which logs in from `MT5_ACCOUNT` / `MT5_PASSWORD` / `MT5_SERVER` in the
+    stack's `.env`, with Experts and live trading disabled in the ini;
+  - `bridge/server.py`, a TCP JSON-lines server on `:18812` serving `ping`, `account`,
+    `symbols`, `spec`, `tick`, `rates_range` and `ticks_range`;
+  - `healthcheck.py`, which fails on anything but a demo login.
+- `backend/app/modules/broker/client.py` is the async client. Ten tests run the real server
+  against the real client with a fake `MetaTrader5` module. They cover:
+  - MT5's inclusive end bound being trimmed;
+  - errors coming back as answers on a connection that stays usable;
+  - reconnecting after the terminal restarts;
+  - refusing the wrong account.
+
+  An AST check fails if the bridge ever names an `order_*`, `orders_*` or `positions_*` call.
+- Compose: `mt5` sits behind the `broker` profile and has no host ports in prod. VNC is the
+  opt-in `compose.mt5-vnc.yaml` on `127.0.0.1:5901`, since carbon-copy holds 5900. The template
+  folder goes in `./mt5/` (gitignored).
+- **Not verified:** the image has not been built yet. Docker Desktop was not running on the dev
+  machine, so the homeserver build is the first one. Nothing has been checked against a real
+  terminal.
+- Still to do on the homeserver:
+  - the image builds;
+  - the container turns healthy;
+  - `account` reports the Axi demo login with `trade_mode == "demo"`;
+  - `rates_range` returns M1 bars for the four symbols, with their Axi names recorded here.

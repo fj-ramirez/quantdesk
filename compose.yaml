@@ -290,6 +290,38 @@ services:
       postgres:
         condition: service_healthy
 
+  # T143 (plans/charter-mt5/README.md, experiment branch). The desk's own MetaTrader 5 terminal,
+  # logged into the Axi demo account, and the read-only bridge that serves its bars, ticks and
+  # contract specs on the compose network. No order path: see docker/mt5/bridge/server.py.
+  #
+  # Behind the `broker` profile, so a plain `docker compose up` never starts it. That matters on
+  # the dev machine, because MT5's copy protection crashes on Docker Desktop's WSL2 kernel
+  # (carbon-copy README). On the homeserver it starts when named, for example
+  # `scripts/deploy.sh mt5`, or always if `COMPOSE_PROFILES=broker` is set in `.env`.
+  #
+  # Not the backend image: Wine plus a Windows Python, ported from carbon-copy. The logged-in MT5
+  # template folder is copied to `./mt5/` in the stack directory (gitignored) and mounted. The
+  # terminal runs in portable mode and keeps its history there, so the folder persists across
+  # restarts.
+  mt5:
+    profiles: ["broker"]
+    build:
+      context: ./docker/mt5
+    platform: linux/amd64
+    hostname: mt5
+    environment:
+      # Read from the stack's root `.env`. Empty defaults so `docker compose config` renders
+      # anywhere; the entrypoint refuses to start the terminal without all three.
+      MT5_ACCOUNT: ${MT5_ACCOUNT:-}
+      MT5_PASSWORD: ${MT5_PASSWORD:-}
+      MT5_SERVER: ${MT5_SERVER:-}
+      VNC_PASSWORD: ${MT5_VNC_PASSWORD:-}
+      TZ: UTC
+    volumes:
+      - ./mt5:/mt5
+    shm_size: 256m
+    stop_grace_period: 40s
+
   frontend:
     build:
       context: ./frontend

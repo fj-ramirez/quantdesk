@@ -6,6 +6,12 @@
 #   scripts/deploy.sh                    # git pull, then build and start everything
 #   scripts/deploy.sh --no-pull          # build what is already checked out
 #   scripts/deploy.sh backend frontend   # only these services
+#   scripts/deploy.sh --any-branch       # everything, from a branch other than main
+#
+# Off `main`, the script deploys only the services you name. It pulls whichever branch is checked
+# out, so an experiment branch (plans/charter-mt5/) would otherwise rebuild the capture, the API
+# and every worker from experiment code without anyone deciding that. Name the services
+# (`scripts/deploy.sh mt5`), or pass --any-branch when the whole stack really should run the branch.
 #
 # Why this exists rather than the bare compose command in the README: a container has no git
 # repository to ask what it is, so the commit has to be handed in at build time. Compose
@@ -24,15 +30,25 @@ export MSYS_NO_PATHCONV=1
 export MSYS2_ARG_CONV_EXCL='*'
 
 pull=1
+any_branch=0
 services=()
 for arg in "$@"; do
   case "$arg" in
     --no-pull) pull=0 ;;
-    -h|--help) sed -n '2,17p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
+    --any-branch) any_branch=1 ;;
+    -h|--help) sed -n '2,23p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
     -*) echo "unknown option: $arg" >&2; exit 2 ;;
     *) services+=("$arg") ;;
   esac
 done
+
+branch=$(git rev-parse --abbrev-ref HEAD)
+if [ "$branch" != "main" ] && [ "${#services[@]}" -eq 0 ] && [ "$any_branch" -eq 0 ]; then
+  echo "refusing: on branch '$branch', not main, and no services named." >&2
+  echo "  name the services to deploy from it (e.g. scripts/deploy.sh mt5)," >&2
+  echo "  or pass --any-branch to rebuild the whole stack from '$branch'." >&2
+  exit 2
+fi
 
 if [ "$pull" -eq 1 ]; then
   # --ff-only: a deploy must never be the thing that creates a merge commit on the server.
@@ -55,7 +71,7 @@ if [ -n "$(git status --porcelain)" ]; then
 fi
 
 export BUILD_SHA BUILD_TIME
-echo "deploying $BUILD_SHA ($BUILD_TIME)"
+echo "deploying $BUILD_SHA ($BUILD_TIME) from $branch"
 
 docker compose -f compose.yaml -f compose.prod.yaml up -d --build "${services[@]}"
 

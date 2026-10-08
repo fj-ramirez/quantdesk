@@ -61,5 +61,9 @@ Captura de pantalla*.png
 # Database dumps written by scripts/db-dump-push.sh -- one file, overwritten each time.
 backups/
 
+# The desk's MT5 template folder, copied in on the homeserver (T143): a vendor install plus the
+# terminal's own history and saved login.
+/mt5/
+
 # ThetaData terminal bootstrap jar -- vendor binary, copied in before building (T125)
 theta/*.jar
