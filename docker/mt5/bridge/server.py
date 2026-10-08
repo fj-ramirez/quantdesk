@@ -54,7 +54,9 @@ SPEC_FIELDS = (
     "digits", "point", "trade_tick_size", "trade_tick_value", "trade_contract_size",
     "volume_min", "volume_max", "volume_step", "trade_stops_level", "trade_freeze_level",
     "swap_mode", "swap_long", "swap_short", "swap_rollover3days", "currency_base",
-    "currency_profit", "currency_margin", "trade_mode", "spread", "spread_float",
+    # Not `spread`: that is the *current* spread, it changes every few seconds, and in a spec it
+    # made every hourly check a "change" (DJ30.fs, 2026-10-08). Spreads are stored per bar.
+    "currency_profit", "currency_margin", "trade_mode", "spread_float",
     "description", "path",
     # Futures-based CFDs (the `.fs` symbols the user trades) expire and roll. Their dates are
     # how a roll is detected, so the price jump at a roll is not mistaken for a move.
