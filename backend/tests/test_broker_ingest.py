@@ -132,6 +132,7 @@ def factory(tmp_path):
 
 
 def _ingestor(bridge, factory, tmp_path, **kw):
+    kw.setdefault("empty_retry_s", 0)
     return Ingestor(client=bridge, factory=factory, symbols=["S&P.fs"], data_dir=tmp_path, **kw)
 
 
@@ -283,3 +284,26 @@ async def test_ticks_are_written_per_closed_hour_once(factory, tmp_path):
     frame = pd.read_parquet(tmp_path / files[-1].path)
     assert frame["ts"].iloc[0] == pd.Timestamp("2026-10-08 13:00", tz="UTC")
     assert "s-p.fs" in files[-1].path
+
+
+async def test_backward_walk_waits_out_history_still_downloading(factory, tmp_path):
+    """First live walk, 2026-10-08: MT5 answers a range it has not fetched yet with nothing."""
+    now = dt.datetime(2026, 10, 8, 14, tzinfo=UTC)
+    start = now - dt.timedelta(days=30)
+    bridge = FakeBridge(start)
+    bridge.now = now
+    ing = _ingestor(bridge, factory, tmp_path)
+    await ing.bars_forward("S&P.fs", now)
+    real_rates, cold = bridge.rates, {"left": 3}
+
+    async def downloading(symbol, timeframe, a, b):
+        if cold["left"]:  # the next three requests find nothing, then the history arrives
+            cold["left"] -= 1
+            return (await real_rates(symbol, timeframe, a, b)).iloc[0:0]
+        return await real_rates(symbol, timeframe, a, b)
+
+    bridge.rates = downloading
+    await ing.bars_backward("S&P.fs", now)
+    with factory() as s:
+        assert s.scalar(sa.select(sa.func.min(Bar.ts))) == start
+        assert s.scalar(sa.select(sa.func.count()).select_from(Bar)) == _open_minutes(start, now)

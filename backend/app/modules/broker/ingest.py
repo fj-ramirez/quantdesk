@@ -13,11 +13,15 @@ server timestamps and are not gated.
 History depth is discovered, not configured. The first run fetches the last week, and each
 later run walks back one chunk at a time from the oldest stored bar. It stops for the day after
 :data:`EMPTY_CHUNKS_TO_STOP` empty chunks in a row: the broker has nothing older, or MT5's
-"Max bars in chart" limit is in the way (see the plan's first-contact failures).
+"Max bars in chart" limit is in the way (see the plan's first-contact failures). A chunk counts
+as empty only after :data:`EMPTY_RETRIES` more tries :data:`EMPTY_RETRY_S` apart, because MT5
+answers a range it has not downloaded yet with nothing and fetches it in the background. Two
+immediate empties stopped the first live walk at 2026-06-30, though January 2026 was there.
 """
 
 from __future__ import annotations
 
+import asyncio
 import datetime as dt
 import hashlib
 import json
@@ -51,6 +55,8 @@ BAR = dt.timedelta(minutes=1)
 #: One `rates_range` request. A week of M1 is at most about 7,000 bars.
 CHUNK = dt.timedelta(days=7)
 EMPTY_CHUNKS_TO_STOP = 2
+EMPTY_RETRIES = 3
+EMPTY_RETRY_S = 10.0
 #: How long a confirmed convention is trusted without a fresh measurement: a long weekend plus
 #: a holiday, with margin.
 CLOCK_TRUST_DAYS = 8
@@ -140,6 +146,7 @@ class Ingestor:
     symbols: list[str]
     data_dir: Path
     tick_hours: int = 168
+    empty_retry_s: float = EMPTY_RETRY_S
     gate: ClockGate = field(default_factory=ClockGate)
     _deepened_on: dict[str, dt.date] = field(default_factory=dict)
 
@@ -273,6 +280,11 @@ class Ingestor:
         while empty < EMPTY_CHUNKS_TO_STOP:
             start = end - CHUNK
             df = await self._fetch(symbol, start, end, now)
+            for _ in range(EMPTY_RETRIES):
+                if not df.empty:
+                    break
+                await asyncio.sleep(self.empty_retry_s)
+                df = await self._fetch(symbol, start, end, now)
             new, _ = self._upsert(symbol, df, now)
             total += new
             empty = 0 if new else empty + 1
