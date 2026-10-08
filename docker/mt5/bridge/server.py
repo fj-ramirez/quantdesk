@@ -40,6 +40,12 @@ import time
 #: 100k+ ticks; the caller chunks by hour or day and this cap keeps one answer bounded.
 MAX_TICK_RANGE_S = 26 * 3600
 
+#: How long `initialize()` may wait for the terminal. Short on purpose: a terminal that is not
+#: logged in (a wrong server name in `.env` was the first case, 2026-10-08) should get a prompt
+#: "not connected" answer, and the next request retries. At MT5's 60 s the healthcheck gave up
+#: first and the answer hit a closed socket.
+INIT_TIMEOUT_MS = 10_000
+
 #: MT5 timeframe constants by the names the desk uses.
 TIMEFRAMES = ("M1", "M5", "M15", "M30", "H1", "H4", "D1")
 
@@ -86,7 +92,7 @@ class Bridge:
             log("lost the terminal:", mt5.last_error())
             mt5.shutdown()
             self.connected = False
-        kwargs = {"portable": True, "timeout": 60_000}
+        kwargs = {"portable": True, "timeout": INIT_TIMEOUT_MS}
         ok = mt5.initialize(path=self.terminal, **kwargs) if self.terminal else mt5.initialize(**kwargs)
         if not ok:
             raise BridgeError(f"terminal not connected: {mt5.last_error()}")
@@ -229,6 +235,12 @@ def _now_ms() -> int:
 
 class _Handler(socketserver.StreamRequestHandler):
     def handle(self) -> None:
+        try:
+            self._serve()
+        except (ConnectionError, OSError):
+            pass  # the client went away mid-answer; it reconnects if it still wants one
+
+    def _serve(self) -> None:
         bridge: Bridge = self.server.bridge  # type: ignore[attr-defined]
         for line in self.rfile:
             line = line.strip()

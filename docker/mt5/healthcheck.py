@@ -13,7 +13,9 @@ import sys
 
 port = int(os.environ.get("BRIDGE_PORT", "18812"))
 try:
-    with socket.create_connection(("127.0.0.1", port), timeout=5) as s:
+    # 25 s: longer than the bridge's 10 s initialize, so a "not connected" answer arrives
+    # instead of a timeout.
+    with socket.create_connection(("127.0.0.1", port), timeout=25) as s:
         s.sendall(b'{"id":1,"op":"account"}\n')
         answer = json.loads(s.makefile().readline())
 except (OSError, ValueError) as e:
