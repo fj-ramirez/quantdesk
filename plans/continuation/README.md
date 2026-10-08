@@ -133,7 +133,7 @@ is *which* names: the broker's CFD list is the natural source and only they have
 > - **09-11 to 09-17**, every family: the capture outage of that week, not a per-source fault.
 > - **QQQ alone has missed five sessions since then:** 09-18, 09-25, 09-30, 10-02 and 10-06.
 >   The Invesco endpoint returns only the current day, so a missed fetch is a session lost for
->   good. Open, and not yet filed as a task.
+>   good. Filed as T141.
 >
 > The original question, kept for the record: `docs/etf-flows-sources.md` (survey done
 > 2026-09-09) covered SPDR and iShares, 23 of the 27 symbols. **VanEck (SMH, GDX), Invesco (QQQ)
