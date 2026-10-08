@@ -65,6 +65,9 @@ def record_events(
                 family=e.family, timeframe=e.timeframe, side=e.side, price=e.price,
                 stop=e.stop, target=e.target, reason=e.reason[:256], params=e.params,
                 late=e.late, recorded_at=stamp,
+                gamma_proxy=e.gamma_proxy, gamma_session_date=e.gamma_session_date,
+                gamma_net_gex=e.gamma_net_gex, gamma_spot=e.gamma_spot,
+                gamma_flip_point=e.gamma_flip_point, gamma_note=e.gamma_note,
             ))
             existing.add(e.key)
             inserted.append(e)

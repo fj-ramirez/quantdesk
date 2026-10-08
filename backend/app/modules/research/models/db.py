@@ -246,4 +246,15 @@ class SignalEvent(Base):
     late: Mapped[bool] = mapped_column(Boolean, nullable=False)
     recorded_at: Mapped[dt.datetime] = mapped_column(UTCDateTime(timezone=True), nullable=False)
 
+    # T138: the dealer-gamma read at this bar, for the ETF the desk captures for this market
+    # (ES->SPY, NQ->QQQ, YM->DIA, RTY->IWM; an ETF signal reads its own). Context recorded so
+    # the forward record can be split by gamma regime later -- never used to filter. Null rows
+    # predate T138 or had no valid read; `gamma_note` says which reason applied.
+    gamma_proxy: Mapped[str | None] = mapped_column(String(16))
+    gamma_session_date: Mapped[dt.date | None] = mapped_column(Date)
+    gamma_net_gex: Mapped[float | None] = mapped_column(Float)
+    gamma_spot: Mapped[float | None] = mapped_column(Float)
+    gamma_flip_point: Mapped[float | None] = mapped_column(Float)
+    gamma_note: Mapped[str | None] = mapped_column(String(128))
+
     __table_args__ = (Index("ix_signal_events_recorded_at", "recorded_at"),)

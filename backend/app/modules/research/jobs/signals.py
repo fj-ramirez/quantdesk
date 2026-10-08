@@ -24,6 +24,8 @@ run is the retry.
 from __future__ import annotations
 
 import asyncio
+import dataclasses
+import datetime as dt
 import logging
 from collections.abc import Callable, Sequence
 from zoneinfo import ZoneInfo
@@ -36,6 +38,7 @@ from sqlalchemy.orm import Session, sessionmaker
 from app.core import notify
 from app.core.config import settings
 from app.modules.gex.storage.bars_repository import read_bars_many
+from app.modules.gex.storage.gamma_context import GammaContext, gamma_context
 from app.modules.research import data
 from app.modules.research.config import load_config
 from app.modules.research.signals import (
@@ -50,6 +53,7 @@ from app.modules.research.storage.signal_events import record_events
 
 __all__ = [
     "DAILY_JOB_ID",
+    "GAMMA_PROXY",
     "HOURLY_JOB_ID",
     "WATCHLIST",
     "add_signal_jobs",
@@ -71,6 +75,14 @@ WATCHLIST = {
     "YM=F": "ZScoreDip_N160_E3_X0p5_TrendDown",
     "RTY=F": "ZScoreDip_N80_E1p5_X0_Any",
 }
+
+#: T138: the ETF whose option chain the desk captures for each futures market. The dealer-gamma
+#: read recorded beside a signal is this ETF's. SPY rather than SPX for ES because every other
+#: market is read from its ETF too, and SPX and SPY can disagree on sign; the proxy is recorded
+#: on each row so a later split can say which one it used.
+GAMMA_PROXY = {"ES=F": "SPY", "NQ=F": "QQQ", "YM=F": "DIA", "RTY=F": "IWM"}
+
+GammaLookup = Callable[[str, dt.datetime], GammaContext]
 
 _FUTURES_CAVEAT = (
     "Yahoo continuous futures: near a quarterly roll a signal can differ from the back-adjusted "
@@ -124,6 +136,16 @@ def _watchlist_line(e: SignalEvent) -> str:
     return f"  ★ {e.signal} (paper watchlist): SELL 1 at the next open, closing its long. {e.reason}."
 
 
+def _gamma_line(e: SignalEvent) -> str | None:
+    """The T138 context line for a symbol's events, or `None` before the read existed."""
+    if e.gamma_proxy is None:
+        return None
+    ctx = GammaContext(
+        e.gamma_proxy, e.gamma_session_date, e.gamma_net_gex, e.gamma_spot, e.gamma_flip_point, e.gamma_note
+    )
+    return f"  {ctx.describe()} -- context, not a filter"
+
+
 def futures_digest(events: Sequence[SignalEvent]) -> str | None:
     """One message for fresh z-score events, or `None` when there are none. Pure."""
     if not events:
@@ -136,6 +158,9 @@ def futures_digest(events: Sequence[SignalEvent]) -> str | None:
             continue
         lines.append("")
         lines.append(f"{symbol} at {_p(sym[0].price)}")
+        gamma = _gamma_line(sym[0])
+        if gamma:
+            lines.append(gamma)
         starred = [e for e in sym if WATCHLIST.get(symbol) == e.signal]
         lines.extend(_watchlist_line(e) for e in starred)
         rest = [e for e in sym if e not in starred]
@@ -166,9 +191,40 @@ def continuation_digest(events: Sequence[SignalEvent]) -> str | None:
             )
         else:
             lines.append(f"• {e.symbol} {e.side.lower()} exit: {e.reason} at {_p(e.price)}")
+        gamma = _gamma_line(e)
+        if gamma:
+            lines.append(gamma)
     lines.append("")
     lines.append(_CONTINUATION_CAVEAT)
     return "\n".join(lines)
+
+
+def _bar_end(e: SignalEvent) -> dt.datetime:
+    """When the event's bar closed: the read must not use a capture taken after it."""
+    return e.bar_ts + (dt.timedelta(hours=1) if e.timeframe == "1h" else dt.timedelta(days=1))
+
+
+def with_gamma(
+    events: Sequence[SignalEvent], proxy_of: Callable[[str], str], lookup: GammaLookup, now: dt.datetime
+) -> list[SignalEvent]:
+    """`events` with the T138 gamma fields filled, one lookup per (proxy, moment)."""
+    cache: dict[tuple[str, dt.datetime], GammaContext] = {}
+    out = []
+    for e in events:
+        proxy = proxy_of(e.symbol)
+        as_of = min(_bar_end(e), now)
+        ctx = cache.get((proxy, as_of))
+        if ctx is None:
+            ctx = cache[(proxy, as_of)] = lookup(proxy, as_of)
+        out.append(dataclasses.replace(
+            e, gamma_proxy=ctx.proxy, gamma_session_date=ctx.session_date, gamma_net_gex=ctx.net_gex,
+            gamma_spot=ctx.spot, gamma_flip_point=ctx.flip_point, gamma_note=ctx.note,
+        ))
+    return out
+
+
+def _default_lookup(proxy: str, as_of: dt.datetime) -> GammaContext:
+    return gamma_context(proxy, as_of)
 
 
 def _send(message: str | None) -> None:
@@ -181,6 +237,7 @@ def run_futures_signals(
     refresh: bool = True,
     loader: Callable[[str], pd.DataFrame | None] | None = None,
     session_factory: sessionmaker[Session] | None = None,
+    gamma_lookup: GammaLookup | None = None,
 ) -> int:
     """The hourly run, synchronously. Returns the number of fresh events alerted."""
     cfg = load_config()
@@ -196,6 +253,7 @@ def run_futures_signals(
             continue
         for name, params in zscore_variants():
             events.extend(zscore_events(df, symbol, name, params))
+    events = with_gamma(events, GAMMA_PROXY.__getitem__, gamma_lookup or _default_lookup, dt.datetime.now(dt.UTC))
     inserted = record_events(events, session_factory=session_factory)
     fresh = [e for e in inserted if not e.late]
     _send(futures_digest(fresh))
@@ -208,6 +266,7 @@ def run_continuation_signals(
     universe: Sequence[str] | None = None,
     bars_session_factory: sessionmaker[Session] | None = None,
     session_factory: sessionmaker[Session] | None = None,
+    gamma_lookup: GammaLookup | None = None,
 ) -> int:
     """The daily run, synchronously. Returns the number of fresh events alerted."""
     symbols = list(universe) if universe is not None else [
@@ -222,6 +281,8 @@ def run_continuation_signals(
             continue
         for side in CONTINUATION_SIDES:
             events.extend(continuation_events(bars, symbol, side))
+    # An ETF signal reads its own chain; a symbol the desk does not capture gets a "no capture" note.
+    events = with_gamma(events, lambda symbol: symbol, gamma_lookup or _default_lookup, dt.datetime.now(dt.UTC))
     inserted = record_events(events, session_factory=session_factory)
     fresh = [e for e in inserted if not e.late]
     _send(continuation_digest(fresh))
