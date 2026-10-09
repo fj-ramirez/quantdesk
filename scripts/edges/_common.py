@@ -216,3 +216,29 @@ def closes_for(data, sym: str) -> pd.DataFrame:
     c = daily_closes(data, sym)
     _DATA_OF[id(c)] = data
     return c
+
+
+# -- pass 4 helpers -------------------------------------------------------------------------
+
+
+def rth_daily(data, sym: str) -> pd.DataFrame:
+    """RTH daily bars from M1: open = 09:30 price, close = 16:00 price, high/low over 09:30-16:00.
+    Indexed by session date (midnight New York), like `sessions`."""
+    df = load(data, sym)
+    m = ((df.index.hour > 9) | ((df.index.hour == 9) & (df.index.minute >= 30))) & (df.index.hour < 16)
+    rth = df[m]
+    g = rth.groupby(rth.index.normalize())
+    out = pd.DataFrame({"high": g["high"].max(), "low": g["low"].min()})
+    d = sessions(data, sym)
+    out = out.reindex(d)
+    o, _, ok_o = at(df, d + pd.Timedelta(hours=9, minutes=30))
+    c, _, ok_c = at(df, d + pd.Timedelta(hours=16))
+    out["open"], out["close"] = np.where(ok_o, o, np.nan), np.where(ok_c, c, np.nan)
+    return out.dropna()
+
+
+def xasset(data, symbol: str) -> pd.Series:
+    """Daily close of a cross-asset series from daily_xasset.csv, indexed by naive date."""
+    df = pd.read_csv(Path(data) / "daily_xasset.csv", parse_dates=["date"])
+    s = df[df["symbol"] == symbol].set_index("date")["close"].sort_index()
+    return s
