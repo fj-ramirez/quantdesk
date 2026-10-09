@@ -23,14 +23,15 @@ How to use this file:
   `context/decisions.md` if it settled a rule. A finished block does not stay here.
 - New work gets the next free ID and is filed here, never fixed silently.
 
-**Next free ID: T148.** (T108 was allocated retroactively — see the archive's addendum;
+**Next free ID: T149.** (T108 was allocated retroactively — see the archive's addendum;
 T109–T114 were filed on 2026-09-22 from the task-history audit, T115–T121 from the logic audit;
 T122–T124 were filed and finished on 2026-09-23 — see the addendum; T125–T127 were filed on
 2026-09-25 for the ThetaData initiative, [plans/thetadata/](plans/thetadata/README.md); T128–T133
 on feature branches; T134–T136 on 2026-10-06 for [plans/signal-alerts/](plans/signal-alerts/README.md); T137 and T138 filed and
 finished 2026-10-07, see the addendum; T139 filed 2026-10-07, split from T96, and finished 2026-10-08, see the addendum; T140 and T141 filed 2026-10-08; T142 filed 2026-10-08 from
 [docs/read-review-2026-10-08.md](docs/read-review-2026-10-08.md); T143–T147 filed 2026-10-08 on the
-`experiment/charter-mt5` branch for [plans/charter-mt5/](plans/charter-mt5/README.md).)
+`experiment/charter-mt5` branch for [plans/charter-mt5/](plans/charter-mt5/README.md); T148 filed
+2026-10-08 from T145's basis work.)
 
 ---
 
@@ -473,6 +474,25 @@ way.
 ---
 
 ## Terminal and decision inputs
+
+### T148 · Sonnet · —
+**Two bad SPX closes in `gex.daily_bars`, and a check that would have caught them**
+
+Found by T145 (plans/charter-mt5/, *Result*). On **2025-04-09** and **2026-06-26** the stored SPX
+close disagrees with SPY by 0.88 % and 0.54 % (SPX/SPY ratio against its ±10-day mean). Every
+other deviation over 0.2 % since 2021-09 falls on an SPY ex-dividend date. On 2026-06-26 SPX
+shows −0.04 % while SPY fell 0.72 % and `S&P.fs` fell 0.78 %. Every scan module reads these
+bars: ATR, realized vol, breakouts, regime.
+
+1. Confirm both against a second source (Cboe's SPX history, or ThetaData if it carries
+   index EOD) and correct them through the bars job's normal upsert path, recording the
+   source used.
+2. Find out why: Yahoo revision, a mid-session snapshot stored as the close, or a partial day.
+   If it can recur, add an SPX-vs-SPY consistency check to the daily bars job that logs any
+   day over 0.3 % away from the ratio's rolling mean, excluding SPY ex-dividend dates.
+
+Acceptance: both days agree with SPY within the ex-dividend band, and the check flags them on
+the uncorrected data.
 
 ### T94 · Sonnet · T91
 
