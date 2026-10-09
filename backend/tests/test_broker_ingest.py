@@ -320,3 +320,19 @@ async def test_an_unwritable_tick_dir_is_logged_not_fatal(factory, tmp_path, cap
     with caplog.at_level(logging.ERROR):
         await ing.run_hour(now)
     assert "could not be written" in caplog.text
+
+
+async def test_backward_walk_is_bounded_per_call_and_resumes(factory, tmp_path):
+    now = dt.datetime(2026, 10, 8, 14, tzinfo=UTC)
+    start = now - dt.timedelta(days=30)
+    bridge = FakeBridge(start)
+    bridge.now = now
+    ing = _ingestor(bridge, factory, tmp_path)
+    await ing.bars_forward("S&P.fs", now)
+    # 30 days behind a 7-day first run is four chunks of data, then two empty ones. A budget
+    # of 1 is raised to the stop rule's 2, so: two data chunks, two more, then the two empties.
+    results = [await ing.bars_backward("S&P.fs", now, max_chunks=1) for _ in range(3)]
+    assert results == [False, False, True]
+    with factory() as s:
+        assert s.scalar(sa.select(sa.func.min(Bar.ts))) == start
+        assert s.scalar(sa.select(sa.func.count()).select_from(Bar)) == _open_minutes(start, now)

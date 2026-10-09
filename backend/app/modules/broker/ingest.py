@@ -56,6 +56,8 @@ BAR = dt.timedelta(minutes=1)
 CHUNK = dt.timedelta(days=7)
 EMPTY_CHUNKS_TO_STOP = 2
 EMPTY_RETRIES = 3
+#: About three months of M1 per symbol per minute-run (see `bars_backward`).
+BACKWARD_CHUNKS_PER_RUN = 13
 EMPTY_RETRY_S = 10.0
 #: How long a confirmed convention is trusted without a fresh measurement: a long weekend plus
 #: a holiday, with margin.
@@ -276,13 +278,22 @@ class Ingestor:
             logger.info("broker: %s: %d new bar(s)", symbol, total)
         return total
 
-    async def bars_backward(self, symbol: str, now: dt.datetime) -> bool:
-        """Walk back from the oldest stored bar. True once history is exhausted for today."""
+    async def bars_backward(self, symbol: str, now: dt.datetime,
+                            max_chunks: int = BACKWARD_CHUNKS_PER_RUN) -> bool:
+        """Walk back from the oldest stored bar, at most `max_chunks` chunks per call.
+
+        True once history is exhausted (two empty chunks in a row), so the caller stops asking
+        for today. The budget keeps one symbol's years of history from holding the minute job:
+        an unbounded walk froze the other four symbols' live bars for over 1.5 hours on
+        2026-10-08. A call that ends on an empty chunk is safe, because the next one restarts
+        from the oldest stored bar and re-tries it.
+        """
         first, _ = self._bounds(symbol)
         if first is None:
             return False
-        end, empty, total, chunks = first, 0, 0, 0
-        while empty < EMPTY_CHUNKS_TO_STOP:
+        end, empty, total = first, 0, 0
+        # Never below the stop rule: an end needs that many empty chunks inside one call.
+        for _ in range(max(max_chunks, EMPTY_CHUNKS_TO_STOP)):
             start = end - CHUNK
             df = await self._fetch(symbol, start, end, now)
             for _ in range(EMPTY_RETRIES):
@@ -294,13 +305,14 @@ class Ingestor:
             total += new
             empty = 0 if new else empty + 1
             end = start
-            chunks += 1
-            if chunks % 26 == 0:  # about every six months of history
-                logger.info("broker: %s: back to %s (%d older bars)", symbol, start.date(), total)
-        oldest, _ = self._bounds(symbol)
-        logger.info("broker: %s: history starts %s (%d older bar(s) this pass)",
-                    symbol, oldest.isoformat() if oldest else None, total)
-        return True
+            if empty >= EMPTY_CHUNKS_TO_STOP:
+                oldest, _ = self._bounds(symbol)
+                logger.info("broker: %s: history starts %s",
+                            symbol, oldest.isoformat() if oldest else None)
+                return True
+        if total:
+            logger.info("broker: %s: back to %s (%d older bars)", symbol, end.date(), total)
+        return False
 
     # ------------------------------------------------------------------ ticks
 
