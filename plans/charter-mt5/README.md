@@ -299,6 +299,116 @@ what it is.
 
 ## Result
 
+### T151 — step 4, the executor: code landed 2026-10-09; homeserver acceptance open
+
+Built on the user's request. **They chose to drop the demo-only lock:** the executor trades
+whichever account the `mt5` terminal is logged into. CLAUDE.md invariant 11 replaces
+"no order routing, ever". Of the 2026-10-08 terms, everything else holds.
+
+- **Bridge** (`docker/mt5/bridge/server.py`):
+  - `positions`, `order_market` and `close_position`;
+  - `order_market` refuses any order without a stop-loss on the right side of the price;
+  - the healthcheck reports the account mode instead of failing on a live login;
+  - `entrypoint.sh` enables algo trading in the terminal only with `MT5_ALLOW_TRADING=1`.
+- **Desk:**
+  - `modules/broker/strategies.py` holds `GoldAsiaDrift`, the frozen spec of
+    [gold-asia-drift](../../docs/edges/gold-asia-drift.md). Legs run Monday–Thursday:
+    18:00 New York open, 03:00 close. It has a **−6% disaster stop** (the worst historical
+    adverse move in the 18:00–03:00 window was −5.07% over 1,434 nights, so the tested rule is
+    unchanged) and the candidate's kill rules.
+  - `modules/broker/executor.py` writes intents to `broker.order_intents` before sending
+    (migration `a8b9c0d1e2f3`). It also enforces the volume cap and one position per strategy,
+    expires an entry rather than chasing it, retries a failed close every tick, and pauses on a
+    kill rule via `broker.strategy_state`. A paused strategy is resumed only by hand.
+  - `workers/executor.py` and the `executor` compose service in the `broker` profile.
+- **Off by default:** nothing is sent until both `EXECUTOR_ENABLED=true` and
+  `MT5_ALLOW_TRADING=1` are set.
+- **Tests:**
+  - 16 executor and schedule tests, plus 4 new bridge tests. One of them replaces "no trading
+    call anywhere" with "trading calls only inside the order path".
+  - The backend suite passes (1,448), and ruff is clean.
+- **Not verified:** the real terminal's fills, filling modes and `retcode`s. Acceptance on the
+  homeserver:
+  1. deploy with `EXECUTOR_ENABLED=false` and check that legs are journalled as `skipped (dry run)`;
+  2. set `MT5_ALLOW_TRADING=1` and `EXECUTOR_ENABLED=true` on the demo login;
+  3. confirm that one 18:00 open and one 03:00 close fill, with the spread recorded.
+- **Resuming after a pause** is a SQL update of `broker.strategy_state` (`paused = false`),
+  deliberately by hand.
+
+### T147 — study run 2026-10-09: no trial passes; registry write open
+
+**The answer is no.** None of the 288 intraday price-action trials passes the stage-1 gate on
+the broker's own M1 bars after doubled measured costs. None is within reach of the noise ceiling
+either.
+
+- **Code:**
+  - `app/modules/research/events.py` is the pure M1 R evaluator (decision 8): stop before target,
+    gaps fill at the open, the fill bar never pays, one position at a time, and the entry bar's
+    recorded spread as the cost. Its 11 tests are in `tests/test_research_events.py`.
+  - `app/modules/research/pa_study.py` holds the harness. `SEARCH_SPACE` declares the search up
+    front.
+- **Search space (288 trials):**
+  - six patterns, each with two variants: `sweep`, `bos`, `choch` (swing 3/5), `pin` (wick
+    0.6/0.7), `engulfing` (any/with the break trend) and `pd_sweep` (a sweep of the previous
+    session's high or low, pierce 0/0.25 ATR);
+  - four symbols: `S&P.fs`, `NAS100.fs`, `DJ30.fs`, `XAUUSD`;
+  - three timeframes: M5, M15, H1;
+  - two exits: 2R, or a time exit after 12 bars.
+- **Fixed choices, not searched:**
+  - entries 09:35–15:30 New York (03:00–15:30 for XAUUSD), flat by 15:55 (16:00 for XAUUSD), so
+    there is no swap and no hold across a roll;
+  - no entries in a roll's session or the two sessions after it;
+  - structural stops, never closer than 0.5 × ATR(14);
+  - IS before 2024-01-01, OOS from then on.
+- **Zones were left out.** Clustering every swing since 2019 against every cluster is quadratic.
+  `pd_sweep` replaced them. US2000 was left out too: it is a cash CFD with a 0.1-lot minimum.
+- **Data:** `broker.bars` M1, 2019-07 → 2026-10-09 (DJ30.fs from 2021-06), exported 2026-10-09.
+  **The recorded spread is a flat nominal value per symbol:** 0.90 for S&P.fs, 2.0 for NAS100.fs,
+  4.0 for DJ30.fs and about 0.15 for XAUUSD, with no widening at the open or around news. It is a
+  lower bound on cost.
+
+**Gate counts (out of 288):**
+
+| Gate | Trials passing |
+|---|---|
+| ≥ 100 trades over ≥ 30 sessions | 288 |
+| mean R > 0 after doubled costs | 16 |
+| mean > 2 session-clustered SE | **0** (best t = 1.5) |
+| positive in most calendar years | 12 |
+| OOS Sharpe above the noise ceiling | **0** |
+
+The ceiling is 2.94 at N = 162,795 and 2.8 OOS years. Even counting only this family's 288
+trials, it is 2.02, and the best OOS Sharpe at 1× cost is 1.37.
+
+**What the numbers say (patterns that hold across the grid, not a fitted result):**
+
+1. **Cost decides intraday CFD trading on short timeframes.** The median spread is 0.10–0.20R
+   per trade on M5, about 0.06–0.11R on M15 and about 0.03–0.06R on H1. S&P.fs is the most
+   expensive per R of risk. **Every M5 trial loses after costs.**
+2. **Continuation has a small gross edge. Reversal has none.** Breaks of structure (`bos`)
+   average +0.06–0.08R gross on M15/H1. Sweeps, pins and previous-day-extreme sweeps are about 0
+   or negative even before costs. But the best gross t-statistic over the 288 trials (3.4) is
+   roughly what the maximum of 288 noise draws produces (≈ 2.9–3.0), so even this is a leaning.
+3. **The closest call has decayed.** `NAS100.fs` H1 `bos` (swing 3) was positive after doubled
+   cost in 5–6 of 8 years through 2023, then **negative in 2024 and 2026 OOS** (OOS mean −0.04R).
+   That is what a past edge or a lucky in-sample looks like, and it does not support a
+   forward test.
+
+**Open:**
+
+- **Recording the 288 trials in `research.trials`.** Writing to the homeserver's database from
+  the dev machine was denied in session. Run
+  `pa_study --bars-dir … --rolls … --out … --record` where the backend can reach the database.
+  Until then the trials are not counted against the noise ceiling, which is exactly the fork
+  invariant 9 warns about.
+- No stage-0 spec was written. Nothing here is promising enough for one.
+- A GEX-conditioned family was not run. There are 16 sessions of desk levels: a leaning at best,
+  never a gate pass (decision 9).
+- **Untested and the obvious next question: multi-day swings.** Futures-based CFDs carry
+  `swap_long = swap_short = 0` (`broker.symbol_specs`), and H1 costs are already ~0.03R, so
+  holding for days divides the spread over a larger move. A swing study needs a declared space
+  of its own, holds refused across a roll, and gap risk priced at the weekend.
+
 ### T146 — landed 2026-10-08
 
 - `app/modules/gex/scan/price_action.py` provides `swings`, `structure`, `breaks` (BOS/CHoCH),

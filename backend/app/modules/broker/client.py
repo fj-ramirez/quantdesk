@@ -1,4 +1,4 @@
-"""Async client for the `mt5` container's read-only bridge (T143, plans/charter-mt5/README.md).
+"""Async client for the `mt5` container's bridge (T143, T151; plans/charter-mt5/README.md).
 
 The bridge (`docker/mt5/bridge/server.py`) speaks newline-delimited JSON over TCP. This is its
 only client, used by the `broker-ingest` worker (T144). One connection, requests serialised;
@@ -127,6 +127,27 @@ class BridgeClient:
         cols = ["server_time", "open", "high", "low", "close", "tick_volume", "spread",
                 "real_volume"]
         return pd.DataFrame({c: r[c] for c in cols}, columns=cols)
+
+    # ------------------------------------------------------------- the order path (T151)
+    # Only `app.modules.broker.executor` calls these. Every order carries a stop-loss; the bridge
+    # refuses one without.
+
+    async def positions(self, *, symbol: str | None = None, magic: int | None = None) -> list[dict]:
+        params: dict[str, Any] = {}
+        if symbol is not None:
+            params["symbol"] = symbol
+        if magic is not None:
+            params["magic"] = magic
+        return (await self.request("positions", **params)).result
+
+    async def order_market(self, symbol: str, side: str, volume: float, sl: float, *,
+                           magic: int, comment: str = "", deviation: int = 50) -> Reply:
+        return await self.request("order_market", symbol=symbol, side=side, volume=volume, sl=sl,
+                                  magic=magic, comment=comment, deviation=deviation)
+
+    async def close_position(self, ticket: int, *, comment: str = "", deviation: int = 50) -> Reply:
+        return await self.request("close_position", ticket=ticket, comment=comment,
+                                  deviation=deviation)
 
     async def ticks(self, symbol: str, start: int, end: int) -> pd.DataFrame:
         """Ticks with `time_msc` in [start, end) seconds, server time; at most 26 hours."""

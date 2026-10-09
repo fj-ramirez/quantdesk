@@ -151,8 +151,12 @@ number to be true, it belongs in a plan file's *Result* heading or behind an MCP
 
 ## Ops and scope
 
-- Analysis only — **no order routing, ever**. Single user, no auth, data spend under $50/month.
-- The MT5 bridge serves reads only and refuses to serve unless the terminal is the configured
+- **One order path: the `executor` worker** (2026-10-09, replacing "no order routing, ever").
+  It trades frozen candidate specs on the configured account, demo or live. That was the
+  user's choice: there is no demo-only lock. Safeguards: intents before orders, a stop on
+  every order, a volume cap, one position per strategy, and kill rules that only a person
+  resets. Single user, no auth, data spend under $50/month. — T151; P:charter-mt5 step 4.
+- (Superseded for the order path by T151.) The MT5 bridge serves reads only and refuses to serve unless the terminal is the configured
   **demo** login. Broker levels are translated with a measured basis, never a typed-in one. — T143, T145; P:charter-mt5.
 - The desk is never exposed publicly: loopback plus a private tunnel. — T70.
 - Every service has a memory limit; `MALLOC_ARENA_MAX=2`. — T86.

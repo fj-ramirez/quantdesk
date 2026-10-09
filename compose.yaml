@@ -319,6 +319,8 @@ services:
       # "Max bars in chart", which also caps the history the API serves. Written into the startup
       # ini because the GUI setting does not survive a restart. Empty uses the entrypoint default.
       MT5_MAX_BARS: ${MT5_MAX_BARS:-}
+      # T151: 1 lets the terminal trade (the executor's orders). Default 0: MT5 rejects all.
+      MT5_ALLOW_TRADING: ${MT5_ALLOW_TRADING:-0}
       TZ: UTC
     volumes:
       - ./mt5:/mt5
@@ -343,6 +345,30 @@ services:
       BROKER_TICK_HOURS: ${BROKER_TICK_HOURS:-168}
     volumes:
       - ./data:/data
+    depends_on:
+      postgres:
+        condition: service_healthy
+      mt5:
+        condition: service_started
+
+  # T151. The only process that places orders: the strategies in EXECUTOR_STRATEGIES, through
+  # the `mt5` bridge, on whatever account that terminal is logged into. Journals every leg to
+  # `broker.order_intents`; sends nothing until EXECUTOR_ENABLED=true (and the terminal has
+  # MT5_ALLOW_TRADING=1). Same `broker` profile, so it never runs where mt5 cannot.
+  executor:
+    profiles: ["broker"]
+    build:
+      context: ./backend
+      target: runtime
+      args: *build_stamp
+    command: ["python", "-m", "app.workers.executor"]
+    environment:
+      <<: *backend_environment
+      BROKER_BRIDGE_ADDR: mt5:18812
+      EXECUTOR_ENABLED: ${EXECUTOR_ENABLED:-false}
+      EXECUTOR_STRATEGIES: ${EXECUTOR_STRATEGIES:-gold_asia}
+      EXECUTOR_VOLUME: ${EXECUTOR_VOLUME:-0.01}
+      EXECUTOR_MAX_VOLUME: ${EXECUTOR_MAX_VOLUME:-0.05}
     depends_on:
       postgres:
         condition: service_healthy

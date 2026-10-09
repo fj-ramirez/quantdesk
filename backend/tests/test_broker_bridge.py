@@ -33,12 +33,42 @@ class FakeMT5:
     TIMEFRAME_M1, TIMEFRAME_M5, TIMEFRAME_M15, TIMEFRAME_M30 = 1, 5, 15, 30
     TIMEFRAME_H1, TIMEFRAME_H4, TIMEFRAME_D1 = 16385, 16388, 16408
     COPY_TICKS_ALL = -1
+    TRADE_ACTION_DEAL, ORDER_TYPE_BUY, ORDER_TYPE_SELL, ORDER_TIME_GTC = 1, 0, 1, 0
+    ORDER_FILLING_FOK, ORDER_FILLING_IOC, ORDER_FILLING_RETURN = 0, 1, 2
+    TRADE_RETCODE_DONE = 10009
 
     def __init__(self, *, login=LOGIN, trade_mode=0, init_ok=True):
         self.login, self.trade_mode, self.init_ok = login, trade_mode, init_ok
         self.alive = False
         self.initialize_calls = 0
         self.rate_calls: list[tuple] = []
+        self.sent: list[dict] = []
+        self.open: dict[int, SimpleNamespace] = {}
+        self.retcode = self.TRADE_RETCODE_DONE
+
+    def positions_get(self, symbol=None, ticket=None):
+        rows = list(self.open.values())
+        if symbol is not None:
+            rows = [p for p in rows if p.symbol == symbol]
+        if ticket is not None:
+            rows = [p for p in rows if p.ticket == ticket]
+        return tuple(rows)
+
+    def order_send(self, request):
+        self.sent.append(request)
+        price = request["price"]
+        if self.retcode == self.TRADE_RETCODE_DONE:
+            if "position" in request:
+                self.open.pop(request["position"], None)
+            else:
+                ticket = 1000 + len(self.sent)
+                self.open[ticket] = SimpleNamespace(
+                    ticket=ticket, symbol=request["symbol"], type=request["type"],
+                    volume=request["volume"], price_open=price, sl=request["sl"], tp=0.0,
+                    price_current=price, swap=0.0, profit=0.0, magic=request["magic"],
+                    comment=request["comment"], time=1_000)
+        return SimpleNamespace(retcode=self.retcode, deal=7, order=8, volume=request["volume"],
+                               price=price, comment="done" if self.retcode == 10009 else "no")
 
     def initialize(self, path=None, **kw):
         self.initialize_calls += 1
@@ -69,7 +99,8 @@ class FakeMT5:
 
     def symbol_info(self, symbol):
         fields = {f: 0 for f in server.SPEC_FIELDS}
-        fields.update(name=symbol, digits=2, swap_long=-5.1, description="S&P", path="Indices")
+        fields.update(name=symbol, digits=2, swap_long=-5.1, description="S&P", path="Indices",
+                      filling_mode=2)
         return SimpleNamespace(**fields)
 
     def symbol_info_tick(self, symbol):
@@ -147,7 +178,7 @@ async def test_errors_answer_and_keep_the_connection(bridge_addr):
         with pytest.raises(BridgeError, match="not available"):
             await c.spec("NOPE")
         with pytest.raises(BridgeError, match="unknown op"):
-            await c.request("order_send")
+            await c.request("order_send")  # the raw MT5 call is not an op; order_market is
         with pytest.raises(BridgeError, match="timeframe"):
             await c.rates("US500", "M7", 0, 60)
         assert (await c.account()).login == LOGIN
@@ -180,11 +211,54 @@ async def test_unreachable_bridge_raises():
         await BridgeClient("127.0.0.1", 1, timeout=2).account()
 
 
-def test_bridge_never_calls_a_trading_function():
-    """Decision 2: the bridge has no order path. Checked on the syntax tree, not the text, so
-    the docstring may say what is absent."""
+#: The only functions that may name an MT5 trading call (T151).
+ORDER_PATH = {"op_positions", "op_order_market", "op_close_position", "_send"}
+
+
+def test_trading_calls_live_only_in_the_order_path():
+    """T151: the bridge's order path is three ops (plus their shared `_send`). Checked on the
+    syntax tree, so a trading call added anywhere else fails here."""
     tree = ast.parse(SERVER_PY.read_text(encoding="utf-8"))
-    names = {n.attr for n in ast.walk(tree) if isinstance(n, ast.Attribute)}
-    names |= {n.id for n in ast.walk(tree) if isinstance(n, ast.Name)}
-    forbidden = {n for n in names if n.startswith(("order_", "positions_", "orders_"))}
-    assert forbidden == set()
+    trading = ("order_send", "order_check", "positions_get", "orders_get", "position_close")
+    offenders = []
+    for fn in (n for n in ast.walk(tree) if isinstance(n, ast.FunctionDef)):
+        if fn.name in ORDER_PATH:
+            continue
+        for n in ast.walk(fn):
+            if isinstance(n, ast.Attribute) and n.attr in trading:
+                offenders.append(f"{fn.name}: {n.attr}")
+    assert offenders == []
+
+
+async def test_order_market_refuses_a_missing_or_wrong_side_stop(bridge_addr, fake):
+    async with BridgeClient(*bridge_addr) as c:
+        with pytest.raises(BridgeError, match="volume and sl"):
+            await c.request("order_market", symbol="XAUUSD", side="buy", volume=0.01)
+        with pytest.raises(BridgeError, match="wrong side"):
+            await c.order_market("XAUUSD", "buy", 0.01, sl=6700.0, magic=1)
+        with pytest.raises(BridgeError, match="wrong side"):
+            await c.order_market("XAUUSD", "sell", 0.01, sl=6500.0, magic=1)
+    assert fake.sent == []
+
+
+async def test_order_market_fills_at_the_ask_and_closes_at_the_bid(bridge_addr, fake):
+    async with BridgeClient(*bridge_addr) as c:
+        r = await c.order_market("XAUUSD", "buy", 0.01, sl=6200.0, magic=4242, comment="t")
+        assert r.result["price"] == 6600.6 and r.result["quote_bid"] == 6600.1
+        (pos,) = await c.positions(magic=4242)
+        assert pos["side"] == "buy" and pos["sl"] == 6200.0
+        assert await c.positions(magic=1) == []
+        closed = await c.close_position(pos["ticket"])
+        assert closed.result["price"] == 6600.1
+        assert await c.positions() == []
+    assert fake.sent[0]["type_filling"] == FakeMT5.ORDER_FILLING_IOC
+    assert fake.sent[1]["position"] == pos["ticket"] and fake.sent[1]["type"] == FakeMT5.ORDER_TYPE_SELL
+
+
+async def test_a_rejected_order_is_an_error_answer(bridge_addr, fake):
+    fake.retcode = 10027  # AutoTrading disabled by the client terminal
+    async with BridgeClient(*bridge_addr) as c:
+        with pytest.raises(BridgeError, match="retcode 10027"):
+            await c.order_market("XAUUSD", "buy", 0.01, sl=6200.0, magic=1)
+        with pytest.raises(BridgeError, match="no open position"):
+            await c.close_position(12345)

@@ -35,7 +35,9 @@ __all__ = [
     "Base",
     "BasisRow",
     "ClockCheck",
+    "OrderIntent",
     "RollRow",
+    "StrategyState",
     "SymbolSpec",
     "TickFile",
     "schema_ready",
@@ -147,6 +149,57 @@ class RollRow(Base):
     step: Mapped[float] = mapped_column(Float, nullable=False)  # change in log(cfd / desk)
     desk_symbol: Mapped[str] = mapped_column(String(16), nullable=False)
     resolution: Mapped[str] = mapped_column(String(4), nullable=False)  # "5m" or "1d"
+
+
+class OrderIntent(Base):
+    """One leg the executor intends to trade, written **before** anything is sent (T151).
+
+    The row is the audit trail and the journal: what was due, when, what was sent, the fill and
+    the quote around it, and what went wrong. `key` is unique per strategy leg
+    (`gold_asia:2026-10-12:open`), so scheduling twice writes one row, and a restart picks up
+    where the last process stopped. Rows are updated as the leg progresses but never deleted.
+    """
+
+    __tablename__ = "order_intents"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    key: Mapped[str] = mapped_column(String(96), unique=True, nullable=False)
+    strategy: Mapped[str] = mapped_column(String(32), nullable=False)
+    symbol: Mapped[str] = mapped_column(String(32), nullable=False)
+    action: Mapped[str] = mapped_column(String(8), nullable=False)  # open | close
+    side: Mapped[str] = mapped_column(String(4), nullable=False)  # buy | sell: the position's
+    volume: Mapped[float] = mapped_column(Float, nullable=False)
+    due_at: Mapped[dt.datetime] = mapped_column(UTCDateTime(), nullable=False)
+    expires_at: Mapped[dt.datetime] = mapped_column(UTCDateTime(), nullable=False)
+    #: pending -> filled | rejected | expired | skipped. A close that fails stays pending and is
+    #: retried until it fills or there is nothing left to close.
+    status: Mapped[str] = mapped_column(String(10), nullable=False, default="pending")
+    attempts: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    created_at: Mapped[dt.datetime] = mapped_column(UTCDateTime(), nullable=False)
+    sent_at: Mapped[dt.datetime | None] = mapped_column(UTCDateTime(), nullable=True)
+    sl: Mapped[float | None] = mapped_column(Float, nullable=True)
+    ticket: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
+    fill_price: Mapped[float | None] = mapped_column(Float, nullable=True)
+    quote_bid: Mapped[float | None] = mapped_column(Float, nullable=True)
+    quote_ask: Mapped[float | None] = mapped_column(Float, nullable=True)
+    #: On a close: the round trip's result in % of the open fill, after the spread both fills
+    #: paid. The kill rules read this.
+    pnl_pct: Mapped[float | None] = mapped_column(Float, nullable=True)
+    account_login: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
+    account_mode: Mapped[str | None] = mapped_column(String(8), nullable=True)
+    note: Mapped[str | None] = mapped_column(String(512), nullable=True)
+
+
+class StrategyState(Base):
+    """Whether a strategy may open positions. A kill rule or a person pauses it; only a person
+    resumes it (the edge-research skill: a paused strategy comes back on a fresh sample)."""
+
+    __tablename__ = "strategy_state"
+
+    strategy: Mapped[str] = mapped_column(String(32), primary_key=True)
+    paused: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    reason: Mapped[str | None] = mapped_column(String(256), nullable=True)
+    updated_at: Mapped[dt.datetime] = mapped_column(UTCDateTime(), nullable=False)
 
 
 # `broker.levels`, the GEX levels in CFD price (T145), is a view defined in migration

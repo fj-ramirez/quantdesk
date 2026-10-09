@@ -1,4 +1,4 @@
-"""Read-only bridge between one MT5 terminal and the desk (T143, plans/charter-mt5/README.md).
+"""Bridge between one MT5 terminal and the desk (T143, T151; plans/charter-mt5/README.md).
 
 Runs in the `mt5` container under Wine, in the embedded **Windows** Python that has the
 official `MetaTrader5` package. It attaches to the terminal running beside it and serves
@@ -10,10 +10,14 @@ Standard library only, apart from `MetaTrader5` itself.
     answer    {"re": 1, "ok": true, "utc_ms": 1759990000123, "result": {...}}
               {"re": 1, "ok": false, "utc_ms": ..., "error": "..."}
 
-**There is no order path.** Every operation below reads. Nothing in this file calls
-`order_send`, `order_check` or any other trading function, and `tests/test_broker_bridge.py`
-fails if the source ever names one. Step 4 of the plan (a demo-only executor) adds that path
-deliberately, in its own task.
+**The order path is three operations and nothing else** (T151, step 4 of the plan):
+`positions`, `order_market` and `close_position`. They are the only place in this file that may
+name a trading function, and `tests/test_broker_bridge.py` checks that on the syntax tree. The
+`executor` worker is their only intended caller. `order_market` refuses an order without a
+stop-loss on the correct side of the price. The executor attaches one anyway, and this is the
+second line of that rule. Whether the terminal may trade at all is the terminal's own setting
+(`MT5_ALLOW_TRADING` in `entrypoint.sh`). Off, MT5 rejects every order with "AutoTrading
+disabled", which this bridge reports as an error answer.
 
 **Time.** MT5 reports and filters bar and tick times in the broker's *server wall-clock*,
 expressed as epoch numbers that are not UTC. This bridge passes them through untouched, with
@@ -229,6 +233,96 @@ class Bridge:
         return {"symbol": symbol, **{c: [_py(r[c]) for r in rows] for c in cols}}
 
 
+    # ---------------------------------------------------------------- the order path (T151)
+
+    def _position_row(self, p) -> dict:
+        return {"ticket": p.ticket, "symbol": p.symbol, "side": "buy" if p.type == 0 else "sell",
+                "volume": p.volume, "price_open": p.price_open, "sl": p.sl, "tp": p.tp,
+                "price_current": p.price_current, "swap": p.swap, "profit": p.profit,
+                "magic": p.magic, "comment": p.comment, "server_time": p.time}
+
+    def op_positions(self, req: dict) -> list[dict]:
+        """Open positions, optionally for one symbol and one magic number."""
+        symbol = req.get("symbol")
+        rows = self.mt5.positions_get(symbol=symbol) if symbol else self.mt5.positions_get()
+        if rows is None:
+            self._fail("positions_get")
+        magic = req.get("magic")
+        return [self._position_row(p) for p in rows if magic is None or p.magic == magic]
+
+    def _filling(self, symbol: str) -> int:
+        mt5 = self.mt5
+        mode = mt5.symbol_info(symbol).filling_mode
+        if mode & 1:
+            return mt5.ORDER_FILLING_FOK
+        if mode & 2:
+            return mt5.ORDER_FILLING_IOC
+        return mt5.ORDER_FILLING_RETURN
+
+    def _send(self, request: dict) -> dict:
+        mt5 = self.mt5
+        tick = mt5.symbol_info_tick(request["symbol"])
+        result = mt5.order_send(request)
+        if result is None:
+            self._fail("order_send")
+        if result.retcode != mt5.TRADE_RETCODE_DONE:
+            raise BridgeError(f"order rejected: retcode {result.retcode} ({result.comment})")
+        return {"retcode": result.retcode, "deal": result.deal, "order": result.order,
+                "volume": result.volume, "price": result.price, "comment": result.comment,
+                "quote_bid": tick.bid if tick else None, "quote_ask": tick.ask if tick else None}
+
+    def op_order_market(self, req: dict) -> dict:
+        """A market order with a mandatory stop-loss. `side` is buy or sell."""
+        mt5 = self.mt5
+        symbol = self._select(req.get("symbol"))
+        side = req.get("side")
+        if side not in ("buy", "sell"):
+            raise BridgeError("side must be buy or sell")
+        try:
+            volume, sl = float(req["volume"]), float(req["sl"])
+        except (KeyError, TypeError, ValueError):
+            raise BridgeError("volume and sl are required") from None
+        if volume <= 0:
+            raise BridgeError("volume must be positive")
+        tick = mt5.symbol_info_tick(symbol)
+        if tick is None:
+            self._fail("symbol_info_tick")
+        price = tick.ask if side == "buy" else tick.bid
+        if (side == "buy" and not sl < price) or (side == "sell" and not sl > price):
+            raise BridgeError(f"stop-loss {sl} is on the wrong side of {price} for a {side}")
+        return self._send({
+            "action": mt5.TRADE_ACTION_DEAL, "symbol": symbol, "volume": volume,
+            "type": mt5.ORDER_TYPE_BUY if side == "buy" else mt5.ORDER_TYPE_SELL,
+            "price": price, "sl": sl, "deviation": int(req.get("deviation", 50)),
+            "magic": int(req.get("magic", 0)), "comment": str(req.get("comment", ""))[:31],
+            "type_time": mt5.ORDER_TIME_GTC, "type_filling": self._filling(symbol),
+        })
+
+    def op_close_position(self, req: dict) -> dict:
+        """Close one position by ticket, in full, at market."""
+        mt5 = self.mt5
+        try:
+            ticket = int(req["ticket"])
+        except (KeyError, TypeError, ValueError):
+            raise BridgeError("ticket is required") from None
+        rows = mt5.positions_get(ticket=ticket)
+        if not rows:
+            raise BridgeError(f"no open position #{ticket}")
+        p = rows[0]
+        tick = mt5.symbol_info_tick(p.symbol)
+        if tick is None:
+            self._fail("symbol_info_tick")
+        buy_back = p.type == 1
+        return self._send({
+            "action": mt5.TRADE_ACTION_DEAL, "symbol": p.symbol, "volume": p.volume,
+            "position": ticket,
+            "type": mt5.ORDER_TYPE_BUY if buy_back else mt5.ORDER_TYPE_SELL,
+            "price": tick.ask if buy_back else tick.bid, "deviation": int(req.get("deviation", 50)),
+            "magic": p.magic, "comment": str(req.get("comment", ""))[:31],
+            "type_time": mt5.ORDER_TIME_GTC, "type_filling": self._filling(p.symbol),
+        })
+
+
 def _py(v):
     """numpy scalar -> plain Python, so `json` can write it."""
     return v.item() if hasattr(v, "item") else v
@@ -273,7 +367,7 @@ class Server(socketserver.ThreadingTCPServer):
 
 
 def main() -> None:
-    ap = argparse.ArgumentParser(description="Read-only MT5 bridge for the desk")
+    ap = argparse.ArgumentParser(description="MT5 bridge for the desk")
     ap.add_argument("--terminal", help=r"Z:\...\terminal64.exe")
     ap.add_argument("--login", type=int, help="refuse to serve any other account")
     ap.add_argument("--host", default="0.0.0.0")

@@ -92,6 +92,15 @@ class Settings(BaseSettings):
     BROKER_SYMBOLS: str = "S&P.fs,NAS100.fs,DJ30.fs,XAUUSD,US2000"
     # How many closed hours of ticks are kept fetched behind now.
     BROKER_TICK_HOURS: int = 168
+    # --- T151: the executor, the one part of the desk that places orders ----------------------
+    # Off by default: false means it writes and journals every leg but sends nothing. The
+    # terminal must also allow algo trading (MT5_ALLOW_TRADING=1 on the mt5 container).
+    EXECUTOR_ENABLED: bool = False
+    # Comma-separated names from app.modules.broker.strategies.STRATEGIES.
+    EXECUTOR_STRATEGIES: str = "gold_asia"
+    # Lots per order, and the hard cap above which the executor refuses to start.
+    EXECUTOR_VOLUME: float = 0.01
+    EXECUTOR_MAX_VOLUME: float = 0.05
     # --- T76: the read-only role's password ---------------------------------------------------
     # Empty by default, same rule as MARKETDATA_TOKEN and TIINGO_TOKEN above: a dev stack that
     # never asked for a read-only connection is not blocked by a missing credential. When it is
