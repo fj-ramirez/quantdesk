@@ -405,3 +405,33 @@ what it is.
   - the depth found is recorded here;
   - `S&P.fs` against SPX 5-minute bars lines up at lag 0;
   - 24 hours with no gap beyond the session break.
+
+**T144 on the homeserver, 2026-10-08 evening.** Deployed through `scripts/deploy.sh --no-pull
+broker-ingest`. No other service was rebuilt.
+
+- **Clock:** confirmed, measured 10800 s against the convention's 10800 s.
+- **Alignment:** `S&P.fs` 5-minute returns correlate 0.79 with the desk's SPX bars at lag 0,
+  against −0.05 to 0.10 at ±5 and ±60 minutes.
+- **Specs** (from the bridge):
+
+  | | S&P.fs | NAS100.fs | DJ30.fs | XAUUSD | US2000 |
+  |---|---|---|---|---|---|
+  | Min lot | 0.01 | 0.01 | 0.01 | 0.01 | 0.1 (cash) |
+  | $ per point at 1 lot | 50 | 20 | 5 | 100 | 1 |
+  | Swap long / short | 0 / 0 | 0 / 0 | 0 / 0 | −61.6 / +40.5 | −7.0 / +1.0 |
+
+  The `.fs` contracts report `expiration_time = 0`, so **rolls must be detected from price**,
+  not from the spec (T145).
+- **Spreads** (M1 minimum per bar, 10:00–16:00 ET): 0.90 / 2.50 / 4.00 points and $0.16 for
+  gold. The median equals the 90th percentile. Spikes have to come from the ticks.
+- **Five first-contact bugs found and fixed:**
+  1. `MaxBars` set in the GUI does not survive a restart, so it now goes in the startup ini.
+  2. MT5 answers a range it has not downloaded with nothing, so empty chunks are retried.
+  3. An unwritable `/data/broker` crash-looped the worker. It is now owned by uid 10001, and
+     tick-write errors are non-fatal.
+  4. The unbounded walk froze live bars for 1.5 h, so it is now about 3 months per symbol per run.
+  5. **Before 2019-07-17, MT5 answers an M1 request for `S&P.fs` with one bar per day.**
+     6,625 such rows (2008-10-11 → 2019-07-17) were stored as minutes and then deleted by
+     hand. The walk now stops at days with fewer than 30 bars.
+- **Depth:** `S&P.fs` has real M1 from **2019-07-18**, about 2.5M bars. The other four were
+  still walking at the time of writing.
