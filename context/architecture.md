@@ -89,7 +89,10 @@ hosts. Write side: `storage.parquet.to_data_dir_relative_path`. Read side:
 
 Seven services: `postgres:16`, `backend` (the API — runs `alembic upgrade head`, then uvicorn),
 `frontend`, and four workers — `gex-capture` (the scheduler and startup catch-up),
-`research-search`, `terminal-ingest` and `capture-watch`. The workers use the same Dockerfile and
+`research-search`, `terminal-ingest` and `capture-watch`. Two more sit behind the `broker`
+compose profile (charter-mt5, T143–T144): `mt5`, a Wine image running the Axi **demo** MT5
+terminal and a read-only bridge with no order path, and `broker-ingest`, which writes `broker.`
+from it. MT5 crashes on Docker Desktop, so the profile is for the homeserver only. The workers use the same Dockerfile and
 target as `backend` with a different command and their own image *tag* — two building services
 cannot share one tag without racing the export. `compose.yaml` is the shared base;
 `compose.override.yaml` (loaded automatically) adds the dev bind mounts, published ports and

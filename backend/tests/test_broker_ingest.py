@@ -20,7 +20,8 @@ from sqlalchemy.orm import sessionmaker
 from app.modules.broker import servertime
 from app.modules.broker.client import Reply
 from app.modules.broker.ingest import CHUNK, ClockGate, Ingestor, symbol_slug
-from app.modules.broker.tables import Bar, ClockCheck, SymbolSpec, TickFile, ensure_schema
+from app.modules.broker.tables import Bar, ClockCheck, SymbolSpec, TickFile
+from app.modules.broker.tables import Base as BrokerBase
 
 UTC = dt.UTC
 
@@ -126,7 +127,7 @@ class FakeBridge:
 def factory(tmp_path):
     engine = sa.create_engine(f"sqlite:///{tmp_path / 'broker.db'}").execution_options(
         schema_translate_map={"broker": None})
-    ensure_schema(engine)
+    BrokerBase.metadata.create_all(engine)
     yield sessionmaker(engine)
     engine.dispose()
 
@@ -365,3 +366,16 @@ async def test_backward_walk_stops_where_the_broker_serves_daily_bars_as_m1(fact
         oldest = s.scalar(sa.select(sa.func.min(Bar.ts)))
         assert oldest >= m1_start - dt.timedelta(days=1)
         assert s.scalar(sa.select(sa.func.count()).select_from(Bar).where(Bar.spread == 0)) == 0
+
+
+def test_schema_ready_waits_for_every_table(tmp_path):
+    """The worker creates nothing since the merge: it waits until migrations made all six."""
+    from app.modules.broker.tables import schema_ready
+
+    engine = sa.create_engine(f"sqlite:///{tmp_path / 'ready.db'}").execution_options(
+        schema_translate_map={"broker": None})
+    assert not schema_ready(engine)
+    Bar.__table__.create(engine)
+    assert not schema_ready(engine)
+    BrokerBase.metadata.create_all(engine)
+    assert schema_ready(engine)

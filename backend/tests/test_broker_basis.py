@@ -18,7 +18,8 @@ from sqlalchemy.orm import sessionmaker
 
 from app.modules.broker import basis
 from app.modules.broker.basis_job import run_basis
-from app.modules.broker.tables import Bar, BasisRow, RollRow, ensure_schema
+from app.modules.broker.tables import Bar, BasisRow, RollRow
+from app.modules.broker.tables import Base as BrokerBase
 from app.modules.gex.models.db import Base as GexBase
 from app.modules.gex.models.db import DailyBar, IntradayBar
 
@@ -91,7 +92,7 @@ def test_translate_by_method_and_null_stays_null():
 def factory(tmp_path):
     engine = sa.create_engine(f"sqlite:///{tmp_path / 'b.db'}").execution_options(
         schema_translate_map={"broker": None, "gex": None})
-    ensure_schema(engine)
+    BrokerBase.metadata.create_all(engine)
     GexBase.metadata.create_all(engine, tables=[DailyBar.__table__, IntradayBar.__table__])
     yield sessionmaker(engine)
     engine.dispose()

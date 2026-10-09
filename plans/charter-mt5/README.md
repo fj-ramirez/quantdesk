@@ -1,7 +1,7 @@
 # charter-mt5: the broker's own prices on the desk (2026-10-08) — experiment, T143–T147
 
-> **Experiment branch `experiment/charter-mt5`.** Nothing here merges to `main` without the user
-> deciding so explicitly. Steps 1–3 below are filed. Step 4 (automated demo execution) and step 5
+> **Merged to `main` on 2026-10-09**, by the user's explicit decision (see *Merge* at the end).
+> It began as the experiment branch `experiment/charter-mt5`. Steps 1–3 below are filed. Step 4 (automated demo execution) and step 5
 > (live journal) are **not filed**: see *Out of scope*.
 
 ## Goal
@@ -474,3 +474,37 @@ broker-ingest`. No other service was rebuilt.
   and **2026-06-26** disagree with SPY by 0.88 % and 0.54 %. Every other SPX/SPY deviation over
   0.2 % is an SPY ex-dividend date. Every scan module reads these bars, so this belongs in
   `TASKS.md` on `main`.
+
+## Merge — 2026-10-09
+
+The user decided to merge the whole experiment. Done in the same change, as decision 10 required:
+
+- **Migration `f7a8b9c0d1e2`** creates the `broker` schema, its six tables, the `levels` view
+  (a frozen copy of T145's SQL), and the `quantdesk_ro` grants, including `ALTER DEFAULT
+  PRIVILEGES`. Each step is conditional (`IF NOT EXISTS`, tables created only when absent,
+  `CREATE OR REPLACE VIEW`), so on the homeserver it changes only grants and `alembic_version`.
+  `downgrade` refuses while `broker.bars` has rows.
+- **`broker` joined `app.core.schemas.SCHEMAS`** and Alembic's `target_metadata`. This means:
+  - SQLite engines translate it away like the others.
+  - The MCP connector's read-only self-check covers it.
+  - Autogenerate diffs it.
+  - Side effect: T76's revision reads the live tuple, so on a *fresh* database it now creates
+    `broker` and grants on it early. That is harmless, because `f7a8b9c0d1e2` is idempotent.
+- **The worker creates nothing any more.** `ensure_schema` became `schema_ready`, and
+  `broker-ingest` waits up to 5 minutes for the backend's migrations, then exits so that the
+  restart policy can retry.
+- **Tested on an embedded Postgres** (`pgserver`), with three scenarios:
+  1. A fresh full chain.
+  2. A database at `e6f7a8b9c0d1` with the broker tables already built by the old `create_all`
+     and a row in `bars`. The upgrade kept the row, and `quantdesk_ro` can read `bars` and
+     `levels`.
+  3. A downgrade with rows present, which was refused, and a downgrade/upgrade round trip on
+     the empty database.
+- `alembic check` on that chain reported one unrelated drift, a `gex.snapshots` index name from
+  T76. It is filed as **T150**.
+- **Deploy order on the homeserver:**
+  1. Check out `main`.
+  2. `scripts/deploy.sh backend`, so migrations run.
+  3. `scripts/deploy.sh mt5 broker-ingest`.
+
+  The broker pair keeps its `broker` profile.

@@ -290,7 +290,7 @@ services:
       postgres:
         condition: service_healthy
 
-  # T143 (plans/charter-mt5/README.md, experiment branch). The desk's own MetaTrader 5 terminal,
+  # T143 (plans/charter-mt5/README.md). The desk's own MetaTrader 5 terminal,
   # logged into the Axi demo account, and the read-only bridge that serves its bars, ticks and
   # contract specs on the compose network. No order path: see docker/mt5/bridge/server.py.
   #
@@ -327,8 +327,8 @@ services:
 
   # T144. Reads the `mt5` bridge and writes the `broker.` schema: M1 bars and a clock check every
   # minute, specs and an hour of ticks every hour. Same image as the other workers. Behind the
-  # same `broker` profile as `mt5`, and it creates its own schema rather than migrating (decision
-  # 10 of plans/charter-mt5/README.md), so deploying it never touches `alembic_version`.
+  # same `broker` profile as `mt5`. Its tables come from the backend's `alembic upgrade head`
+  # (since the merge); it waits for them and creates nothing.
   broker-ingest:
     profiles: ["broker"]
     build:

@@ -23,7 +23,7 @@ How to use this file:
   `context/decisions.md` if it settled a rule. A finished block does not stay here.
 - New work gets the next free ID and is filed here, never fixed silently.
 
-**Next free ID: T150.** (T108 was allocated retroactively — see the archive's addendum;
+**Next free ID: T151.** (T108 was allocated retroactively — see the archive's addendum;
 T109–T114 were filed on 2026-09-22 from the task-history audit, T115–T121 from the logic audit;
 T122–T124 were filed and finished on 2026-09-23 — see the addendum; T125–T127 were filed on
 2026-09-25 for the ThetaData initiative, [plans/thetadata/](plans/thetadata/README.md); T128–T133
@@ -31,28 +31,16 @@ on feature branches; T134–T136 on 2026-10-06 for [plans/signal-alerts/](plans/
 finished 2026-10-07, see the addendum; T139 filed 2026-10-07, split from T96, and finished 2026-10-08, see the addendum; T140 and T141 filed 2026-10-08; T142 filed 2026-10-08 from
 [docs/read-review-2026-10-08.md](docs/read-review-2026-10-08.md); T143–T147 filed 2026-10-08 on the
 `experiment/charter-mt5` branch for [plans/charter-mt5/](plans/charter-mt5/README.md); T148 filed
-2026-10-08 from T145's basis work; T149 filed 2026-10-09 for the `xau-range-rejection` edge candidate.)
+2026-10-08 from T145's basis work; T149 filed 2026-10-09 for the `xau-range-rejection` edge candidate; T150 filed 2026-10-09 at
+the charter-mt5 merge.)
 
 ---
 
-## Broker data and price action (experiment, `experiment/charter-mt5`)
+## Broker data and price action (charter-mt5, merged 2026-10-09)
 
-> Initiative: [plans/charter-mt5/README.md](plans/charter-mt5/README.md). An Axi **demo** MT5
-> terminal in its own container. Read-only in this round: the bridge has no order path and the
-> "no order routing" invariant is unchanged. Full specs live in the plan file.
-
-### T143 · Opus · —
-**`mt5` container + read-only bridge**, ported from carbon-copy; `broker` schema and grants.
-
-### T144 · Sonnet · T143
-**`broker-ingest` worker**: M1 bars, hourly tick Parquet, point-in-time spec snapshots, measured
-server-time offset.
-
-### T145 · Opus · T144
-**Measured basis and `broker_levels`**: GEX levels in CFD price, with the basis that was used.
-
-### T146 · Opus · —
-**`scan/price_action.py`**: pure detectors with `confirmed_at`, plus the lookahead property test.
+> Initiative: [plans/charter-mt5/README.md](plans/charter-mt5/README.md). T143–T146 are done
+> and in the archive's addendum. The broker schema is part of the Alembic chain since the merge
+> (`f7a8b9c0d1e2`). The bridge is read-only; "no order routing" is unchanged.
 
 ### T147 · Opus · T144, T145, T146
 **Price-action event study through EdgeLab**: M1 R scoring, doubled measured costs, every variant
@@ -66,6 +54,16 @@ it for the cost gate. Report n, sessions, mean R ± session-clustered SE, yearly
 signs, and on/off-regime results against the skill's stage-1 gate. The rule is frozen: **no
 parameter search**. A variant is a new candidate with its own slug. Write the result into the
 candidate file's stage log. A clean "no" closes the task.
+
+### T150 · Sonnet · —
+**`gex.snapshots` session_date index: the model's name and the database's disagree.** Found at
+the charter-mt5 merge: `alembic check` on a database built by the full chain (embedded Postgres,
+2026-10-09) proposes dropping `ix_snapshots_session_date` and adding
+`ix_gex_snapshots_session_date`. The index predates the module schemas (T76 moved the table
+without renaming it), so the model's naming convention and the migrated name differ. Same
+column, so no query is affected; but autogenerate will keep proposing the swap. Fix with a
+migration that renames the index (or pin the model's `name=`), and make `alembic check` pass on
+a fresh chain.
 
 ---
 

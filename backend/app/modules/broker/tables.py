@@ -1,11 +1,9 @@
 """The broker module's tables, in the `broker` schema (T144, plans/charter-mt5/README.md).
 
-**Created by the `broker-ingest` worker, not by Alembic, while this is an experiment**
-(decision 10). A migration on the experiment branch would leave the shared database at a
-revision `main` has never seen, and `main`'s next `alembic upgrade head` would fail at boot.
-:func:`ensure_schema` is idempotent: `CREATE SCHEMA IF NOT EXISTS`, `create_all`, and the
-read-only role's grants. If the experiment merges, these tables become a migration in the same
-PR, and `broker` joins `app.core.schemas.SCHEMAS`. `DROP SCHEMA broker CASCADE` undoes all of it.
+**Created by Alembic** (revision `f7a8b9c0d1e2`), like every other module's tables. While
+charter-mt5 was an experiment the `broker-ingest` worker created them itself (decision 10); the
+merge moved that into the chain, along with the `levels` view and the read-only grants. The
+worker now only waits for them: :func:`schema_ready`.
 
 Point-in-time where it matters:
 
@@ -21,7 +19,6 @@ Point-in-time where it matters:
 from __future__ import annotations
 
 import datetime as dt
-import logging
 
 import sqlalchemy as sa
 from sqlalchemy import BigInteger, Boolean, Float, Integer, MetaData, String
@@ -29,11 +26,10 @@ from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 from sqlalchemy.types import JSON
 
-from app.core.ro_role import RO_ROLE
+from app.core.schemas import SCHEMA_BROKER
 from app.modules.gex.models.db import UTCDateTime
 
 __all__ = [
-    "LEVELS_VIEW_SQL",
     "SCHEMA_BROKER",
     "Bar",
     "Base",
@@ -42,13 +38,8 @@ __all__ = [
     "RollRow",
     "SymbolSpec",
     "TickFile",
-    "ensure_schema",
+    "schema_ready",
 ]
-
-logger = logging.getLogger("app.modules.broker.tables")
-
-#: Not in `app.core.schemas` yet, on purpose: see decision 10 and the module docstring.
-SCHEMA_BROKER = "broker"
 
 _JSON = JSONB().with_variant(JSON(), "sqlite")
 
@@ -158,65 +149,14 @@ class RollRow(Base):
     resolution: Mapped[str] = mapped_column(String(4), nullable=False)  # "5m" or "1d"
 
 
-#: GEX levels in CFD price (T145). One row per `gex.gex_levels` row, translated with the
-#: newest basis observation at or before the snapshot's `captured_at`, never a later one.
-#: `roll_after_basis` is true when a roll falls between that basis and the capture: the
-#: translation then crosses contracts and is wrong by about the roll step. It uses rolls as
-#: confirmed by now, so for the last few observations before a fresh roll it is hindsight.
-#: A view, not a table, so it is always as current as the levels and the basis.
-LEVELS_VIEW_SQL = f"""
-CREATE OR REPLACE VIEW {SCHEMA_BROKER}.levels AS
-SELECT s.id AS snapshot_id, s.underlying AS desk_symbol, s.captured_at, l.filter,
-       b.cfd_symbol, b.method, b.proxy, b.kind AS basis_kind, b.at AS basis_at,
-       s.captured_at - b.at AS basis_age, b."offset", b.ratio,
-       l.spot AS desk_spot,
-       CASE WHEN b.method = 'offset' THEN l.spot + b."offset" ELSE l.spot * b.ratio END AS spot,
-       CASE WHEN b.method = 'offset' THEN l.call_wall + b."offset" ELSE l.call_wall * b.ratio END
-           AS call_wall,
-       CASE WHEN b.method = 'offset' THEN l.put_wall + b."offset" ELSE l.put_wall * b.ratio END
-           AS put_wall,
-       CASE WHEN b.method = 'offset' THEN l.flip_point + b."offset" ELSE l.flip_point * b.ratio END
-           AS flip_point,
-       CASE WHEN b.method = 'offset' THEN l.max_abs_strike + b."offset"
-            ELSE l.max_abs_strike * b.ratio END AS max_abs_strike,
-       l.net_gex, l.call_wall_gex, l.put_wall_gex,
-       EXISTS (SELECT 1 FROM {SCHEMA_BROKER}.rolls r WHERE r.cfd_symbol = b.cfd_symbol
-               AND r.rolled_at > b.at AND r.rolled_at <= s.captured_at) AS roll_after_basis
-FROM gex.gex_levels l
-JOIN gex.snapshots s ON s.id = l.snapshot_id
-JOIN LATERAL (
-    SELECT * FROM {SCHEMA_BROKER}.basis b
-    WHERE b.desk_symbol = s.underlying AND b.at <= s.captured_at
-    ORDER BY b.at DESC LIMIT 1
-) b ON true
-"""
+# `broker.levels`, the GEX levels in CFD price (T145), is a view defined in migration
+# `f7a8b9c0d1e2`: one row per `gex.gex_levels` row, translated with the newest basis at or before
+# the snapshot's `captured_at`, never a later one. A change to it is a new migration.
 
 
-def ensure_schema(engine: sa.Engine) -> None:
-    """Create `broker.` and its tables if missing, and let the read-only role read them.
-
-    On SQLite (tests) there are no schemas or roles; the engine's `schema_translate_map` maps
-    `broker` away and only `create_all` runs."""
-    if engine.dialect.name == "postgresql":
-        with engine.begin() as conn:
-            conn.execute(sa.text(f"CREATE SCHEMA IF NOT EXISTS {SCHEMA_BROKER}"))
-    Base.metadata.create_all(engine)
-    if engine.dialect.name != "postgresql":
-        return
-    with engine.begin() as conn:
-        conn.execute(sa.text(LEVELS_VIEW_SQL))
-    with engine.begin() as conn:
-        exists = conn.execute(
-            sa.text("SELECT 1 FROM pg_roles WHERE rolname = :r"), {"r": RO_ROLE}
-        ).first()
-        if not exists:
-            logger.warning("role %s does not exist; broker tables are not readable by MCP", RO_ROLE)
-            return
-        role = f'"{RO_ROLE}"'
-        conn.execute(sa.text(f"GRANT USAGE ON SCHEMA {SCHEMA_BROKER} TO {role}"))
-        conn.execute(sa.text(f"GRANT SELECT ON ALL TABLES IN SCHEMA {SCHEMA_BROKER} TO {role}"))
-        conn.execute(
-            sa.text(
-                f"ALTER DEFAULT PRIVILEGES IN SCHEMA {SCHEMA_BROKER} GRANT SELECT ON TABLES TO {role}"
-            )
-        )
+def schema_ready(engine: sa.Engine) -> bool:
+    """True when every broker table exists. The backend's `alembic upgrade head` creates them;
+    the worker waits for that rather than creating anything itself."""
+    inspector = sa.inspect(engine)
+    schema = SCHEMA_BROKER if engine.dialect.name == "postgresql" else None
+    return all(inspector.has_table(t.name, schema=schema) for t in Base.metadata.sorted_tables)

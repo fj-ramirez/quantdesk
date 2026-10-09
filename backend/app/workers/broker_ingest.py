@@ -1,12 +1,11 @@
 """Container entrypoint for the `broker-ingest` worker (T144, plans/charter-mt5/README.md).
 
-Experiment branch. Reads the `mt5` container's bridge and writes `broker.` once a minute
-(clock check and M1 bars) and once an hour (specs and ticks). See
-`app/modules/broker/ingest.py` for the rules, and `app/modules/broker/tables.py` for why this
-worker, not Alembic, creates its schema while the experiment lasts.
+Reads the `mt5` container's bridge and writes `broker.` once a minute (clock check and M1 bars)
+and once an hour (specs and ticks). See `app/modules/broker/ingest.py` for the rules. The tables
+come from Alembic (revision `f7a8b9c0d1e2`); this worker waits for them and creates nothing.
 
 Structurally it is `capture_watch.py`: build, start, run until a signal, shut down without
-waiting. It does not wait for `gex.snapshots`, because it owns its own schema.
+waiting.
 """
 
 from __future__ import annotations
@@ -25,7 +24,7 @@ from app.core.db import get_engine, get_session_factory
 from app.core.version import record_service_version
 from app.modules.broker.client import BridgeClient
 from app.modules.broker.ingest import Ingestor
-from app.modules.broker.tables import ensure_schema
+from app.modules.broker.tables import schema_ready
 
 logger = logging.getLogger("app.workers.broker_ingest")
 
@@ -34,15 +33,17 @@ def _symbols() -> list[str]:
     return [s.strip() for s in settings.BROKER_SYMBOLS.split(",") if s.strip()]
 
 
-async def _ensure_schema(*, timeout_seconds: float = 120.0) -> bool:
+async def _wait_for_schema(*, timeout_seconds: float = 300.0) -> bool:
+    """Wait for the backend's `alembic upgrade head` to have created the broker tables."""
     deadline = asyncio.get_running_loop().time() + timeout_seconds
     while asyncio.get_running_loop().time() < deadline:
         try:
-            ensure_schema(get_engine())
-            return True
+            if schema_ready(get_engine()):
+                return True
+            logger.info("broker_ingest: broker tables not there yet; waiting for migrations")
         except Exception as exc:  # noqa: BLE001 - postgres may simply not be up yet
             logger.info("broker_ingest: database not ready (%s)", type(exc).__name__)
-        await asyncio.sleep(2.0)
+        await asyncio.sleep(5.0)
     return False
 
 
@@ -55,8 +56,8 @@ async def main() -> int:
         logger.error("broker_ingest: BROKER_BRIDGE_ADDR is empty; nothing to ingest from")
         return 1
     host, _, port = addr.rpartition(":")
-    if not await _ensure_schema():
-        logger.error("broker_ingest: could not create the broker schema; exiting")
+    if not await _wait_for_schema():
+        logger.error("broker_ingest: broker tables missing; has the backend run its migrations?")
         return 1
 
     client = BridgeClient(host, int(port))

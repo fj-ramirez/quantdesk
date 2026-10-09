@@ -65,7 +65,7 @@ plans/
     04-capture-alerting.md          T104  something has to watch the health endpoint
     05-mcp-ergonomics.md            T105, T106  twelve connector calls down to four
     06-doc-drift.md                 T107  three documented facts the data contradicts
-  charter-mt5/                      Axi demo MT5 on the desk: CFD data, basis, price action (2026-10-08) — experiment branch, T143-T147
+  charter-mt5/                      Axi demo MT5 on the desk: CFD data, basis, price action (2026-10-08) — merged 2026-10-09, T143-T146 done, T147 open
     README.md                       the design decisions, task specs, and (when landed) the Result
   audit-and-compaction/             logic audit + TASKS.md archive and decisions index (2026-09-22)
     README.md                       the plan and its Result: T108-T121, audit lanes, verification
