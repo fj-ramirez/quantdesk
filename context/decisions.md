@@ -73,6 +73,9 @@ number to be true, it belongs in a plan file's *Result* heading or behind an MCP
   detail expires. — T32.
 - One schema per module, declared on the module's `Base.metadata`, never per model. — invariant 8; T76.
 - The read-only role's privileges live in a migration; its password is applied at boot. — T76.
+- An experiment branch may create its own schema outside Alembic so it never moves the shared
+  `alembic_version`; at merge a migration takes over that is a no-op on the objects already
+  there, and the worker stops creating anything. — charter-mt5 decision 10; P:charter-mt5.
 - Migrations under `alembic/versions/` are never edited after they have run. — T83 (open).
 - Decisions are **insert-when-unseen, never upserted**; paper scores and terminal vintages are
   append-only for the same reason: the history is the evidence. — T61, T108, invariant 10.
@@ -149,6 +152,8 @@ number to be true, it belongs in a plan file's *Result* heading or behind an MCP
 ## Ops and scope
 
 - Analysis only — **no order routing, ever**. Single user, no auth, data spend under $50/month.
+- The MT5 bridge serves reads only and refuses to serve unless the terminal is the configured
+  **demo** login. Broker levels are translated with a measured basis, never a typed-in one. — T143, T145; P:charter-mt5.
 - The desk is never exposed publicly: loopback plus a private tunnel. — T70.
 - Every service has a memory limit; `MALLOC_ARENA_MAX=2`. — T86.
 - Alert on a universe-wide capture gap, never on ordinary per-symbol staleness. Delivery is
@@ -188,3 +193,4 @@ number to be true, it belongs in a plan file's *Result* heading or behind an MCP
 | T98 | Per-service build stamps | complete | A |
 | T99–T107 | Desk integrity | complete | P:desk-integrity |
 | T108–T121 | Retroactive allocation, task-history and logic audit follow-ups | see TASKS.md | P:audit-and-compaction |
+| T143–T147 | charter-mt5: Axi MT5 data, basis, price action | open: T147 | P:charter-mt5 |

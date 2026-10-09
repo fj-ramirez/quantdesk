@@ -27,7 +27,7 @@ import pytest
 from sqlalchemy import inspect, select
 
 from app.core.db import connect_args_for, get_engine, get_sessionmaker
-from app.core.schemas import SCHEMA_GEX, SCHEMA_RESEARCH, SCHEMA_TERMINAL, SCHEMAS
+from app.core.schemas import SCHEMA_BROKER, SCHEMA_GEX, SCHEMA_RESEARCH, SCHEMA_TERMINAL, SCHEMAS
 from app.modules.gex.models.db import Base, DailyBar, GexLevel, Snapshot
 
 
@@ -57,7 +57,7 @@ def test_foreign_keys_resolve_inside_the_schema_without_being_qualified():
 
 
 def test_schema_constants_are_distinct_and_complete():
-    assert SCHEMAS == (SCHEMA_GEX, SCHEMA_RESEARCH, SCHEMA_TERMINAL)
+    assert SCHEMAS == (SCHEMA_GEX, SCHEMA_RESEARCH, SCHEMA_TERMINAL, SCHEMA_BROKER)
     assert len(set(SCHEMAS)) == len(SCHEMAS)
 
 

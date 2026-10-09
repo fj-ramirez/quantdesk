@@ -16,7 +16,7 @@ in a plan file.
 
 from __future__ import annotations
 
-__all__ = ["SCHEMAS", "SCHEMA_GEX", "SCHEMA_RESEARCH", "SCHEMA_TERMINAL"]
+__all__ = ["SCHEMAS", "SCHEMA_BROKER", "SCHEMA_GEX", "SCHEMA_RESEARCH", "SCHEMA_TERMINAL"]
 
 #: The shipped GEX app: snapshots index, computed levels, per-strike series, bars, flows,
 #: decisions.
@@ -28,6 +28,11 @@ SCHEMA_RESEARCH = "research"
 #: xactx (T79): series metadata, observations, releases, ingest batches, edge definitions.
 SCHEMA_TERMINAL = "terminal"
 
+#: The broker's own prices (charter-mt5, T143-T145): Axi CFD bars, contract specs, tick-file
+#: index, the measured basis against the desk's symbols, and futures rolls. Joined this tuple at
+#: the experiment's merge (migration f7a8b9c0d1e2); before that the worker created it itself.
+SCHEMA_BROKER = "broker"
+
 #: Every schema this application owns, in dependency-graph order. The MCP connector's
 #: read-only role (T82) grants `USAGE` across exactly this tuple.
-SCHEMAS: tuple[str, ...] = (SCHEMA_GEX, SCHEMA_RESEARCH, SCHEMA_TERMINAL)
+SCHEMAS: tuple[str, ...] = (SCHEMA_GEX, SCHEMA_RESEARCH, SCHEMA_TERMINAL, SCHEMA_BROKER)

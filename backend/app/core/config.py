@@ -83,6 +83,15 @@ class Settings(BaseSettings):
     # are the terminal container's business, never the backend's.
     THETADATA_URL: str = ""
     PROVIDER: str = "cboe"
+    # --- T144: the broker module (plans/charter-mt5/, experiment branch) ----------------------
+    # `host:port` of the `mt5` container's bridge. Empty means "no broker here" and the
+    # broker-ingest worker exits at boot saying so, the same rule as THETADATA_URL.
+    BROKER_BRIDGE_ADDR: str = ""
+    # Axi's own spellings. The futures-based index CFDs (0.01-lot minimum) plus spot gold, and
+    # US2000 for price action only: no desk symbol maps to it.
+    BROKER_SYMBOLS: str = "S&P.fs,NAS100.fs,DJ30.fs,XAUUSD,US2000"
+    # How many closed hours of ticks are kept fetched behind now.
+    BROKER_TICK_HOURS: int = 168
     # --- T76: the read-only role's password ---------------------------------------------------
     # Empty by default, same rule as MARKETDATA_TOKEN and TIINGO_TOKEN above: a dev stack that
     # never asked for a read-only connection is not blocked by a missing credential. When it is

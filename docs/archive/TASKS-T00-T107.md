@@ -1959,6 +1959,21 @@ The Postgres tests for `upcoming` skip without a database; the first nightly run
 is their real check. Open: the feed has no actuals, so spec 2.3's surprise indices still do not
 exist.
 
+## T143–T146 · charter-mt5 (filed 2026-10-08, merged to `main` 2026-10-09, [plans/charter-mt5/](../../plans/charter-mt5/README.md))
+
+**The broker's own prices are on the desk.** An Axi demo MT5 terminal runs in its own container
+(`mt5`, Wine, behind the `broker` compose profile) with a read-only JSON-lines bridge (T143);
+`broker-ingest` stores M1 bars, hourly tick Parquet, point-in-time contract specs and a checked
+server-clock offset (T144); `basis.py` measures the CFD↔desk basis, detects futures rolls from
+price, and the `broker.levels` view translates every GEX level into CFD price (T145);
+`scan/price_action.py` holds pure price-action detectors with a `confirmed_at` per event (T146).
+Results, depths and the bugs found on first contact are under the plan's *Result* headings.
+
+At merge the `broker` schema moved from the worker's `create_all` into the chain (migration
+`f7a8b9c0d1e2`, a no-op on the homeserver's existing objects, tested on embedded Postgres in both
+the fresh and the pre-existing case), and `broker` joined `app.core.schemas.SCHEMAS`. T147 (the
+price-action event study) stays open.
+
 ## Status corrections
 
 - **Done, no Done marker above:** T00–T14, T16, T27, T29, T30, T34–T41, T59 (all merged, per

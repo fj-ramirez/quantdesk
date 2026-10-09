@@ -163,6 +163,9 @@ silence -- which is exactly what happened to `INTRADAY_ENABLE` (missing `D`) on 
 
 `docker compose up` → postgres:16 (named volume `pgdata`), backend (8001), frontend (5173),
 and the four workers: `gex-capture`, `research-search`, `terminal-ingest`, `capture-watch`.
+`mt5` and `broker-ingest` need `--profile broker` (or `COMPOSE_PROFILES=broker` in `.env`) and
+run on the homeserver only: MT5 crashes on Docker Desktop's WSL2 kernel. Deploy them by name
+(`scripts/deploy.sh mt5 broker-ingest`). See `plans/charter-mt5/README.md`.
 `docker compose down -v` also drops the Postgres volume, which returns the app to the
 never-captured empty state — a useful way to exercise the T37 empty states.
 

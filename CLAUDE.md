@@ -24,8 +24,8 @@ test suite still fail the deploy. Run it before pushing anything that changes a 
 Run one research cycle by hand (needs a reachable Postgres — there is no SQLite fallback):
 `uv run python -m app.modules.research.nightly --trials 50 --no-update`.
 
-Everything at once: `docker compose up` (postgres + backend + frontend + four workers) -- this reads
-`compose.yaml` **plus** `compose.override.yaml`, which is what supplies the dev bind mounts,
+Everything at once: `docker compose up` (postgres + backend + frontend + four workers; the
+broker pair needs `--profile broker` and does not run on Docker Desktop) -- this reads `compose.yaml` **plus** `compose.override.yaml`, which is what supplies the dev bind mounts,
 hot reload and published ports. Production is the explicit opt-in and never loads the
 override: `docker compose -f compose.yaml -f compose.prod.yaml up -d`. See the README's
 "Deploying to the homeserver". `make dev|prod|test|lint` wraps the same commands; `make` is
@@ -38,7 +38,8 @@ Since T75 this repo is a **module host**: one API process, one React app, one co
 with GEX as `modules/gex` on both sides and every GEX URL carrying a `/gex` segment
 (`/dashboard` -> `/gex/dashboard`, `/api/snapshots` -> `/api/gex/snapshots`). `/` is the module
 launcher. Scheduled work runs in its own container (`gex-capture`, `research-search`, `terminal-ingest`,
-`capture-watch`); **the API process starts no background work at all.** See `plans/quantdesk/README.md`.
+`capture-watch`, and behind the `broker` compose profile `mt5` + `broker-ingest`); **the API
+process starts no background work at all.** See `plans/quantdesk/README.md`.
 
 ## Layout
 
@@ -46,9 +47,12 @@ launcher. Scheduled work runs in its own container (`gex-capture`, `research-sea
 backend/app/
   core/        config.py (settings), db.py (engine + session factory), schemas.py (schema names)
   main.py      mounts each module's router under /api; no lifespan, starts nothing
-  workers/     gex_capture.py, research_search.py, terminal_ingest.py, capture_watch.py (T104)
-               — one container each
-  mcp/         the read-only MCP connector over all three schemas (T82)
+  workers/     gex_capture.py, research_search.py, terminal_ingest.py, capture_watch.py (T104),
+               broker_ingest.py (T144) — one container each
+  mcp/         the read-only MCP connector over every schema in core/schemas.SCHEMAS (T82)
+  modules/broker/     the Axi demo MT5 terminal's data (charter-mt5, T143–T145): client.py talks
+                 to the read-only bridge in docker/mt5/; ingest.py (M1 bars, ticks, specs);
+                 basis.py + basis_job.py (CFD↔desk basis, rolls, the `broker.levels` view)
   modules/terminal/   xactx, ported in T79; its screens are T80
     api/         board.py, edges.py, calendar.py — board, regime, edges, policy, brief, series,
                  calendar (T139); all take `as_of`
@@ -111,7 +115,7 @@ plans/         one folder per multi-task initiative — see plans/README.md
 7. (T75) The API process runs **no background work**. `app/main.py` has no lifespan; anything
    clock-bound belongs in `app/workers/` with its own container. Two schedulers means every
    capture fires twice.
-8. (T76) Every module's tables live in **its own schema** (`gex.`, `research.`, `terminal.`),
+8. (T76) Every module's tables live in **its own schema** (`gex.`, `research.`, `terminal.`, `broker.`),
    declared once on the module's `Base` via `MetaData(schema=...)` — never per model. `public`
    holds nothing but `alembic_version`. Postgres connections pin `search_path` to `public`, so
    a table is found because it was named, not because `$user` happened to match a schema.

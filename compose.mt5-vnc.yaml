@@ -1,0 +1,12 @@
+# Opt-in: VNC into the desk's MT5 terminal (T143), for a first login or to see why it is stuck.
+# Published on the host's loopback only. Reach it over an SSH tunnel
+# (`ssh -L 5901:127.0.0.1:5901 homeserver`) and set MT5_VNC_PASSWORD in `.env`, because without
+# it the container starts no VNC server at all.
+#
+#   docker compose -f compose.yaml -f compose.prod.yaml -f compose.mt5-vnc.yaml up -d mt5
+#
+# Never part of the production config: CI fails a prod config that publishes a host port.
+services:
+  mt5:
+    ports:
+      - "127.0.0.1:5901:5900"
