@@ -336,3 +336,32 @@ async def test_backward_walk_is_bounded_per_call_and_resumes(factory, tmp_path):
     with factory() as s:
         assert s.scalar(sa.select(sa.func.min(Bar.ts))) == start
         assert s.scalar(sa.select(sa.func.count()).select_from(Bar)) == _open_minutes(start, now)
+
+
+async def test_backward_walk_stops_where_the_broker_serves_daily_bars_as_m1(factory, tmp_path):
+    """S&P.fs, 2026-10-08: before 2019-07-17 an M1 request returned one bar per day."""
+    now = dt.datetime(2026, 10, 8, 14, tzinfo=UTC)
+    m1_start = now - dt.timedelta(days=20)
+    bridge = FakeBridge(m1_start)
+    bridge.now = now
+    ing = _ingestor(bridge, factory, tmp_path)
+    await ing.bars_forward("S&P.fs", now)
+    real_rates = bridge.rates
+
+    async def with_daily_tail(symbol, timeframe, a, b):
+        df = await real_rates(symbol, timeframe, a, b)
+        lo = servertime.server_epoch_to_utc(a)
+        hi = min(servertime.server_epoch_to_utc(b), m1_start)
+        days, t = [], lo.replace(hour=0, minute=0)
+        while t < hi:  # one "M1" bar per day before the real minute history
+            days.append((servertime.utc_to_server_epoch(t), 1.0, 2.0, 0.5, 1.5, 9000, 0, 0))
+            t += dt.timedelta(days=1)
+        return pd.concat([pd.DataFrame(days, columns=df.columns), df], ignore_index=True)
+
+    bridge.rates = with_daily_tail
+    while not await ing.bars_backward("S&P.fs", now):
+        pass
+    with factory() as s:
+        oldest = s.scalar(sa.select(sa.func.min(Bar.ts)))
+        assert oldest >= m1_start - dt.timedelta(days=1)
+        assert s.scalar(sa.select(sa.func.count()).select_from(Bar).where(Bar.spread == 0)) == 0

@@ -58,6 +58,11 @@ EMPTY_CHUNKS_TO_STOP = 2
 EMPTY_RETRIES = 3
 #: About three months of M1 per symbol per minute-run (see `bars_backward`).
 BACKWARD_CHUNKS_PER_RUN = 13
+#: A UTC day with fewer bars than this in an M1 answer is not minute data. Where the broker
+#: has no M1 history, MT5 answers an M1 request with one bar per *day* (S&P.fs before
+#: 2019-07-17, found 2026-10-08), and those were being stored as minutes. Real days run 60+
+#: even on a Sunday open or a holiday half-session.
+MIN_M1_BARS_PER_DAY = 30
 EMPTY_RETRY_S = 10.0
 #: How long a confirmed convention is trusted without a fresh measurement: a long weekend plus
 #: a holiday, with margin.
@@ -301,6 +306,15 @@ class Ingestor:
                     break
                 await asyncio.sleep(self.empty_retry_s)
                 df = await self._fetch(symbol, start, end, now)
+            if not df.empty:
+                df, coarse = _drop_coarse_days(df, keep_day=end.date())
+                if coarse:
+                    self._upsert(symbol, df, now)
+                    oldest, _ = self._bounds(symbol)
+                    logger.info("broker: %s: M1 history starts %s; the broker serves coarser "
+                                "bars before it, not stored", symbol,
+                                oldest.isoformat() if oldest else None)
+                    return True
             new, _ = self._upsert(symbol, df, now)
             total += new
             empty = 0 if new else empty + 1
@@ -365,6 +379,24 @@ class Ingestor:
             session.commit()
         logger.info("broker: %s: spec %s", symbol, "changed" if latest is not None else "recorded")
         return True
+
+
+def _drop_coarse_days(df: pd.DataFrame, *, keep_day: dt.date) -> tuple[pd.DataFrame, bool]:
+    """Drop UTC days too sparse to be M1 (see :data:`MIN_M1_BARS_PER_DAY`). `keep_day` is the
+    day the chunk ends in, cut short by the oldest stored bar, so it is never judged. Returns
+    the kept rows and whether anything was dropped."""
+    days = df["ts"].dt.date
+    counts = days.map(days.value_counts())
+    coarse = (counts < MIN_M1_BARS_PER_DAY) & (days != keep_day)
+    if not coarse.any():
+        return df, False
+    # The first day of real minutes can also carry that day's coarse bar, and enough minutes
+    # to pass the count. It is dropped whole: at most one partial day at the start of history,
+    # against a day-sized bar stored as a minute.
+    kept = days[~coarse]
+    if not kept.empty and kept.min() != keep_day:
+        coarse |= days == kept.min()
+    return df[~coarse], True
 
 
 def _digest(spec: dict) -> str:
