@@ -435,3 +435,42 @@ broker-ingest`. No other service was rebuilt.
      hand. The walk now stops at days with fewer than 30 bars.
 - **Depth:** `S&P.fs` has real M1 from **2019-07-18**, about 2.5M bars. The other four were
   still walking at the time of writing.
+
+### T145 — landed 2026-10-08
+
+- Code: `app/modules/broker/basis.py` (pure: `measure`, `detect_rolls`, `translate`, the five
+  pairs) and `basis_job.py`, which recomputes and replaces `broker.basis` and `broker.rolls`
+  every hour inside `broker-ingest`. The `broker.levels` view translates every
+  `gex.gex_levels` row with the newest basis at or before `captured_at`.
+- **The deliverable changed: a view instead of an MCP tool.** A new tool would mean deploying the
+  MCP server, which runs in the backend image, from this branch, and decision 11 keeps that on
+  `main`. `query_sql` on `broker.levels` gives the same answer, and the tool can follow at merge.
+- The basis is measured at the 16:00 ET close (the CFD's 15:59 M1 bar) on every day since
+  2021-09, and at every desk 5-minute close since 2026-09-11. Candidate early-close days are
+  left out, because the desk's calendar has no early closes.
+- **Rolls, against real data:**
+  - Steps above 0.45 % in log(cfd/desk) that also persist (3-observation medians differ by at
+    least 80 % of the threshold).
+  - SPX/`S&P.fs`: **17 of 17 quarterly rolls 2022-09 → 2026-09 found, none spurious**, all on
+    roll Mondays, +0.49 % to +1.24 %.
+  - `NAS100.fs` (from QQQ): 17 rolls. `DJ30.fs` (from DIA): 16 rolls from 2022-12 (its M1
+    history was still being walked). `XAUUSD`: none, as expected for spot.
+  - Before 2022-09, near-zero rates made the step about 0.15 %, indistinguishable from noise and
+    too small to matter.
+  - The persistence test rejected the one bad-print pair (see below).
+- **Stability:** within a session the 5-minute log ratio has a standard deviation of
+  0.007–0.009 % for every pair (worst day 0.019 %, SPY), about 0.6 points on `S&P.fs`.
+  Daily-close basis noise is larger (±3–7 points) because the desk's daily close and the CFD's
+  15:59 bar are not quite the same print. For translation, prefer the 5-minute basis, which the
+  view does whenever one exists.
+- Spot check: the SPX snapshot at 2026-10-08 20:20 UTC had spot 7,765.36 and offset +51.57,
+  giving 7,816.93. `S&P.fs` closed at 7,817.
+- **Roll placement on the 5-minute grid is untested on real data.** The desk has no 5-minute bars
+  for 2026-09-14 → 09-18 (the known September opex outage), so the September roll is placed at
+  daily resolution. The first real test is the December roll on 2026-12-14.
+- **Not done:** the GLD → XAUUSD ratio against a hand-entered T41 spot. It needs the user to
+  supply one.
+- **Found in desk data, outside this initiative:** `gex.daily_bars` SPX closes on **2025-04-09**
+  and **2026-06-26** disagree with SPY by 0.88 % and 0.54 %. Every other SPX/SPY deviation over
+  0.2 % is an SPY ex-dividend date. Every scan module reads these bars, so this belongs in
+  `TASKS.md` on `main`.
