@@ -1,0 +1,1 @@
+signal_ts_utc,key,desk_symbol,cfd_symbol,direction,regime_on,intended_entry,fill_price,spread_at_fill,exit_ts_utc,exit_price,swap,pnl_pct,pnl_usd_per_001,account,taken,note

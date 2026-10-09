@@ -22,10 +22,12 @@ in short gamma, or only when rates are rising, is acceptable if it states that c
 we can see when the condition is gone or the edge has decayed **before the account is badly
 damaged**. Every strategy needs a written kill rule before its first live trade.
 
-**The desk never routes orders.** That is a repo invariant. This skill designs, tests, sizes
-and monitors. The user places every trade by hand, on demo or live. Do not write broker
-integration, MT5/EA code or anything else that sends an order, even when asked to make
-forward-testing easier. Say it is out of scope and suggest a journal instead.
+**Orders go through the executor only** (CLAUDE.md invariant 11, T151). This skill designs,
+tests, sizes and monitors. A candidate reaches the executor only after it passes stage 1: its
+frozen spec becomes a class in `app/modules/broker/strategies.py`, matching the spec character
+for character, with the spec's kill rules. Changing that class's rule makes a new candidate.
+Never place, modify or close an order from a session, a script or a tool. The executor is the
+one process that does, and `broker.order_intents` is its journal.
 
 ## The problem this file exists for
 

@@ -280,8 +280,26 @@ services:
         max-size: 10m
         max-file: "3"
 
-  # T143. See compose.yaml. The healthcheck asks the bridge for `account` and fails on anything
-  # but a demo login. No host ports here (CI checks this); VNC for a first login is the opt-in
+  # T151. See compose.yaml. The one container that places orders.
+  executor:
+    image: executor:prod
+    environment: *prod_backend_environment
+    networks:
+      internal: {}
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: "0.25"
+          memory: 256M
+    logging:
+      driver: json-file
+      options:
+        max-size: 10m
+        max-file: "3"
+
+  # T143. See compose.yaml. The healthcheck asks the bridge for `account` and reports its mode
+  # (T151 dropped the demo-only check). No host ports here (CI checks this); VNC for a first login is the opt-in
   # compose.mt5-vnc.yaml.
   mt5:
     image: quantdesk-mt5:prod

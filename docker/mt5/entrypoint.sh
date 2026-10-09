@@ -32,8 +32,10 @@ start_display() {
 }
 
 # The login comes from the environment, written to a private ini the terminal reads at start.
-# AllowLiveTrading=0 and Experts disabled: this terminal is a data source (decision 2 of the
-# plan). The Axi demo has no investor password, so the bridge's missing order path is the guard.
+# Algo trading follows MT5_ALLOW_TRADING (T151), default 0. Off, the terminal is a data source
+# and MT5 itself rejects every order the bridge's order path could send. On (=1), the `executor`
+# worker can trade the configured account, whichever mode it is in. DLL imports stay off either
+# way: the Python API needs none.
 #
 # MaxBars is set here, not in the GUI. The terminal starts with this file as its config, and a
 # "Max bars in chart" change made over VNC did not survive a restart (2026-10-08). The API serves
@@ -43,12 +45,15 @@ write_ini() {
   : "${MT5_PASSWORD:?set MT5_PASSWORD in .env}"
   : "${MT5_SERVER:?set MT5_SERVER in .env}"
   : "${MT5_MAX_BARS:=2147483647}"
+  local trade=0
+  [ "${MT5_ALLOW_TRADING:-0}" = "1" ] && trade=1
+  log "algo trading in the terminal: $([ $trade = 1 ] && echo ON || echo off)"
   umask 077
   printf '%s\r\n' \
     "[Common]" "Login=$MT5_ACCOUNT" "Password=$MT5_PASSWORD" "Server=$MT5_SERVER" \
     "KeepPrivate=1" "NewsEnable=0" \
     "[Charts]" "MaxBars=$MT5_MAX_BARS" \
-    "[Experts]" "Enabled=0" "AllowLiveTrading=0" "AllowDllImport=0" >"$INI"
+    "[Experts]" "Enabled=$trade" "AllowLiveTrading=$trade" "AllowDllImport=0" >"$INI"
 }
 
 terminal_loop() {

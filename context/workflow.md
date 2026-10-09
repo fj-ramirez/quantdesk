@@ -127,7 +127,8 @@ document that tells agents how to work.
 
 ## Scope guardrails
 
-- Analysis and charts only. **No order routing**, no broker write APIs.
+- Analysis and charts, plus **one** order path: the `executor` worker (CLAUDE.md invariant 11).
+  No other code, script or agent session places, modifies or closes an order.
 - Single user. No auth, no multi-tenancy, no redistribution of market data.
 - Data spend stays under $50/month.
 - Free-tier data has no history: a capture that does not happen is gone permanently. Anything

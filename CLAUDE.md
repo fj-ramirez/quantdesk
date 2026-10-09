@@ -3,8 +3,10 @@
 Personal, single-user market-analysis desk — three modules: **gex** (gamma exposure for SPX,
 SPY, QQQ, GLD and DIA options), **research** (EdgeLab — automated trading-edge search) and
 **terminal** (xactx — a cross-asset workstation that renders the world as of any past moment).
-Analysis and charts only — **no order routing, ever**. Python/FastAPI backend, React/Vite
-frontend, Postgres for computed results, Parquet on disk for raw chains and OHLCV.
+Analysis and charts, plus **one** order path: the `executor` worker (T151), which trades a
+candidate's frozen spec on the configured MT5 account and nothing else (invariant 11).
+Python/FastAPI backend, React/Vite frontend, Postgres for computed results, Parquet on disk for
+raw chains and OHLCV.
 
 ## Commands
 
@@ -38,7 +40,7 @@ Since T75 this repo is a **module host**: one API process, one React app, one co
 with GEX as `modules/gex` on both sides and every GEX URL carrying a `/gex` segment
 (`/dashboard` -> `/gex/dashboard`, `/api/snapshots` -> `/api/gex/snapshots`). `/` is the module
 launcher. Scheduled work runs in its own container (`gex-capture`, `research-search`, `terminal-ingest`,
-`capture-watch`, and behind the `broker` compose profile `mt5` + `broker-ingest`); **the API
+`capture-watch`, and behind the `broker` compose profile `mt5` + `broker-ingest` + `executor`); **the API
 process starts no background work at all.** See `plans/quantdesk/README.md`.
 
 ## Layout
@@ -48,11 +50,12 @@ backend/app/
   core/        config.py (settings), db.py (engine + session factory), schemas.py (schema names)
   main.py      mounts each module's router under /api; no lifespan, starts nothing
   workers/     gex_capture.py, research_search.py, terminal_ingest.py, capture_watch.py (T104),
-               broker_ingest.py (T144) — one container each
+               broker_ingest.py (T144), executor.py (T151) — one container each
   mcp/         the read-only MCP connector over every schema in core/schemas.SCHEMAS (T82)
-  modules/broker/     the Axi demo MT5 terminal's data (charter-mt5, T143–T145): client.py talks
-                 to the read-only bridge in docker/mt5/; ingest.py (M1 bars, ticks, specs);
-                 basis.py + basis_job.py (CFD↔desk basis, rolls, the `broker.levels` view)
+  modules/broker/     the Axi MT5 terminal (charter-mt5, T143–T145, T151): client.py talks
+                 to the bridge in docker/mt5/; ingest.py (M1 bars, ticks, specs);
+                 basis.py + basis_job.py (CFD↔desk basis, rolls, the `broker.levels` view);
+                 strategies.py (frozen specs as legs + kill rules) and executor.py (the order path)
   modules/terminal/   xactx, ported in T79; its screens are T80
     api/         board.py, edges.py, calendar.py — board, regime, edges, policy, brief, series,
                  calendar (T139); all take `as_of`
@@ -132,6 +135,22 @@ plans/         one folder per multi-task initiative — see plans/README.md
     records per row how that `as_of` was established — the per-row column is the authority, not
     the series' dominant basis. Anything that makes `as_of` updatable (an upsert, a
     "correction", a dedupe) destroys the only thing this module has that a price feed does not.
+11. (T151, replacing "no order routing, ever", by the user's decision on 2026-10-09) **Orders
+    go through one path only:** `app/workers/executor.py` → `modules/broker/executor.py` → the
+    bridge's `order_market` / `close_position`. It trades whichever account the `mt5` terminal
+    is logged into, demo or live, with no demo-only lock. The safeguards are code, not
+    configuration:
+    - only strategies in `modules/broker/strategies.py`, each the frozen spec of a candidate
+      that passed its stage-1 gate in `docs/edges/`;
+    - every leg written to `broker.order_intents` before it is sent;
+    - a stop-loss on every order, enforced by the executor and again by the bridge;
+    - a hard volume cap;
+    - one position per strategy;
+    - kill rules that pause the strategy, with only a person resuming it.
+
+    It is off until both `EXECUTOR_ENABLED=true` and `MT5_ALLOW_TRADING=1` are set. Nothing else
+    (the API, a module, a script, the MCP connector, an agent) may place, modify or close an
+    order. `tests/test_broker_bridge.py` fails if a trading call appears outside the order path.
 
 ## Context index
 
