@@ -37,6 +37,7 @@ from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 from sqlalchemy.orm import Session, sessionmaker
 
 from app.modules.broker import servertime
+from app.modules.broker.basis_job import run_basis
 from app.modules.broker.client import BridgeClient, BridgeError
 from app.modules.broker.tables import Bar, ClockCheck, SymbolSpec, TickFile
 
@@ -195,6 +196,10 @@ class Ingestor:
                 # 2026-10-08 an unwritable /data/broker crash-looped the whole worker, and the
                 # history walk with it. Logged loudly; the hour is retried next run.
                 logger.exception("broker: ticks %s could not be written", symbol)
+        try:
+            run_basis(self.factory, now)
+        except Exception:
+            logger.exception("broker: basis job failed")
 
     # ------------------------------------------------------------------ bars
 
