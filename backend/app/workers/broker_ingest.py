@@ -69,11 +69,14 @@ async def main() -> int:
 
     ingestor = Ingestor(client=client, factory=get_session_factory(), symbols=_symbols(),
                         data_dir=Path(settings.DATA_DIR), tick_hours=settings.BROKER_TICK_HOURS)
+    # misfire_grace_time: APScheduler's default is one second. The history walk's large
+    # synchronous upserts hold the event loop for longer than that, and on 2026-10-08 the 01:02
+    # hourly run was dropped as "missed by 0:00:06", so no tick files were written that hour.
     scheduler = AsyncIOScheduler(timezone="UTC")
     scheduler.add_job(ingestor.run_minute, IntervalTrigger(minutes=1), id="broker_minute",
-                      max_instances=1, coalesce=True)
+                      max_instances=1, coalesce=True, misfire_grace_time=55)
     scheduler.add_job(ingestor.run_hour, CronTrigger(minute=2), id="broker_hour",
-                      max_instances=1, coalesce=True)
+                      max_instances=1, coalesce=True, misfire_grace_time=1800)
     scheduler.start()
     logger.info("broker_ingest: scheduler started; jobs=%s", [j.id for j in scheduler.get_jobs()])
     try:
