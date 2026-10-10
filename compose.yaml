@@ -341,7 +341,7 @@ services:
     environment:
       <<: *backend_environment
       BROKER_BRIDGE_ADDR: mt5:18812
-      BROKER_SYMBOLS: ${BROKER_SYMBOLS:-S&P.fs,NAS100.fs,DJ30.fs,XAUUSD,US2000}
+      BROKER_SYMBOLS: ${BROKER_SYMBOLS:-S&P.fs,NAS100.fs,DJ30.fs,XAUUSD,US2000,EURUSD}
       BROKER_TICK_HOURS: ${BROKER_TICK_HOURS:-168}
     volumes:
       - ./data:/data
