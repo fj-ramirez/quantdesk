@@ -88,8 +88,9 @@ class Settings(BaseSettings):
     # broker-ingest worker exits at boot saying so, the same rule as THETADATA_URL.
     BROKER_BRIDGE_ADDR: str = ""
     # Axi's own spellings. The futures-based index CFDs (0.01-lot minimum) plus spot gold, and
-    # US2000 for price action only: no desk symbol maps to it.
-    BROKER_SYMBOLS: str = "S&P.fs,NAS100.fs,DJ30.fs,XAUUSD,US2000"
+    # US2000 for price action only: no desk symbol maps to it. EURUSD to study a copy-trading
+    # provider's EUR/USD bursts against the broker's own feed (2026-10-10); no desk symbol either.
+    BROKER_SYMBOLS: str = "S&P.fs,NAS100.fs,DJ30.fs,XAUUSD,US2000,EURUSD"
     # How many closed hours of ticks are kept fetched behind now.
     BROKER_TICK_HOURS: int = 168
     # --- T151: the executor, the one part of the desk that places orders ----------------------
