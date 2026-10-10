@@ -57,12 +57,14 @@ write_ini() {
 }
 
 # The startup ini alone did not hold MaxBars (2026-10-09): it came back after a restart. So it is
-# also written into the terminal's own settings, config/common.ini in the portable folder, before
+# also written into the terminal's own settings, Config/common.ini in the portable folder, before
 # every start. That file is UTF-16LE with a BOM and CRLF, as the terminal writes it. The terminal
 # rewrites it on exit, which is why this runs before each launch and not once.
 set_max_bars() {
-  local common="$MT5_DIR/config/common.ini"
-  [[ -f "$common" ]] || { log "no $common yet, MaxBars only from the startup ini"; return 0; }
+  # The folder is "Config" in a terminal copied from Windows, which ignores case; Linux does not.
+  local common
+  common=$(find "$MT5_DIR" -maxdepth 2 -ipath "$MT5_DIR/config/common.ini" -print -quit)
+  [[ -n "$common" ]] || { log "no config/common.ini in $MT5_DIR yet, MaxBars only from the startup ini"; return 0; }
   python3 - "$common" "$MT5_MAX_BARS" <<'EOF' || log "could not set MaxBars in $common"
 import sys
 path, value = sys.argv[1], sys.argv[2]
