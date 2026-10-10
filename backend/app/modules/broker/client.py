@@ -15,7 +15,7 @@ from __future__ import annotations
 import asyncio
 import itertools
 import json
-from dataclasses import dataclass
+from dataclasses import dataclass, fields
 from typing import Any, Self
 
 import pandas as pd
@@ -50,6 +50,9 @@ class Account:
     connected: bool
     ping_ms: float
     terminal_build: int
+    # "Max bars in chart" as the terminal applied it: the cap on the history it serves. None from
+    # a bridge older than the field.
+    max_bars: int | None = None
 
 
 class BridgeClient:
@@ -105,7 +108,10 @@ class BridgeClient:
     # ------------------------------------------------------------------ typed operations
 
     async def account(self) -> Account:
-        return Account(**(await self.request("account")).result)
+        answer = (await self.request("account")).result
+        # Only the known fields: the mt5 image and the backend deploy separately, so a newer
+        # bridge may answer with a key this client does not know yet.
+        return Account(**{f.name: answer[f.name] for f in fields(Account) if f.name in answer})
 
     async def symbols(self) -> list[dict]:
         return (await self.request("symbols")).result
