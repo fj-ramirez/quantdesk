@@ -56,8 +56,44 @@ write_ini() {
     "[Experts]" "Enabled=$trade" "AllowLiveTrading=$trade" "AllowDllImport=0" >"$INI"
 }
 
+# The startup ini alone did not hold MaxBars (2026-10-09): it came back after a restart. So it is
+# also written into the terminal's own settings, config/common.ini in the portable folder, before
+# every start. That file is UTF-16LE with a BOM and CRLF, as the terminal writes it. The terminal
+# rewrites it on exit, which is why this runs before each launch and not once.
+set_max_bars() {
+  local common="$MT5_DIR/config/common.ini"
+  [[ -f "$common" ]] || { log "no $common yet, MaxBars only from the startup ini"; return 0; }
+  python3 - "$common" "$MT5_MAX_BARS" <<'EOF' || log "could not set MaxBars in $common"
+import sys
+path, value = sys.argv[1], sys.argv[2]
+raw = open(path, "rb").read()
+text = raw.decode("utf-16")
+lines = text.split("\r\n")
+out, section, done = [], None, False
+for line in lines:
+    s = line.strip()
+    if s.startswith("[") and s.endswith("]"):
+        if section == "[Charts]" and not done:
+            out.append(f"MaxBars={value}")
+            done = True
+        section = s
+    elif section == "[Charts]" and s.lower().startswith("maxbars="):
+        line, done = f"MaxBars={value}", True
+    out.append(line)
+if not done:
+    if section != "[Charts]":
+        out += ["[Charts]"]
+    out.append(f"MaxBars={value}")
+new = "\r\n".join(out)
+if new != text:
+    open(path, "wb").write(new.encode("utf-16"))  # "utf-16" writes the LE BOM
+print(f"MaxBars={value} in {path}")
+EOF
+}
+
 terminal_loop() {
   while :; do
+    set_max_bars
     log "starting the terminal in $MT5_DIR (#$MT5_ACCOUNT on $MT5_SERVER)"
     wine "$MT5_DIR/terminal64.exe" /portable "/config:$(winpath "$INI")" >/dev/null 2>&1 || true
     log "terminal exited, restarting in 10s"

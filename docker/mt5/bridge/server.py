@@ -166,6 +166,8 @@ class Bridge:
             "trade_allowed": bool(acc.trade_allowed and term.trade_allowed),
             "connected": bool(term.connected), "ping_ms": round(term.ping_last / 1000, 1),
             "terminal_build": term.build,
+            # "Max bars in chart" as the terminal applied it: the cap on the history it serves.
+            "max_bars": term.maxbars,
         }
 
     def op_symbols(self, req: dict) -> list[dict]:

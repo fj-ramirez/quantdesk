@@ -84,7 +84,8 @@ class FakeMT5:
     def terminal_info(self):
         if not self.alive:
             return None
-        return SimpleNamespace(trade_allowed=True, connected=True, ping_last=12345, build=5200)
+        return SimpleNamespace(trade_allowed=True, connected=True, ping_last=12345, build=5200,
+                               maxbars=2147483647)
 
     def account_info(self):
         return SimpleNamespace(login=self.login, server="Axi-US51-Demo", company="AxiCorp",
@@ -143,6 +144,7 @@ async def test_account_reports_demo_and_trade_allowed(bridge_addr):
     assert acc.login == LOGIN and acc.trade_mode == "demo"
     assert acc.trade_allowed is False  # investor login in the fake
     assert acc.ping_ms == 12.3
+    assert acc.max_bars == 2147483647
 
 
 async def test_rates_drop_the_inclusive_end_bar(bridge_addr, fake):
