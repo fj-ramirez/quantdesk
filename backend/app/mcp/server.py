@@ -449,6 +449,128 @@ def gex_track_record(key: str | None = None, since: str | None = None) -> str:
     return render_result(result, note=note)
 
 
+@server.tool(
+    description=(
+        "The flip-cross forward record (T142): every intraday cross of the gamma flip since the "
+        "logger went live, per key, with the mean and the session-clustered standard error at "
+        "15/30/60 minutes and the close, and the excursion-path summary on the traded CFD. "
+        "Pass `recent` to list the latest events with their MAE/MFE swing sequences."
+    )
+)
+def gex_flip_crosses(key: str | None = None, since: str | None = None, recent: int = 0) -> str:
+    """Per-key follow-through, clustered by session, plus optionally the latest swing paths.
+
+    **The standard error is clustered by session** (T142). SPX, SPY and DIA cross the same flip
+    together, often several times a day, so the events are not independent: each session's
+    events are averaged first and the standard error is taken across sessions. A per-event SE
+    overstates certainty, which is how the 10-08 review was nearly misread.
+
+    Returns are signed in the direction of the cross. The spec trades both keys short, so the
+    fade on `FLIP_CROSS_UP` wins when its numbers are **negative**.
+    """
+    start = _parse_date(since, field="since")
+    clauses = ["true"]
+    params: dict[str, object] = {}
+    if key:
+        k = key.upper()
+        params["key"] = k if k.startswith("FLIP_CROSS_") else f"FLIP_CROSS_{k}"
+        clauses.append("e.key = %(key)s")
+    if start:
+        clauses.append("e.session_date >= %(start)s")
+        params["start"] = start
+    where = " AND ".join(clauses)
+
+    def clustered(col: str, name: str) -> str:
+        return (
+            f"round(avg({col})::numeric, 1) AS {name}, "
+            f"round((stddev_samp({col}) / sqrt(count({col})))::numeric, 1) AS {name}_se"
+        )
+
+    sql = f"""
+        WITH ev AS (
+            SELECT e.key, e.session_date, e.in_window, s.*,
+                   s.path_mae / nullif(s.path_unit, 0) AS mae_u,
+                   s.path_mfe / nullif(s.path_unit, 0) AS mfe_u,
+                   s.path_close / nullif(s.path_unit, 0) AS close_u,
+                   (s.path_swings::jsonb -> 0 ->> 1)::float8 AS first_swing
+            FROM {SCHEMA_GEX}.flip_crosses e
+            LEFT JOIN {SCHEMA_GEX}.flip_cross_scores s USING (symbol, bar_ts)
+            WHERE {where}),
+        per_session AS (
+            SELECT key, session_date, count(*) AS events,
+                   avg(ret_15m_bps) AS r15, avg(ret_30m_bps) AS r30,
+                   avg(ret_60m_bps) AS r60, avg(ret_close_bps) AS rc
+            FROM ev GROUP BY key, session_date),
+        paths AS (
+            SELECT key, count(mae_u) AS paths,
+                   round((percentile_cont(0.5) WITHIN GROUP (ORDER BY mae_u))::numeric, 1) AS median_mae_u,
+                   round((percentile_cont(0.5) WITHIN GROUP (ORDER BY mfe_u))::numeric, 1) AS median_mfe_u,
+                   round(avg(close_u)::numeric, 2) AS mean_close_u,
+                   count(*) FILTER (WHERE first_swing > 0) AS first_swing_with,
+                   count(*) FILTER (WHERE first_swing < 0) AS first_swing_against
+            FROM ev GROUP BY key)
+        SELECT p.key, sum(p.events) AS events, count(*) AS sessions,
+               min(p.session_date) AS first_session, max(p.session_date) AS last_session,
+               {clustered('p.r15', 'r15')}, {clustered('p.r30', 'r30')},
+               {clustered('p.r60', 'r60')}, {clustered('p.rc', 'r_close')},
+               max(x.paths) AS paths, max(x.median_mae_u) AS median_mae_u,
+               max(x.median_mfe_u) AS median_mfe_u, max(x.mean_close_u) AS mean_close_u,
+               max(x.first_swing_with) AS first_swing_with,
+               max(x.first_swing_against) AS first_swing_against
+        FROM per_session p JOIN paths x USING (key)
+        GROUP BY p.key ORDER BY p.key
+    """
+    result = run_query(sql, params, limit=MAX_ROW_LIMIT)
+    if not result.rows:
+        return (
+            "No flip crosses recorded yet. The logger writes forward only, from the day it was "
+            "deployed; the backtest sessions it was found on are deliberately not in this table."
+        )
+
+    note = (
+        "**bps are signed in the direction of the cross**: positive = price kept going. The spec "
+        "shorts the CFD on both keys, so `FLIP_CROSS_UP` (the fade) wins when these are "
+        "negative.\n\n"
+        "**`*_se` is clustered by session**: each session's events are averaged first, then the "
+        "SE is taken across sessions. Same-day crosses on SPX, SPY and DIA are one event. A "
+        "mean inside ±2·se has no established sign; quote `sessions` every time and call it a "
+        "leaning until about 30 sessions exist.\n\n"
+        "**Path columns are in swing units** (u = half the CFD's median 5-minute range, stored "
+        "per event) on the CFD's 1-minute bars from entry to 16:00 ET, with no stop or target: "
+        "`median_mae_u`/`median_mfe_u` are the worst/best excursion, `first_swing_*` counts "
+        "whether the first confirmed swing went with or against the cross. Events not scored yet "
+        "(today's, or waiting for CFD bars) count in `events` but have null returns and paths."
+    )
+    out = render_result(result, note=note)
+
+    recent = max(0, min(recent, MAX_ROW_LIMIT))
+    if recent:
+        listing = run_query(
+            f"""
+            SELECT e.session_date, to_char(e.entry_at AT TIME ZONE 'America/New_York', 'HH24:MI') AS et,
+                   e.symbol, e.key, e.in_window, round(e.spot::numeric, 2) AS spot,
+                   round(e.flip::numeric, 2) AS flip, e.spx_side,
+                   round(s.ret_60m_bps::numeric, 1) AS r60, round(s.ret_close_bps::numeric, 1) AS r_close,
+                   s.cfd_symbol, round(s.path_unit::numeric, 2) AS unit, s.path_swings,
+                   round(s.path_close::numeric, 2) AS path_close, s.path_note
+            FROM {SCHEMA_GEX}.flip_crosses e
+            LEFT JOIN {SCHEMA_GEX}.flip_cross_scores s USING (symbol, bar_ts)
+            WHERE {where}
+            ORDER BY e.entry_at DESC, e.symbol
+            """,
+            params,
+            limit=recent,
+        )
+        out += "\n\n" + render_result(
+            listing,
+            note=(
+                "`path_swings` is `[[minutes after entry, CFD points], ...]` in the direction of "
+                "the cross: alternating troughs and peaks, the last one the open leg's extreme."
+            ),
+        )
+    return out
+
+
 # --- research --------------------------------------------------------------------------------
 
 
