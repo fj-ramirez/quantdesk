@@ -459,8 +459,29 @@ only, so the backtest sessions are never mixed into the forward record; the trac
 reports a session-clustered standard error. Re-read the forward record after 30 sessions. Until
 then, quote it as a leaning.
 
+- **Excursion path (added 2026-10-12, at the user's request).** No stop or target in the
+  scoring. Record, for each event, the sequence of swings after entry on the **traded CFD's**
+  1-minute bars (`broker.bars`) to 16:00 ET: "10 against, then 20 in favour, then 50 against".
+  A swing counts once price turns back by u = half the CFD's median 5-minute range over the
+  trailing sessions; store u, the swings, MAE, MFE and the close excursion. If the CFD's bars
+  are missing, wait up to three days, then score without the path and say why.
+
 **Out of scope:** any alert or trade suggestion built on it, and IWM (it has no intraday bars;
 add it to `INTRADAY_BARS_SYMBOLS` separately if wanted).
+
+**Result (2026-10-12, built on `feat/broker-eurusd`; not deployed).**
+- Detector `app/modules/gex/scan/flip_cross.py` (pure), job `app/modules/gex/jobs/flip_crosses.py`
+  (record after every 5-minute bar poll; score at 16:40 ET), tables `gex.flip_crosses` and
+  `gex.flip_cross_scores` (revision `b9c0d1e2f3a4`), read tool `gex_flip_crosses` on the MCP
+  connector.
+- **Acceptance was re-based, deliberately.** The review's §4 counts used "an earlier close that
+  day on the other side". The frozen spec says "the close two bars earlier". The code follows the
+  spec. The fixture test (`tests/test_flip_cross.py`, real rows for SPY, GLD and SPX on 10-08)
+  checks the detector against the §5 SQL run with the spec's definition, event for event. It
+  does not check against the review's table.
+- Forward-only by construction: the job reads today's session only.
+- Still open: deploy (the migration runs in the API container), then confirm the first live
+  session writes rows and the 16:40 run scores them. Re-read after 30 sessions.
 
 ---
 

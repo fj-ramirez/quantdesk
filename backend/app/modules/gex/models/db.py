@@ -43,6 +43,8 @@ __all__ = [
     "DailyBar",
     "Decision",
     "EtfSharesOutstanding",
+    "FlipCrossEvent",
+    "FlipCrossScore",
     "GexByStrike",
     "GexLevel",
     "IntradayBar",
@@ -624,3 +626,87 @@ class Decision(Base):
             f"<Decision id={self.id} {self.underlying} {self.key} decided_on={self.decided_on} "
             f"outcome={self.outcome!r}>"
         )
+
+
+class FlipCrossEvent(Base):
+    """One intraday cross of the gamma flip, as it was knowable at the bar that confirmed it
+    (T142, `docs/edges/flip-cross.md`).
+
+    **Insert-only.** The job re-reads the whole session on every poll, so the key
+    `(symbol, bar_ts)` turns repeats into no-ops; a row is never updated or deleted. If the rule
+    changes, it becomes a new key and these rows stay as what the old rule said.
+
+    **Forward only.** Rows exist from the day the logger was deployed. The backtest sessions
+    (2026-09-21 to 10-08) are never written here, so the forward record is not mixed with the
+    window the leaning was found in.
+
+    `recorded_at - entry_at` is the logging latency; a large one means the event was caught up
+    after a gap rather than seen live.
+    """
+
+    __tablename__ = "flip_crosses"
+
+    symbol: Mapped[str] = mapped_column(String(16), primary_key=True)
+    #: The confirming bar's opening instant (`gex.intraday_bars.ts`).
+    bar_ts: Mapped[dt.datetime] = mapped_column(UTCDateTime, primary_key=True)
+    session_date: Mapped[dt.date] = mapped_column(Date, nullable=False)
+    #: The confirming bar's close instant: the entry.
+    entry_at: Mapped[dt.datetime] = mapped_column(UTCDateTime, nullable=False)
+    #: `FLIP_CROSS_DOWN` or `FLIP_CROSS_UP`.
+    key: Mapped[str] = mapped_column(String(32), nullable=False)
+    spot: Mapped[float] = mapped_column(Float, nullable=False)
+    flip: Mapped[float] = mapped_column(Float, nullable=False)
+    #: The same capture's net GEX. Recorded, never used as a filter (the spec's regime rule).
+    net_gex: Mapped[float | None] = mapped_column(Float, nullable=True)
+    capture_at: Mapped[dt.datetime] = mapped_column(UTCDateTime, nullable=False)
+    #: SPX's own flip and side (+1 above, -1 below, 0 on it) at the same bar: SPX and SPY can
+    #: disagree. Null when SPX had no bar or no capture yet.
+    spx_flip: Mapped[float | None] = mapped_column(Float, nullable=True)
+    spx_side: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    #: The spec's 09:45-15:00 ET entry window. Crosses outside it are logged but not tradeable.
+    in_window: Mapped[bool] = mapped_column(Boolean, nullable=False)
+    recorded_at: Mapped[dt.datetime] = mapped_column(UTCDateTime, nullable=False)
+
+    __table_args__ = (Index("ix_flip_crosses_session_date", "session_date"),)
+
+
+class FlipCrossScore(Base):
+    """What price did after one `FlipCrossEvent`, written **once**, after its session ended (T142).
+
+    Insert-only like the event table: a score is written when it can be complete, never
+    updated. Every number is signed **in the direction of the cross**, so a positive value
+    means price kept going the way it crossed. The spec trades both keys short, so the fade on
+    `FLIP_CROSS_UP` makes money when these are negative.
+
+    Two measurements:
+
+    * `ret_*_bps` -- the desk symbol's 5-minute closes 15, 30 and 60 minutes after entry and at
+      the session close. A horizon whose bar does not exist is null, never zero.
+    * `path_*` -- the excursion path on the traded CFD's 1-minute bars (`broker.bars`), from
+      entry to the 16:00 ET close, with no stop or target: the swings, worst and best
+      excursion, and where it ended, in CFD price points. `path_unit` is the swing size that
+      was used (half the CFD's median 5-minute range over the trailing sessions). When the
+      CFD's bars were missing the path columns are null and `path_note` says why.
+    """
+
+    __tablename__ = "flip_cross_scores"
+
+    symbol: Mapped[str] = mapped_column(String(16), primary_key=True)
+    bar_ts: Mapped[dt.datetime] = mapped_column(UTCDateTime, primary_key=True)
+    ret_15m_bps: Mapped[float | None] = mapped_column(Float, nullable=True)
+    ret_30m_bps: Mapped[float | None] = mapped_column(Float, nullable=True)
+    ret_60m_bps: Mapped[float | None] = mapped_column(Float, nullable=True)
+    ret_close_bps: Mapped[float | None] = mapped_column(Float, nullable=True)
+    cfd_symbol: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    path_entry: Mapped[float | None] = mapped_column(Float, nullable=True)
+    path_unit: Mapped[float | None] = mapped_column(Float, nullable=True)
+    #: JSON text, `[[minutes_after_entry, excursion_points], ...]`: alternating troughs and
+    #: peaks, the last one the open leg's extreme. Text rather than a JSON column so it
+    #: round-trips identically on SQLite, like `Decision.payload`.
+    path_swings: Mapped[str | None] = mapped_column(Text, nullable=True)
+    path_mae: Mapped[float | None] = mapped_column(Float, nullable=True)
+    path_mfe: Mapped[float | None] = mapped_column(Float, nullable=True)
+    path_close: Mapped[float | None] = mapped_column(Float, nullable=True)
+    path_end_at: Mapped[dt.datetime | None] = mapped_column(UTCDateTime, nullable=True)
+    path_note: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    scored_at: Mapped[dt.datetime] = mapped_column(UTCDateTime, nullable=False)

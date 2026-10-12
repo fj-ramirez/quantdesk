@@ -75,9 +75,9 @@ backend/app/
     models/      chain.py (Pydantic wire/domain types), db.py (Base, UTCDateTime, tables)
     gex/         greeks.py, engine.py (pure math), store.py (persist), backfill.py (CLI)
     scan/        pure scan modules: indicators, breakouts, trend, regime, rotation, decisions (T60),
-                 outcomes (T61), factors (T93), flows, groups, cross_asset
+                 outcomes (T61), factors (T93), flows, groups, cross_asset, flip_cross (T142)
     jobs/        capture, scheduler (APScheduler), calendar, catchup, outage, retention, bars,
-                 intraday_bars, flows, decisions, memory (T88)
+                 intraday_bars, flows, decisions, memory (T88), flip_crosses (T142)
     storage/     parquet.py (raw chains), repository.py (snapshot index)
   modules/research/   EdgeLab, ported in T77 from projects/research
     registry.py  the trial registry, now Postgres — same interface, no SQLite fallback
