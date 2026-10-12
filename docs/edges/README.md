@@ -14,6 +14,7 @@ with its own slug and start date.
 | [nas-mean-reversion](nas-mean-reversion.md) | — → NAS100.fs | 1 passed (independent 2000–19) → 2 | Demo: ≥ 30 trades | 2026-10-09 | leads #334/#378/#419 → composite #428 |
 | [index-hold-sma200](index-hold-sma200.md) | — → NAS100.fs, S&P.fs | risk premium (no edge gate) | Demo 0.01 lot; verify the 2026-12-14 roll adjustment | 2026-10-09 | pass 3 summary, search-log.md |
 | [xau-range-rejection](xau-range-rejection.md) | GLD → XAUUSD | 0 (stage 1 possible, not run) | Historical: ≥ 100 trades on XAUUSD M1, demo-only until then | 2026-10-09 | GLD GEX + price-action read, 10-08/09 |
+| [eurusd-burst-fade](eurusd-burst-fade.md) | — → EURUSD | **stage 1 failed** (2026-10-11, #429–430): the frozen z-fade loses −2.0 pips per trade, 0/8 years | None for this rule. The provider's entry selector is still unexplained; it becomes a test again only as a new, pre-declared rule | 2026-10-10 | the user's copy account: provider "the holy grail" |
 
 **Leads** (they cleared everything but the t bar and are **not** candidates; see
 [search-log.md](search-log.md)): RSI(2) pullback on S&P.fs / NAS100.fs (#334–336). Its sign replicated on 2000–19 (#356–357),
