@@ -134,7 +134,13 @@ class Settings(BaseSettings):
     # market-hours calendar would be one more thing to get wrong. Daily twice after the 17:30 bars
     # job: the 20:00 run is the safety net for a late bars job, and costs nothing when 17:50
     # already recorded the session (the store's key makes it a no-op).
-    SIGNALS_HOURLY_CRON: str = "5 * * * *"
+    #
+    # T153: the hourly digest is **off** by default, by the user's decision on 2026-10-12. Its
+    # z-score signals are long-horizon and the hourly messages were not useful; the instant
+    # level-event alerts (gex-capture, `jobs/level_events.py`) replace them. `off` also stops
+    # recording `research.signal_events` for the hourly family -- the user chose that over
+    # keeping the record. Set a crontab here to bring both back.
+    SIGNALS_HOURLY_CRON: str = "off"
     SIGNALS_DAILY_CRON: str = "50 17,20 * * 1-5"
     # The continuation proxy's universe. Small on purpose: over the full scan universe a
     # five-session-return rule signals on roughly half the symbols every day.

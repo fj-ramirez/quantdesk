@@ -1,12 +1,14 @@
-"""Intraday crosses of the gamma flip, and what price did afterwards (T142).
+"""Intraday events at the desk's gamma levels, and what price did afterwards (T142, T153).
 
-The frozen rule of `docs/edges/flip-cross.md`, in code, exactly as tested. **Do not change it.**
-A variant is a new key with its own start date; editing this rule would quietly mix two rules'
-evidence in one forward record.
+Two frozen rules, in code exactly as specified. **Do not change either.** A variant is a new
+key with its own start date; editing a rule would quietly mix two rules' evidence in one
+forward record.
+
+**Flip cross** (`docs/edges/flip-cross.md`, frozen 2026-10-08):
 
 * The flip at a bar is `gex_levels.flip_point` (filter `ALL`) from the **latest in-session
-  capture with `captured_at <= the bar's close`**. Never the previous EOD flip, so bars before
-  the session's first capture have no flip and cannot be part of a cross.
+  capture with a flip and `captured_at <= the bar's close`**. Never the previous EOD flip, so
+  bars before the session's first capture have no flip and cannot be part of a cross.
 * A cross is **two consecutive 5-minute closes on the new side, with the close two bars
   earlier on the old side**. "Consecutive" means consecutive bars that *have* a flip, which is
   what the reference SQL's `lag()` over those rows did. A close exactly on the flip has no side
@@ -14,8 +16,21 @@ evidence in one forward record.
 * `FLIP_CROSS_DOWN` and `FLIP_CROSS_UP` are both recorded: the up-cross reversal is half the
   hypothesis.
 
-Two kinds of follow-through are measured, both signed **in the direction of the cross** (a
-positive number means price kept going the way it crossed):
+**Wall bounce** (`docs/edges/wall-bounce.md`, frozen 2026-10-12):
+
+* The wall at a bar is `put_wall` / `call_wall` (filter `ALL`) from the latest in-session
+  capture with that wall and `captured_at <= the bar's close`.
+* A **touch** of the put wall W is a bar whose previous close was above W, whose low comes
+  within `TOUCH_TOL` x W of it (or through it), and which closes back above W. Then **two
+  consecutive closes each higher than the one before** confirm it, and the event is the second
+  of those closes: `PUT_WALL_BOUNCE`, long. The call wall is the mirror image:
+  `CALL_WALL_BOUNCE`, short.
+* W is the wall known at the touch bar's close. After an event, the next touch of the same key
+  must come after the confirming bar, so one touch sequence is one event.
+
+Two kinds of follow-through are measured, both signed **in the event's direction** (`+1` for
+`FLIP_CROSS_UP` and `PUT_WALL_BOUNCE`, `-1` for the other two), so a positive number means price
+kept going the way the event pointed:
 
 * fixed-horizon returns from the desk symbol's own 5-minute closes -- 15, 30 and 60 minutes and
   the session close -- each `None` when its bar does not exist (null is not zero);
@@ -25,7 +40,7 @@ positive number means price kept going the way it crossed):
   low is unknown; an up bar is taken as low-then-high and a down bar as high-then-low.
 
 Pure: no I/O, no clock, no logging -- the same contract as the other `scan/` modules. The job
-in `app.modules.gex.jobs.flip_crosses` reads the rows and writes the results.
+in `app.modules.gex.jobs.level_events` reads the rows and writes the results.
 """
 
 from __future__ import annotations
@@ -39,14 +54,18 @@ from typing import Protocol
 __all__ = [
     "BAR",
     "HORIZONS_MIN",
+    "KEYS",
+    "KEY_CALL_BOUNCE",
     "KEY_DOWN",
+    "KEY_PUT_BOUNCE",
     "KEY_UP",
-    "CaptureLike",
-    "CloseBar",
+    "TOUCH_TOL",
+    "Capture",
     "Excursions",
-    "FlipCross",
-    "MinuteBar",
+    "LevelEvent",
+    "OhlcBar",
     "detect_crosses",
+    "detect_wall_bounces",
     "direction_of",
     "excursion_path",
     "horizon_returns",
@@ -57,6 +76,9 @@ __all__ = [
 
 KEY_DOWN = "FLIP_CROSS_DOWN"
 KEY_UP = "FLIP_CROSS_UP"
+KEY_PUT_BOUNCE = "PUT_WALL_BOUNCE"
+KEY_CALL_BOUNCE = "CALL_WALL_BOUNCE"
+KEYS: tuple[str, ...] = (KEY_DOWN, KEY_UP, KEY_PUT_BOUNCE, KEY_CALL_BOUNCE)
 
 #: The desk's intraday bar length. A bar's `ts` is its opening instant; it closes at `ts + BAR`.
 BAR = dt.timedelta(minutes=5)
@@ -64,31 +86,13 @@ BAR = dt.timedelta(minutes=5)
 #: The fixed horizons, in minutes after entry (3, 6 and 12 bars).
 HORIZONS_MIN: tuple[int, ...] = (15, 30, 60)
 
-
-class CloseBar(Protocol):
-    """A 5-minute bar as the detector needs it: its opening instant and its close."""
-
-    @property
-    def ts(self) -> dt.datetime: ...
-
-    @property
-    def close(self) -> float: ...
+#: How close to a wall a bar's extreme must come to count as a touch, as a fraction of the wall.
+TOUCH_TOL = 0.0005
 
 
-class CaptureLike(Protocol):
-    """An in-session capture's flip, as the detector needs it."""
+class OhlcBar(Protocol):
+    """A bar as the detectors and the path need it. `ts` is its opening instant."""
 
-    @property
-    def captured_at(self) -> dt.datetime: ...
-
-    @property
-    def flip(self) -> float: ...
-
-    @property
-    def net_gex(self) -> float | None: ...
-
-
-class MinuteBar(Protocol):
     @property
     def ts(self) -> dt.datetime: ...
 
@@ -106,21 +110,35 @@ class MinuteBar(Protocol):
 
 
 @dataclass(frozen=True, slots=True)
-class FlipCross:
-    """One cross, as it was knowable at the confirming bar's close."""
+class Capture:
+    """An in-session capture's levels. Any level may be unknown."""
+
+    captured_at: dt.datetime
+    flip: float | None
+    call_wall: float | None = None
+    put_wall: float | None = None
+    net_gex: float | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class LevelEvent:
+    """One event, as it was knowable at the bar that confirmed it."""
 
     symbol: str
-    #: The confirming (second) bar's opening instant. With `symbol`, the event's identity.
+    #: The confirming bar's opening instant. With `symbol`, the event's identity.
     bar_ts: dt.datetime
     key: str
     #: The confirming bar's close: the entry reference.
     spot: float
-    flip: float
+    #: The flip or wall the event is about.
+    level: float
+    #: `flip`, `put_wall` or `call_wall`.
+    level_kind: str
     net_gex: float | None
-    #: When the capture that supplied `flip` was taken.
+    #: When the capture that supplied `level` was taken.
     capture_at: dt.datetime
-    #: Index of the confirming bar in the bar list the detector was given.
-    index: int
+    #: For a bounce, the touching bar's opening instant; `None` for a cross.
+    touch_ts: dt.datetime | None = None
 
     @property
     def entry_at(self) -> dt.datetime:
@@ -128,11 +146,11 @@ class FlipCross:
 
 
 def direction_of(key: str) -> int:
-    """+1 for an up-cross, -1 for a down-cross: the sign that makes a continuation positive."""
-    return 1 if key == KEY_UP else -1
+    """+1 for an event that points up, -1 for one that points down."""
+    return 1 if key in (KEY_UP, KEY_PUT_BOUNCE) else -1
 
 
-def _flip_at(close_at: dt.datetime, captures: Sequence[CaptureLike]) -> CaptureLike | None:
+def _latest(close_at: dt.datetime, captures: Sequence[Capture]) -> Capture | None:
     known = None
     for c in captures:  # sorted ascending; the lists are a few dozen rows
         if c.captured_at <= close_at:
@@ -146,74 +164,111 @@ def _sign(x: float) -> int:
     return (x > 0) - (x < 0)
 
 
-def side_at(bar: CloseBar, captures: Sequence[CaptureLike]) -> int | None:
-    """+1 above the flip known at `bar`'s close, -1 below, 0 on it, `None` with no capture yet."""
-    cap = _flip_at(bar.ts + BAR, sorted(captures, key=lambda c: c.captured_at))
+def side_at(bar: OhlcBar, captures: Sequence[Capture]) -> int | None:
+    """+1 above the flip known at `bar`'s close, -1 below, 0 on it, `None` with no flip yet."""
+    caps = sorted((c for c in captures if c.flip is not None), key=lambda c: c.captured_at)
+    cap = _latest(bar.ts + BAR, caps)
     return None if cap is None else _sign(bar.close - cap.flip)
 
 
 def detect_crosses(
-    symbol: str, bars: Sequence[CloseBar], captures: Sequence[CaptureLike]
-) -> list[FlipCross]:
-    """Every cross in one symbol's session, oldest first.
+    symbol: str, bars: Sequence[OhlcBar], captures: Sequence[Capture]
+) -> list[LevelEvent]:
+    """Every flip cross in one symbol's session, oldest first.
 
     `bars` are one session's 5-minute bars and `captures` that session's in-session captures.
     Pass only bars that have **closed**: the caller owns the clock.
     """
     bars = sorted(bars, key=lambda b: b.ts)
-    caps = sorted(captures, key=lambda c: c.captured_at)
-    rows: list[tuple[int, int, CaptureLike]] = []  # (bar index, side, capture) for bars with a flip
+    caps = sorted((c for c in captures if c.flip is not None), key=lambda c: c.captured_at)
+    rows: list[tuple[int, int, Capture]] = []  # (bar index, side, capture) for bars with a flip
     for i, b in enumerate(bars):
-        cap = _flip_at(b.ts + BAR, caps)
+        cap = _latest(b.ts + BAR, caps)
         if cap is not None:
             rows.append((i, _sign(b.close - cap.flip), cap))
 
-    out: list[FlipCross] = []
+    out: list[LevelEvent] = []
     for j in range(2, len(rows)):
         i, side, cap = rows[j]
         if side != 0 and rows[j - 1][1] == side and rows[j - 2][1] == -side:
             b = bars[i]
-            out.append(FlipCross(
+            out.append(LevelEvent(
                 symbol=symbol, bar_ts=b.ts, key=KEY_UP if side > 0 else KEY_DOWN,
-                spot=b.close, flip=cap.flip, net_gex=cap.net_gex, capture_at=cap.captured_at,
-                index=i,
+                spot=b.close, level=cap.flip, level_kind="flip", net_gex=cap.net_gex,
+                capture_at=cap.captured_at,
             ))
     return out
 
 
-def horizon_returns(
-    cross: FlipCross, bars: Sequence[CloseBar]
-) -> tuple[dict[int, float | None], float | None]:
-    """Returns in bps after `cross`, signed in its direction: `({15: r, 30: r, 60: r}, r_close)`.
+def detect_wall_bounces(
+    symbol: str, bars: Sequence[OhlcBar], captures: Sequence[Capture]
+) -> list[LevelEvent]:
+    """Every put- and call-wall bounce in one symbol's session, oldest first. Closed bars only."""
+    bars = sorted(bars, key=lambda b: b.ts)
+    out: list[LevelEvent] = []
+    for key, kind, sign in ((KEY_PUT_BOUNCE, "put_wall", 1), (KEY_CALL_BOUNCE, "call_wall", -1)):
+        caps = sorted(
+            (c for c in captures if getattr(c, kind) is not None), key=lambda c: c.captured_at
+        )
+        t = 1
+        while t + 2 < len(bars):
+            cap = _latest(bars[t].ts + BAR, caps)
+            if cap is None:
+                t += 1
+                continue
+            w = getattr(cap, kind)
+            prev, touch, c1, c2 = bars[t - 1], bars[t], bars[t + 1], bars[t + 2]
+            # sign = +1 (put wall, from above) or -1 (call wall, from below), so one test does both
+            extreme = touch.low if sign > 0 else touch.high
+            touched = (
+                sign * (prev.close - w) > 0
+                and sign * (extreme - w) <= TOUCH_TOL * w
+                and sign * (touch.close - w) > 0
+            )
+            if touched and sign * (c1.close - touch.close) > 0 and sign * (c2.close - c1.close) > 0:
+                out.append(LevelEvent(
+                    symbol=symbol, bar_ts=c2.ts, key=key, spot=c2.close, level=w,
+                    level_kind=kind, net_gex=cap.net_gex, capture_at=cap.captured_at,
+                    touch_ts=touch.ts,
+                ))
+                t += 3  # the next touch must come after the confirming bar
+            else:
+                t += 1
+    return sorted(out, key=lambda e: (e.bar_ts, e.key))
 
-    `bars` must be the same session's bars, in the order the detector saw them. A horizon whose
-    bar does not exist is `None`. The close return is from the session's last bar, so it is only
-    final once the session is.
+
+def horizon_returns(
+    event: LevelEvent, bars: Sequence[OhlcBar]
+) -> tuple[dict[int, float | None], float | None]:
+    """Returns in bps after `event`, signed in its direction: `({15: r, 30: r, 60: r}, r_close)`.
+
+    `bars` must be the same session's bars. A horizon whose bar does not exist is `None`. The
+    close return is from the session's last bar, so it is only final once the session is.
     """
     bars = sorted(bars, key=lambda b: b.ts)
-    d = direction_of(cross.key)
+    d = direction_of(event.key)
     by_ts = {b.ts: b.close for b in bars}
 
     def ret(close: float) -> float:
-        return d * (close / cross.spot - 1.0) * 1e4
+        return d * (close / event.spot - 1.0) * 1e4
 
     out: dict[int, float | None] = {}
     for minutes in HORIZONS_MIN:
-        c = by_ts.get(cross.bar_ts + dt.timedelta(minutes=minutes))
+        c = by_ts.get(event.bar_ts + dt.timedelta(minutes=minutes))
         out[minutes] = None if c is None else ret(c)
     last = bars[-1] if bars else None
-    r_close = ret(last.close) if last is not None and last.ts >= cross.bar_ts else None
+    r_close = ret(last.close) if last is not None and last.ts >= event.bar_ts else None
     return out, r_close
 
 
 def minute_points(
-    bars: Sequence[MinuteBar], entry: float, direction: int, entry_at: dt.datetime
+    bars: Sequence[OhlcBar], entry: float, direction: int, entry_at: dt.datetime
 ) -> list[tuple[float, float]]:
     """1-minute bars as an ordered excursion series: `(minutes after entry, excursion)`.
 
     Each bar contributes two points, its two extremes, ordered by the bar's colour (up bar: low
     then high). Excursion is `direction * (price - entry)`, so with `direction` taken from the
-    cross, positive means the cross followed through.
+    event, positive means it followed through.
     """
     pts: list[tuple[float, float]] = []
     for b in sorted(bars, key=lambda b: b.ts):
@@ -226,7 +281,7 @@ def minute_points(
 
 @dataclass(frozen=True, slots=True)
 class Excursions:
-    """The swing path after one entry, in price points, signed in the cross's direction.
+    """The swing path after one entry, in price points, signed in the event's direction.
 
     `swings` alternate between troughs and peaks: each is `(minutes after entry, excursion)` at
     a turn confirmed by a reversal of at least `unit`, and the last element is the extreme of
@@ -291,7 +346,7 @@ def excursion_path(points: Sequence[tuple[float, float]], unit: float) -> Excurs
     )
 
 
-def path_unit(bars: Sequence[MinuteBar], *, share: float = 0.5) -> float | None:
+def path_unit(bars: Sequence[OhlcBar], *, share: float = 0.5) -> float | None:
     """`share` of the median 5-minute high-low range of the given 1-minute bars.
 
     The caller chooses the bars (the CFD's regular-session minutes over a trailing window). Bars

@@ -133,6 +133,8 @@ def test_daily_run_reads_gex_bars_and_alerts_the_proxy(factories, sent):
 
 
 def test_jobs_register_unless_off(monkeypatch):
+    # T153: the hourly digest defaults to off; a crontab brings it back.
+    monkeypatch.setattr(job.settings, "SIGNALS_HOURLY_CRON", "5 * * * *")
     sched = AsyncIOScheduler()
     assert job.add_signal_jobs(sched) == [job.HOURLY_JOB_ID, job.DAILY_JOB_ID]
     assert {j.id for j in sched.get_jobs()} == {job.HOURLY_JOB_ID, job.DAILY_JOB_ID}

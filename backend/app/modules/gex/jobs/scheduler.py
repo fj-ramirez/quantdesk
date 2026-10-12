@@ -27,9 +27,9 @@ from app.modules.gex.jobs.calendar import is_trading_day
 from app.modules.gex.jobs.capture import capture_all_symbols
 from app.modules.gex.jobs.catchup import catch_up_missed_eod
 from app.modules.gex.jobs.decisions import record_decisions_job
-from app.modules.gex.jobs.flip_crosses import record_flip_crosses, score_flip_crosses
 from app.modules.gex.jobs.flows import update_flows_job
 from app.modules.gex.jobs.intraday_bars import update_intraday_bars
+from app.modules.gex.jobs.level_events import record_level_events, score_level_events
 from app.modules.gex.jobs.memory import release_allocator
 from app.modules.gex.jobs.retention import prune_intraday_strike_detail
 
@@ -39,12 +39,12 @@ __all__ = [
     "DECISIONS_JOB_ID",
     "EOD_JOB_ID",
     "EXTENDED_JOB_ID",
-    "FLIP_CROSS_SCORE_JOB_ID",
     "FLOWS_JOB_ID",
     "INTRADAY_BARS_JOB_ID",
     "INTRADAY_FIRST_CAPTURE",
     "INTRADAY_JOB_ID",
     "INTRADAY_LAST_CAPTURE",
+    "LEVEL_EVENT_SCORE_JOB_ID",
     "RETENTION_JOB_ID",
     "SAFETY_NET_JOB_ID",
     "bars_update_job",
@@ -54,9 +54,9 @@ __all__ = [
     "capture_extended_job",
     "capture_intraday_job",
     "decisions_update_job",
-    "flip_cross_score_job",
     "flows_update_job",
     "intraday_bars_job",
+    "level_event_score_job",
     "release_memory_listener",
     "retention_prune_job",
 ]
@@ -71,7 +71,7 @@ EXTENDED_JOB_ID = "capture_extended"
 FLOWS_JOB_ID = "flows_update"
 DECISIONS_JOB_ID = "decisions_update"
 RETENTION_JOB_ID = "retention_prune"
-FLIP_CROSS_SCORE_JOB_ID = "flip_cross_score"
+LEVEL_EVENT_SCORE_JOB_ID = "level_event_score"
 INTRADAY_JOB_ID = "capture_intraday"
 INTRADAY_BARS_JOB_ID = "intraday_bars_update"
 
@@ -325,21 +325,22 @@ async def intraday_bars_job() -> None:
         await update_intraday_bars()
     except Exception:  # must never take the scheduler thread down with it
         logger.exception("intraday_bars_job: unexpected top-level failure")
-    # T142: the flip-cross logger reads the bars this poll just stored. It never raises, and a
-    # failure here costs one poll's latency, not an event: the next poll re-reads the session.
-    await asyncio.to_thread(record_flip_crosses)
+    # T142/T153: the level-event logger (flip crosses, wall bounces) reads the bars this poll
+    # just stored and alerts the tradeable new ones. It never raises, and a failure here costs one
+    # poll's latency, not an event: the next poll re-reads the session.
+    await asyncio.to_thread(record_level_events)
 
 
-async def flip_cross_score_job() -> None:
-    """16:40 ET: score the flip crosses whose session has ended (T142). Never raises.
+async def level_event_score_job() -> None:
+    """16:40 ET: score the level events whose session has ended (T142). Never raises.
 
     After the 16:05 last bar poll and with time for the broker's 1-minute bars to land. An event
     whose CFD bars are still missing is left for the next run, so a late run loses nothing.
     """
     try:
-        await asyncio.to_thread(score_flip_crosses)
+        await asyncio.to_thread(score_level_events)
     except Exception:  # must never take the scheduler thread down with it
-        logger.exception("flip_cross_score_job: unexpected top-level failure")
+        logger.exception("level_event_score_job: unexpected top-level failure")
 
 
 async def retention_prune_job() -> None:
@@ -573,10 +574,10 @@ def build_scheduler() -> AsyncIOScheduler:
         # T142: scoring rides the same flag -- with no intraday bars there is nothing to score.
         # A late run still scores everything pending, so the capture jobs' policy applies.
         scheduler.add_job(
-            flip_cross_score_job,
+            level_event_score_job,
             trigger=CronTrigger(day_of_week="mon-fri", hour=16, minute=40, timezone=_TZ),
-            id=FLIP_CROSS_SCORE_JOB_ID,
-            name="Flip-cross scoring (fixed horizons and the CFD excursion path)",
+            id=LEVEL_EVENT_SCORE_JOB_ID,
+            name="Level-event scoring (fixed horizons and the CFD excursion path)",
             coalesce=True,
             misfire_grace_time=None,
             max_instances=1,
