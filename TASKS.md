@@ -23,7 +23,7 @@ How to use this file:
   `context/decisions.md` if it settled a rule. A finished block does not stay here.
 - New work gets the next free ID and is filed here, never fixed silently.
 
-**Next free ID: T152.** (T108 was allocated retroactively — see the archive's addendum;
+**Next free ID: T153.** (T108 was allocated retroactively — see the archive's addendum;
 T109–T114 were filed on 2026-09-22 from the task-history audit, T115–T121 from the logic audit;
 T122–T124 were filed and finished on 2026-09-23 — see the addendum; T125–T127 were filed on
 2026-09-25 for the ThetaData initiative, [plans/thetadata/](plans/thetadata/README.md); T128–T133
@@ -68,6 +68,54 @@ open: the homeserver acceptance.
 1. Deploy `mt5`, `executor` and the backend (for migration `a8b9c0d1e2f3`).
 2. Check that the dry-run legs are journalled.
 3. Enable on the demo login, and confirm that one round trip fills with its spread recorded.
+
+### T152 · Opus · T151
+**Demo-test every lead with t ≥ 2, alongside the candidates.**
+
+On the user's decision (2026-10-09), every result in
+[docs/edges/search-log.md](docs/edges/search-log.md) marked **lead** gets a forward test on the
+Axi demo account, as well as the candidates. A lead is a rule that passed every stage-1
+criterion except the √(2 ln N) bar, with t ≥ 2. Forward trades are data no search has touched,
+so this is how a lead gets confirmed or dropped. It is not a promotion.
+
+**Scope.** Each item is a strategy class in `app/modules/broker/strategies.py`, matching its
+declared rule character for character, traded by the T151 executor at 0.01 lot:
+
+| Strategy | Status | Rule source | Decides at |
+|---|---|---|---|
+| gold-asia-drift | candidate (already `GoldAsiaDrift`) | [gold-asia-drift.md](docs/edges/gold-asia-drift.md) | 18:00 / 03:00 New York |
+| nas-mean-reversion | candidate | [nas-mean-reversion.md](docs/edges/nas-mean-reversion.md) | 16:00 close |
+| index-hold-sma200 (NAS100.fs) | risk premium | [index-hold-sma200.md](docs/edges/index-hold-sma200.md) | 16:00 close |
+| S&P mean-reversion composite | lead (#427, t 2.37 on 2000–19) | backlog 44, on S&P.fs | 16:00 close |
+| RSI(2) pullback, S&P.fs | lead (#334, t 3.13) | backlog 15 | 16:00 close |
+
+IBS (#378) and Double 7s (#419) are entry conditions inside nas-mean-reversion, so they are
+**not** run separately. Running them separately would count the same trades three times.
+Anything that becomes a lead later is added to this table by the same rule.
+
+**Rules:**
+- **Gate:**
+  - candidates use stage 2 as written: ≥ 30 trades;
+  - leads use the **longer** gate for rules without a stage-1 pass: ≥ 50 trades over
+    ≥ 2 months, with mean R > 0 at 2 SE;
+  - a lead that passes becomes a candidate; one that fails is dropped and logged.
+- **Kill rules:** each strategy gets the numeric kill rules from its doc (leads get fixed ones
+  until 30 trades, as in `nas-mean-reversion.md`), enforced by the executor's `kill()`.
+- **Risk:**
+  - the S&P/NAS mean-reversion legs and RSI(2) fire on the same days, so their combined
+    exposure counts as **one** position against the cap;
+  - the executor's `EXECUTOR_MAX_VOLUME` applies per strategy, and a per-instrument cap must be
+    added before two strategies can hold the same CFD at once.
+- **Demo only:** this task does not take any of them live. Stage 3 (0.01 lot live) is a separate
+  decision per strategy, made on its own forward record.
+- **Reporting:** a per-strategy forward summary (n, mean, SE, cost per trade vs assumed, kill
+  status) from `broker.order_intents`, readable through the MCP connector.
+
+**Acceptance:**
+- every strategy in the table is trading on demo, journalled in `broker.order_intents`, with its
+  kill rules active;
+- its doc's stage log records the demo start date;
+- the forward summary query exists.
 
 ### T150 · Sonnet · —
 **`gex.snapshots` session_date index: the model's name and the database's disagree.** Found at

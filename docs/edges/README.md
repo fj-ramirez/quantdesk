@@ -11,6 +11,7 @@ with its own slug and start date.
 |---|---|---|---|---|---|
 | [flip-cross](flip-cross.md) | SPY/SPX → US500, QQQ → NAS100, DIA → US30, GLD → XAUUSD | 0 → 2 (no stage 1 possible) | Demo: ≥ 50 trades over ≥ 2 months | 2026-10-08 | [read review 10-08 §4](../read-review-2026-10-08.md), T142 |
 | [gold-asia-drift](gold-asia-drift.md) | — → XAUUSD | 1 passed → 2 | Demo: ≥ 30 trades, measured 18:00 spread ≤ $0.48 | 2026-10-09 | documented-effects test 10-09, `scripts/edges/` |
+| [nas-mean-reversion](nas-mean-reversion.md) | — → NAS100.fs | 1 passed (independent 2000–19) → 2 | Demo: ≥ 30 trades | 2026-10-09 | leads #334/#378/#419 → composite #428 |
 | [index-hold-sma200](index-hold-sma200.md) | — → NAS100.fs, S&P.fs | risk premium (no edge gate) | Demo 0.01 lot; verify the 2026-12-14 roll adjustment | 2026-10-09 | pass 3 summary, search-log.md |
 | [xau-range-rejection](xau-range-rejection.md) | GLD → XAUUSD | 0 (stage 1 possible, not run) | Historical: ≥ 100 trades on XAUUSD M1, demo-only until then | 2026-10-09 | GLD GEX + price-action read, 10-08/09 |
 
