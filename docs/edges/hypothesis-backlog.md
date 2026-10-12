@@ -97,3 +97,37 @@ than a new rule.
 | # | Hypothesis | Rule (fixed before running) | Instruments | Source | Status |
 |---|---|---|---|---|---|
 | 34 | Gold Asia drift, Sunday session | Long XAUUSD at the first M1 bar at or after Sunday 18:00 New York (the weekly open), sell at Monday 03:00. No swap: the hold crosses no 17:00 rollover. Weekend-gap risk at entry is included as filled. | XAUUSD | #301 mechanism | tested #407: fail (no drift on Sunday nights) |
+
+## Pass 8: day-2 continuation (added 2026-10-09 ~09:55 New York, at the user's request, before it ran)
+
+| # | Hypothesis | Rule (fixed before running) | Instruments | Source | Status |
+|---|---|---|---|---|---|
+| 35 | Day-2 continuation after a down day | If the CFD's previous 16:00 → 16:00 return was ≤ −1% (roll sessions skipped), and the 09:45 price is below the 09:30 open: short at 09:45, stop at the 09:30–09:45 high, exit 15:55. Stop checked first; gaps fill at the open. The GEX-flip filter cannot be backtested (about 20 sessions of history) and stays a demo-only overlay. 2 tests. | NAS100.fs, S&P.fs | Crabel (1990), day-2 trend continuation; Gao et al. (2018), conditioned on the prior day | tested #408–409: fail (shorts lose; it reverts) |
+
+## Pass 9: when does the 5-minute ORB work? (added 2026-10-09 ~10:10 New York, at the user's request, before it ran)
+
+The base trade is #400–402 unchanged: the 09:30–09:35 candle sets the side, entry at 09:35,
+stop at the candle's opposite extreme, target 10R, exit 15:55. Each row takes it **only** on
+days that meet a condition known by 09:35. 4 filters × 2 instruments = 8 tests.
+
+| # | Filter | Rule (fixed before running) | Instruments | Source | Status |
+|---|---|---|---|---|---|
+| 36 | High relative volume | The opening candle's tick volume ≥ 2 × the mean of the same 5 minutes over the previous 14 sessions. | NAS100.fs, S&P.fs | Zarattini, Barbon and Aziz (2024), "stocks in play" | tested #410–417: fail |
+| 37 | Narrow prior day (NR7) | The previous RTH day had the narrowest range of the last 7. | NAS100.fs, S&P.fs | Crabel (1990) | tested #410–417: fail |
+| 38 | Trend alignment | The opening candle's direction matches the previous day's 16:00 → 16:00 direction. | NAS100.fs, S&P.fs | Day-2 trend literature (Crabel 1990) | tested #410–417: fail |
+| 39 | Gap and go | The 09:30 open gaps ≥ 0.3% from the previous 16:00, in the direction of the opening candle. | NAS100.fs, S&P.fs | Gap-continuation practitioner rule; Plastun et al. (2019) | tested #410–417: fail |
+
+## Pass 10: more documented patterns (added 2026-10-09 ~10:30 New York, at the user's request, before any ran)
+
+| # | Hypothesis | Rule (fixed from the source) | Instruments | Source | Status |
+|---|---|---|---|---|---|
+| 40 | Intraday → overnight reversal | If 09:30 → 16:00 was up, short 16:00 → the next 09:30. If it was down, long. | 3 index CFDs | Branch and Ma (2012), negative intraday/overnight autocorrelation | tested #418–426: fail |
+| 41 | Double 7s | Long at the close when the close is the lowest of 7 sessions and above SMA200. Exit at the first close that is the highest of 7. Position rule. **The same mean-reversion family as RSI(2)/IBS**: a family replication, not independent evidence. | S&P.fs, NAS100.fs | Connors and Alvarez (2009), *Short Term Trading Strategies That Work* | tested #418–426: fail |
+| 42 | Small-gap fill | If the 09:30 open gaps 0.1–0.3% from the previous 16:00, trade toward the previous 16:00. Exit at that price if touched (not on the entry minute), otherwise at 12:00. No stop. | 3 index CFDs | Plastun et al. (2019): small gaps fill more often than large ones | tested #418–426: fail |
+| 43 | Gold Monday weakness | Short XAUUSD Monday 08:20 → 16:00 New York (no swap). | XAUUSD | Ball, Torous and Tschoegl (1982), weekday effects in gold | tested #418–426: fail |
+
+## Pass 11: the buy-the-dip family on independent history (added 2026-10-09 ~10:45 New York, before it ran)
+
+| # | Hypothesis | Rule (fixed before running) | Instruments | Source | Status |
+|---|---|---|---|---|---|
+| 44 | Mean-reversion composite | Long at the close when the close > SMA200 **and** any of: RSI(2) (Wilder) < 10, IBS < 0.2, close = the lowest of 7 sessions. Exit at the first close > SMA5. Yahoo daily ^GSPC / ^NDX, 2000-01-01 → 2019-06-30 (before the broker history). Cost: the matching CFD's median spread as a % of price per position change (doubled per round trip). Position-rule bar, with IS/OOS read as 2000–09 vs 2010–19. 2 tests. | ^GSPC, ^NDX | Connors and Alvarez (2009); Pagonidis (2013); leads #334–336, #378–380, #419–420 | tested #427–428: **^NDX passes → candidate** |

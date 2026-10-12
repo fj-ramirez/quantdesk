@@ -67,3 +67,6 @@ backups/
 
 # ThetaData terminal bootstrap jar -- vendor binary, copied in before building (T125)
 theta/*.jar
+
+# account statements carry the holder's name and account number
+/Statement*.htm
