@@ -43,11 +43,11 @@ __all__ = [
     "DailyBar",
     "Decision",
     "EtfSharesOutstanding",
-    "FlipCrossEvent",
-    "FlipCrossScore",
     "GexByStrike",
     "GexLevel",
     "IntradayBar",
+    "LevelEvent",
+    "LevelEventScore",
     "Snapshot",
     "UTCDateTime",
 ]
@@ -628,55 +628,64 @@ class Decision(Base):
         )
 
 
-class FlipCrossEvent(Base):
-    """One intraday cross of the gamma flip, as it was knowable at the bar that confirmed it
-    (T142, `docs/edges/flip-cross.md`).
+class LevelEvent(Base):
+    """One intraday event at a gamma level -- a flip cross or a wall bounce -- as it was
+    knowable at the bar that confirmed it (T142, T153; `docs/edges/flip-cross.md`,
+    `docs/edges/wall-bounce.md`).
 
     **Insert-only.** The job re-reads the whole session on every poll, so the key
-    `(symbol, bar_ts)` turns repeats into no-ops; a row is never updated or deleted. If the rule
-    changes, it becomes a new key and these rows stay as what the old rule said.
+    `(symbol, bar_ts, key)` turns repeats into no-ops; a row is never updated or deleted. If a
+    rule changes, it becomes a new key and these rows stay as what the old rule said.
 
-    **Forward only.** Rows exist from the day the logger was deployed. The backtest sessions
-    (2026-09-21 to 10-08) are never written here, so the forward record is not mixed with the
-    window the leaning was found in.
+    **Forward only.** Rows exist from the day the logger was deployed. The sessions the
+    flip-cross leaning was found on (2026-09-21 to 10-08) are never written here.
 
-    `recorded_at - entry_at` is the logging latency; a large one means the event was caught up
-    after a gap rather than seen live.
+    `alerted` records whether this event was selected for a Telegram alert when it was
+    inserted (fresh, inside the entry window, first in its index family). It says nothing about
+    whether delivery succeeded; the worker log does. `recorded_at - entry_at` is the logging
+    latency: a large one means the event was caught up after a gap rather than seen live.
     """
 
-    __tablename__ = "flip_crosses"
+    __tablename__ = "level_events"
 
     symbol: Mapped[str] = mapped_column(String(16), primary_key=True)
     #: The confirming bar's opening instant (`gex.intraday_bars.ts`).
     bar_ts: Mapped[dt.datetime] = mapped_column(UTCDateTime, primary_key=True)
+    #: `FLIP_CROSS_DOWN`, `FLIP_CROSS_UP`, `PUT_WALL_BOUNCE` or `CALL_WALL_BOUNCE`.
+    key: Mapped[str] = mapped_column(String(32), primary_key=True)
     session_date: Mapped[dt.date] = mapped_column(Date, nullable=False)
     #: The confirming bar's close instant: the entry.
     entry_at: Mapped[dt.datetime] = mapped_column(UTCDateTime, nullable=False)
-    #: `FLIP_CROSS_DOWN` or `FLIP_CROSS_UP`.
-    key: Mapped[str] = mapped_column(String(32), nullable=False)
     spot: Mapped[float] = mapped_column(Float, nullable=False)
-    flip: Mapped[float] = mapped_column(Float, nullable=False)
-    #: The same capture's net GEX. Recorded, never used as a filter (the spec's regime rule).
+    #: The flip or wall the event is about, in the desk symbol's price.
+    level: Mapped[float] = mapped_column(Float, nullable=False)
+    #: `flip`, `put_wall` or `call_wall`.
+    level_kind: Mapped[str] = mapped_column(String(16), nullable=False)
+    #: A bounce's touching bar (its opening instant); null for a cross.
+    touch_ts: Mapped[dt.datetime | None] = mapped_column(UTCDateTime, nullable=True)
+    #: The same capture's net GEX. Recorded, never used as a filter.
     net_gex: Mapped[float | None] = mapped_column(Float, nullable=True)
     capture_at: Mapped[dt.datetime] = mapped_column(UTCDateTime, nullable=False)
     #: SPX's own flip and side (+1 above, -1 below, 0 on it) at the same bar: SPX and SPY can
     #: disagree. Null when SPX had no bar or no capture yet.
     spx_flip: Mapped[float | None] = mapped_column(Float, nullable=True)
     spx_side: Mapped[int | None] = mapped_column(Integer, nullable=True)
-    #: The spec's 09:45-15:00 ET entry window. Crosses outside it are logged but not tradeable.
+    #: The specs' 09:45-15:00 ET entry window. Events outside it are logged but not tradeable.
     in_window: Mapped[bool] = mapped_column(Boolean, nullable=False)
+    alerted: Mapped[bool] = mapped_column(Boolean, nullable=False)
     recorded_at: Mapped[dt.datetime] = mapped_column(UTCDateTime, nullable=False)
 
-    __table_args__ = (Index("ix_flip_crosses_session_date", "session_date"),)
+    __table_args__ = (Index("ix_level_events_session_date", "session_date"),)
 
 
-class FlipCrossScore(Base):
-    """What price did after one `FlipCrossEvent`, written **once**, after its session ended (T142).
+class LevelEventScore(Base):
+    """What price did after one `LevelEvent`, written **once**, after its session ended.
 
     Insert-only like the event table: a score is written when it can be complete, never
-    updated. Every number is signed **in the direction of the cross**, so a positive value
-    means price kept going the way it crossed. The spec trades both keys short, so the fade on
-    `FLIP_CROSS_UP` makes money when these are negative.
+    updated. Every number is signed **in the event's direction** (up for `FLIP_CROSS_UP` and
+    `PUT_WALL_BOUNCE`, down for the other two), so a positive value means price kept going the
+    way the event pointed. The flip-cross spec trades `FLIP_CROSS_UP` as a fade (short), so that
+    key wins when its numbers are negative.
 
     Two measurements:
 
@@ -689,10 +698,11 @@ class FlipCrossScore(Base):
       CFD's bars were missing the path columns are null and `path_note` says why.
     """
 
-    __tablename__ = "flip_cross_scores"
+    __tablename__ = "level_event_scores"
 
     symbol: Mapped[str] = mapped_column(String(16), primary_key=True)
     bar_ts: Mapped[dt.datetime] = mapped_column(UTCDateTime, primary_key=True)
+    key: Mapped[str] = mapped_column(String(32), primary_key=True)
     ret_15m_bps: Mapped[float | None] = mapped_column(Float, nullable=True)
     ret_30m_bps: Mapped[float | None] = mapped_column(Float, nullable=True)
     ret_60m_bps: Mapped[float | None] = mapped_column(Float, nullable=True)

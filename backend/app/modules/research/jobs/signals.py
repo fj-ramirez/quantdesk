@@ -2,7 +2,7 @@
 
 Two jobs in the `research-search` worker, registered by :func:`add_signal_jobs`:
 
-* **Hourly** (`SIGNALS_HOURLY_CRON`, default :05): force-refresh ES/NQ/YM/RTY 1h from Yahoo,
+* **Hourly** (`SIGNALS_HOURLY_CRON`, default `off` since T153; was :05): force-refresh ES/NQ/YM/RTY 1h from Yahoo,
   evaluate the 120 z-score variants on each, record every transition in
   `research.signal_events`, and send one digest of the **fresh** ones.
 * **Daily** (`SIGNALS_DAILY_CRON`, default 17:50 and 20:00 ET on weekdays): the continuation

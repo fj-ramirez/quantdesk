@@ -23,7 +23,7 @@ How to use this file:
   `context/decisions.md` if it settled a rule. A finished block does not stay here.
 - New work gets the next free ID and is filed here, never fixed silently.
 
-**Next free ID: T153.** (T108 was allocated retroactively — see the archive's addendum;
+**Next free ID: T154.** (T108 was allocated retroactively — see the archive's addendum;
 T109–T114 were filed on 2026-09-22 from the task-history audit, T115–T121 from the logic audit;
 T122–T124 were filed and finished on 2026-09-23 — see the addendum; T125–T127 were filed on
 2026-09-25 for the ThetaData initiative, [plans/thetadata/](plans/thetadata/README.md); T128–T133
@@ -470,10 +470,11 @@ then, quote it as a leaning.
 add it to `INTRADAY_BARS_SYMBOLS` separately if wanted).
 
 **Result (2026-10-12, built on `feat/broker-eurusd`; not deployed).**
-- Detector `app/modules/gex/scan/flip_cross.py` (pure), job `app/modules/gex/jobs/flip_crosses.py`
-  (record after every 5-minute bar poll; score at 16:40 ET), tables `gex.flip_crosses` and
-  `gex.flip_cross_scores` (revision `b9c0d1e2f3a4`), read tool `gex_flip_crosses` on the MCP
-  connector.
+- Detector `app/modules/gex/scan/level_events.py` (pure), job `app/modules/gex/jobs/level_events.py`
+  (record after every 5-minute bar poll; score at 16:40 ET), tables `gex.level_events` and
+  `gex.level_event_scores` (revision `b9c0d1e2f3a4`), read tool `gex_level_events` on the MCP
+  connector. These were first built as `flip_cross*` and generalised by T153 before deploy, so
+  the deployed schema has only the general names.
 - **Acceptance was re-based, deliberately.** The review's §4 counts used "an earlier close that
   day on the other side". The frozen spec says "the close two bars earlier". The code follows the
   spec. The fixture test (`tests/test_flip_cross.py`, real rows for SPY, GLD and SPX on 10-08)
@@ -482,6 +483,36 @@ add it to `INTRADAY_BARS_SYMBOLS` separately if wanted).
 - Forward-only by construction: the job reads today's session only.
 - Still open: deploy (the migration runs in the API container), then confirm the first live
   session writes rows and the 16:40 run scores them. Re-read after 30 sessions.
+
+### T153 · Opus · T142
+
+**Instant Telegram alerts for flip crosses and wall bounces; hourly digest off**
+
+Filed 2026-10-12 at the user's request. The hourly z-score digests (T136) are long-horizon and
+not useful to them. They want a message the moment a flip cross or a wall bounce happens.
+
+- **Wall bounce, a new frozen rule** (`docs/edges/wall-bounce.md`). The user chose "touch, then
+  two closes away" from three proposed definitions. Put wall: the previous close is above W, the
+  bar's low comes within 0.05 % of W and the bar closes above it, then two rising closes. The
+  call wall is the mirror image. Logged and scored exactly like flip crosses.
+- **One record for both**: generalise T142's tables to `gex.level_events` /
+  `gex.level_event_scores` before either is deployed.
+- **Alerts**, the user's choices:
+  - tradeable only: fresh, 09:45–15:00 ET, one per index family per key within 60 minutes;
+  - on the 5-minute desk bars, the same signal as the forward record, about 5 minutes after the
+    bar closes;
+  - the message carries the CFD price and the level translated with the pair's basis method.
+- **Hourly digest off entirely** (`SIGNALS_HOURLY_CRON=off`). The user accepted that this also
+  stops recording the hourly family in `research.signal_events`.
+
+**Result (2026-10-12, on `feat/t142-flip-crosses`, PR #23; not deployed).**
+- Built as specified. Tests cover the detector edge cases, alert selection (freshness, the
+  window, family suppression, DIA under US500), the message text, and the job end to end on
+  SQLite.
+- The wall-bounce rule has **no evidence of any kind** yet, and the alert says so. Its exit must
+  be fixed before a demo trade.
+- **Deploy check:** the homeserver's `.env` may set `SIGNALS_HOURLY_CRON` explicitly. If it
+  does, the new `off` default does not apply.
 
 ---
 
