@@ -86,6 +86,9 @@ PAIRS: tuple[Pair, ...] = (
     Pair("QQQ", "NAS100.fs", "ratio", proxy=True),
     Pair("DIA", "DJ30.fs", "ratio"),
     Pair("GLD", "XAUUSD", "ratio", rolls=False),
+    # T154: US2000 is Axi's *cash* Russell 2000 CFD (ROW_CASH), so it does not roll. Its minimum
+    # volume is 0.1 lot at 1 USD per point, not the 0.01 the `.fs` indices allow.
+    Pair("IWM", "US2000", "ratio", rolls=False),
 )
 
 

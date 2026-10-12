@@ -390,4 +390,4 @@ async def test_startup_catchup_job_calls_catch_up_missed_eod_with_configured_sym
 
     await startup_catchup_job()
 
-    assert seen["symbols"] == ["SPX", "SPY", "QQQ", "GLD", "DIA"]
+    assert seen["symbols"] == ["SPX", "SPY", "QQQ", "GLD", "DIA", "IWM"]

@@ -92,7 +92,7 @@ services:
       DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-gex}:${POSTGRES_PASSWORD:-gex}@postgres:5432/${POSTGRES_DB:-gex}
       DATA_DIR: /data
       PROVIDER: ${PROVIDER:-cboe}
-      SYMBOLS: ${SYMBOLS:-SPX,SPY,QQQ,GLD,DIA}
+      SYMBOLS: ${SYMBOLS:-SPX,SPY,QQQ,GLD,DIA,IWM}
       # Market time, and deliberate: `app/jobs/scheduler.py`'s cron triggers and
       # `app/jobs/calendar.py`'s holiday checks both read `settings.TZ`. A host defaulting to
       # UTC would fire every job at the wrong wall-clock hour while looking perfectly healthy.

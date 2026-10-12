@@ -116,7 +116,8 @@ number to be true, it belongs in a plan file's *Result* heading or behind an MCP
   key with its own start date. `gex.level_events` and `gex.level_event_scores` are insert-only
   and forward-only (the job reads today only), so the found-in window never enters the record.
   The standard error is clustered by session; the path is measured on the traded CFD with no
-  stop or target. — T142, T153.
+  stop or target. The same rules on 0DTE levels are separate `_0DTE` keys, never merged into
+  the all-expiries ones. — T142, T153, T154.
 - A level-event alert goes out only for a fresh event (recorded within 10 minutes of its bar),
   inside the 09:45–15:00 ET window, and first in its index family for that key within an hour.
   It is sent after the row commits, and it is never an order. The hourly z-score digest is off by
