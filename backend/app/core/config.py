@@ -268,7 +268,9 @@ class Settings(BaseSettings):
     # Continuously compounded annualized risk-free rate for Greeks. A parameter, never
     # fetched from a rates feed (PLAN.md / TASKS.md T07).
     RISK_FREE_RATE: float = 0.04
-    SYMBOLS: str = "SPX,SPY,QQQ,GLD,DIA"
+    # T154: IWM moved here from EXTENDED_SYMBOLS so it is captured intraday too (level events,
+    # IWM -> US2000). It is still captured once at EOD, by the 16:20 job now instead of 16:45.
+    SYMBOLS: str = "SPX,SPY,QQQ,GLD,DIA,IWM"
     TZ: str = "America/New_York"
 
     # --- T32: retention for intraday `gex_by_strike` detail -----------------------------------
@@ -311,7 +313,7 @@ class Settings(BaseSettings):
     # requests per poll is ~72/hour at a 5-minute cadence, while the universe would be ~1,500 --
     # which is where an unofficial endpoint starts throttling, and losing Yahoo would take the
     # *daily* bars pipeline down with it.
-    INTRADAY_BARS_SYMBOLS: str = "SPX,SPY,QQQ,GLD,DIA,^VIX"
+    INTRADAY_BARS_SYMBOLS: str = "SPX,SPY,QQQ,GLD,DIA,IWM,^VIX"
     # Interval string passed straight to the vendor. 5m keeps a session at ~80 buckets per
     # symbol (~500 rows/day across all six, ~125k/year) -- three orders of magnitude below what
     # made T32's retention rule necessary, so this table needs no pruning.
@@ -325,7 +327,7 @@ class Settings(BaseSettings):
     # 2026-09-09 (see `app.modules.gex.models.chain.Underlying`) -- none failed, so nothing is held back.
     EXTENDED_SYMBOLS: str = (
         "XLK,XLF,XLE,XLV,XLI,XLY,XLP,XLU,XLB,XLRE,XLC,"
-        "IWM,SMH,XBI,KRE,XOP,TLT,HYG,EEM,FXI,SLV,USO,GDX"
+        "SMH,XBI,KRE,XOP,TLT,HYG,EEM,FXI,SLV,USO,GDX"
     )
 
     # --- T42: daily bars (plans/continuation/00-foundation-daily-bars.md) ----------------------

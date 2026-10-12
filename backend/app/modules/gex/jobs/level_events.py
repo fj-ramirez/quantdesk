@@ -28,6 +28,7 @@ seen first: that is what a live trader would have seen too.
 
 from __future__ import annotations
 
+import dataclasses
 import datetime as dt
 import json
 import logging
@@ -55,6 +56,7 @@ from app.modules.gex.scan.level_events import (
     KEY_PUT_BOUNCE,
     KEY_UP,
     Capture,
+    base_key,
     detect_crosses,
     detect_wall_bounces,
     direction_of,
@@ -63,6 +65,7 @@ from app.modules.gex.scan.level_events import (
     minute_points,
     path_unit,
     side_at,
+    variant_key,
 )
 from app.modules.gex.scan.level_events import LevelEvent as Event
 
@@ -71,6 +74,7 @@ __all__ = [
     "CFD_OF",
     "ENTRY_WINDOW",
     "FAMILY_GAP",
+    "FILTERS",
     "PATH_WAIT",
     "SYMBOLS",
     "alert_text",
@@ -84,8 +88,12 @@ logger = logging.getLogger("app.modules.gex.jobs.level_events")
 _NY = ZoneInfo("America/New_York")
 
 #: Every desk symbol with both 5-minute bars and in-session captures. Order matters for alerts:
-#: when SPX and SPY fire on the same bar, SPX's event is the one sent.
-SYMBOLS: tuple[str, ...] = ("SPX", "SPY", "QQQ", "GLD", "DIA")
+#: when SPX and SPY fire on the same bar, SPX's event is the one sent. IWM (-> US2000) since
+#: T154; it needs `IWM` in both `SYMBOLS` and `INTRADAY_BARS_SYMBOLS` to produce anything.
+SYMBOLS: tuple[str, ...] = ("SPX", "SPY", "QQQ", "GLD", "DIA", "IWM")
+
+#: The `gex_levels` filters both rules run on: all expiries (the frozen specs) and 0DTE (T154).
+FILTERS: tuple[str, ...] = ("ALL", "ZERO_DTE")
 
 #: Desk symbol -> the CFD it is traded through. Taken from the broker module's basis pairs, so
 #: the mapping the levels are translated with is the one the path is measured on.
@@ -135,8 +143,9 @@ def _bars(session: Session, symbol: str, day: dt.date, *, closed_by: dt.datetime
     return rows
 
 
-def _captures(session: Session, symbol: str, day: dt.date) -> list[Capture]:
-    """`symbol`'s in-session captures for `day`, oldest first. Any level may be null."""
+def _captures(session: Session, symbol: str, day: dt.date, level_filter: str = "ALL") -> list[Capture]:
+    """`symbol`'s in-session captures for `day` under one `gex_levels` filter, oldest first.
+    Any level may be null (a 0DTE filter on a day with no 0DTE expiry has none)."""
     open_, close = _session_bounds(day)
     rows = session.execute(
         select(
@@ -150,7 +159,7 @@ def _captures(session: Session, symbol: str, day: dt.date) -> list[Capture]:
             Snapshot.session_date == day,
             Snapshot.captured_at >= open_,
             Snapshot.captured_at <= close,
-            GexLevel.filter == "ALL",
+            GexLevel.filter == level_filter,
         )
         .order_by(Snapshot.captured_at)
     ).all()
@@ -208,18 +217,24 @@ _STAGE = {
 }
 
 
+_STAGE_0DTE = "0DTE variant: stage-0 rule on 0DTE levels, untested. No evidence yet."
+
+
 def _fmt(x: float) -> str:
     return f"{x:,.2f}"
 
 
 def alert_text(ev: Event, *, cfd_price: float | None) -> str:
     """The Telegram message for one event. `cfd_price` is the CFD's close at entry, if known."""
-    icon, title, verb, bias = _HEADLINE[ev.key]
+    icon, title, verb, bias = _HEADLINE[base_key(ev.key)]
+    zero_dte = ev.key != base_key(ev.key)
+    if zero_dte:
+        verb = verb.replace("the ", "the 0DTE ", 1)
     pair = _PAIR_OF.get(ev.symbol)
     cfd = pair.cfd if pair else "?"
     et = ev.entry_at.astimezone(_NY).strftime("%H:%M")
-    lines = [f"{icon} {title} · {cfd} ({ev.symbol})"]
-    level_name = ev.level_kind.replace("_", " ")
+    lines = [f"{icon} {title}{' (0DTE)' if zero_dte else ''} · {cfd} ({ev.symbol})"]
+    level_name = ("0DTE " if zero_dte else "") + ev.level_kind.replace("_", " ")
     detail = f"{et} ET · {ev.symbol} {_fmt(ev.spot)} {verb} {_fmt(ev.level)}"
     if ev.touch_ts is not None:
         detail += f" (touched {ev.touch_ts.astimezone(_NY).strftime('%H:%M')}, two closes away)"
@@ -232,7 +247,8 @@ def alert_text(ev: Event, *, cfd_price: float | None) -> str:
         lines.append(f"{cfd} price not available yet; translate the {level_name} by hand")
     if ev.net_gex is not None:
         lines.append(f"net GEX {ev.net_gex / 1e9:+.2f}bn ({'long' if ev.net_gex > 0 else 'short'} gamma)")
-    lines.append(f"Spec: {bias}. {_STAGE[ev.key]}")
+    stage = _STAGE_0DTE if zero_dte else _STAGE[ev.key]
+    lines.append(f"Spec: {bias}. {stage}")
     return "\n".join(lines)
 
 
@@ -277,8 +293,13 @@ def record_level_events(
             for symbol in SYMBOLS:
                 try:
                     bars = _bars(session, symbol, day, closed_by=now)
-                    caps = _captures(session, symbol, day)
-                    found = detect_crosses(symbol, bars, caps) + detect_wall_bounces(symbol, bars, caps)
+                    found: list[Event] = []
+                    for level_filter in FILTERS:
+                        caps = _captures(session, symbol, day, level_filter)
+                        found += [
+                            dataclasses.replace(e, key=variant_key(e.key, level_filter))
+                            for e in detect_crosses(symbol, bars, caps) + detect_wall_bounces(symbol, bars, caps)
+                        ]
                 except Exception:
                     logger.exception("level_events: detection failed for %s", symbol)
                     continue

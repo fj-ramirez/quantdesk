@@ -65,7 +65,7 @@ def test_capture_health_empty_db_reports_none_and_stale_for_every_symbol(client,
     response = client.get("/api/gex/health/capture")
     assert response.status_code == 200
     body = response.json()
-    assert {s["underlying"] for s in body["symbols"]} == {"SPX", "SPY", "QQQ", "GLD", "DIA"}
+    assert {s["underlying"] for s in body["symbols"]} == {"SPX", "SPY", "QQQ", "GLD", "DIA", "IWM"}
     for entry in body["symbols"]:
         assert entry["last_capture_at"] is None
         assert entry["last_eod_capture_at"] is None
@@ -95,7 +95,7 @@ def test_capture_health_reports_healthy_when_todays_eod_row_exists(
     _freeze_now(monkeypatch, dt.datetime(2026, 9, 4, 21, 0, tzinfo=dt.UTC))
 
     captured_at = dt.datetime(2026, 9, 4, 20, 20, tzinfo=dt.UTC)
-    for symbol in ["SPX", "SPY", "QQQ", "GLD", "DIA"]:
+    for symbol in ["SPX", "SPY", "QQQ", "GLD", "DIA", "IWM"]:
         _add_snapshot(session_factory, symbol, captured_at, is_eod=True)
 
     response = client.get("/api/gex/health/capture")
@@ -202,9 +202,9 @@ def test_capture_health_response_carries_an_extended_block(client, session_facto
     body = response.json()
     assert "extended" in body
     assert {s["underlying"] for s in body["extended"]} == set(config.settings.extended_symbols)
-    # The core block must be exactly the five it always was -- an extended symbol appearing
+    # The core block must be exactly the core symbols (IWM joined them in T154) -- an extended symbol appearing
     # there (or a core one leaking into `extended`) would defeat the whole point of the split.
-    assert {s["underlying"] for s in body["symbols"]} == {"SPX", "SPY", "QQQ", "GLD", "DIA"}
+    assert {s["underlying"] for s in body["symbols"]} == {"SPX", "SPY", "QQQ", "GLD", "DIA", "IWM"}
 
 
 def test_capture_health_extended_symbols_report_stale_on_an_empty_db(client, session_factory):

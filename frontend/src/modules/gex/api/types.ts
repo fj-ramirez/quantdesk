@@ -22,13 +22,14 @@
 // `erasableSyntaxOnly`, which rejects real enums (they emit runtime code).
 // ---------------------------------------------------------------------------------------
 
-/** The five symbols the 16:20 EOD job (and its 20:00 safety net) captures -- read fact,
+/** The symbols the 16:20 EOD job (and its 20:00 safety net) captures -- read fact,
  * mirrors `Settings.SYMBOLS` (`backend/app/config.py`). This list drives nothing the core
  * capture doesn't already guarantee: it is the TopBar's `AssetSelector` "Core" group. */
-export const CORE_UNDERLYINGS = ['SPX', 'SPY', 'QQQ', 'GLD', 'DIA'] as const;
+// T154: IWM moved here from EXTENDED_UNDERLYINGS (it is captured intraday now).
+export const CORE_UNDERLYINGS = ['SPX', 'SPY', 'QQQ', 'GLD', 'DIA', 'IWM'] as const;
 
 /** T47's sector/industry ETFs, captured by the separate 16:45 ET job -- a UI-side mirror of
- * `Settings.EXTENDED_SYMBOLS`'s default (`backend/app/config.py`), all 23 of which were
+ * `Settings.EXTENDED_SYMBOLS`'s default (`backend/app/config.py`), all of which were
  * verified live against Cboe on 2026-09-09 (see `app/modules/gex/models/chain.py`'s `Underlying` enum).
  * `GET /api/gex/symbols` returns the same split at runtime for any consumer that needs to read it
  * off the server rather than this static copy (e.g. a future regime-board fetch); this array
@@ -38,7 +39,7 @@ export const CORE_UNDERLYINGS = ['SPX', 'SPY', 'QQQ', 'GLD', 'DIA'] as const;
  * `?symbol=` accept or reject a value the backend disagrees with. */
 export const EXTENDED_UNDERLYINGS = [
   'XLK', 'XLF', 'XLE', 'XLV', 'XLI', 'XLY', 'XLP', 'XLU', 'XLB', 'XLRE', 'XLC',
-  'IWM', 'SMH', 'XBI', 'KRE', 'XOP', 'TLT', 'HYG', 'EEM', 'FXI', 'SLV', 'USO', 'GDX',
+  'SMH', 'XBI', 'KRE', 'XOP', 'TLT', 'HYG', 'EEM', 'FXI', 'SLV', 'USO', 'GDX',
 ] as const;
 
 export const UNDERLYINGS = [...CORE_UNDERLYINGS, ...EXTENDED_UNDERLYINGS] as const;

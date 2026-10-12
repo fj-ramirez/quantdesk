@@ -282,7 +282,7 @@ def factory(tmp_path):
     engine.dispose()
 
 
-def _store(factory, session_date, bars_by_symbol, caps_by_symbol):
+def _store(factory, session_date, bars_by_symbol, caps_by_symbol, level_filter="ALL"):
     with factory() as s:
         for sym, bars in bars_by_symbol.items():
             for b in bars:
@@ -294,7 +294,7 @@ def _store(factory, session_date, bars_by_symbol, caps_by_symbol):
                                 contract_count=1, parquet_path="x", is_eod=False, session_date=session_date)
                 s.add(snap)
                 s.flush()
-                s.add(GexLevel(snapshot_id=snap.id, filter="ALL", net_gex=c.net_gex, spot=0.0,
+                s.add(GexLevel(snapshot_id=snap.id, filter=level_filter, net_gex=c.net_gex, spot=0.0,
                                flip_point=c.flip, call_wall=c.call_wall, put_wall=c.put_wall,
                                computed_at=c.captured_at))
         s.commit()
@@ -384,6 +384,35 @@ def test_after_the_wait_a_missing_path_is_null_with_a_reason(factory):
         assert r.ret_close_bps is not None
     with factory() as s:
         assert s.query(LevelEventScore).count() == 4 and s.query(LevelEvent).count() == 4
+
+
+def test_0dte_levels_are_their_own_keys_and_say_so_in_the_alert(factory):
+    """T154: the same rule on ZERO_DTE levels is a separate key, never mixed into the ALL record."""
+    t0 = _at("2026-10-13", "14:00")
+    bars = _session(t0, [(771.8, None, None), (770.9, 770.2, None), (771.3, None, None), (771.6, None, None)])
+    _store(factory, dt.date(2026, 10, 13), {"SPY": bars},
+           {"SPY": [Capture(t0 - dt.timedelta(minutes=10), 775.0, call_wall=772.5, put_wall=770.0)]},
+           level_filter="ZERO_DTE")
+    sent = Outbox()
+    (row,) = job.record_level_events(now=t0 + dt.timedelta(minutes=21), session_factory=factory, send=sent)
+    assert row.key == "PUT_WALL_BOUNCE_0DTE" and row.alerted
+    assert sent[0].startswith("🟢 PUT WALL BOUNCE (0DTE) · S&P.fs (SPY)")
+    assert "bounced off the 0DTE put wall" in sent[0] and "0DTE variant" in sent[0]
+
+
+def test_variant_keys_and_their_direction():
+    from app.modules.gex.scan.level_events import KEYS, direction_of, variant_key
+
+    assert variant_key(KEY_UP, "ALL") == KEY_UP
+    assert variant_key(KEY_UP, "ZERO_DTE") == "FLIP_CROSS_UP_0DTE"
+    assert direction_of("FLIP_CROSS_UP_0DTE") == 1 and direction_of("CALL_WALL_BOUNCE_0DTE") == -1
+    assert len(KEYS) == 8 and all(len(k) <= 32 for k in KEYS)  # the key column is String(32)
+    with pytest.raises(ValueError):
+        variant_key(KEY_UP, "THIS_WEEK")
+
+
+def test_iwm_is_logged_and_traded_through_us2000():
+    assert "IWM" in job.SYMBOLS and job.CFD_OF["IWM"] == "US2000"
 
 
 # --- wiring ---------------------------------------------------------------------------------------

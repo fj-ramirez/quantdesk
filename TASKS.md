@@ -23,7 +23,7 @@ How to use this file:
   `context/decisions.md` if it settled a rule. A finished block does not stay here.
 - New work gets the next free ID and is filed here, never fixed silently.
 
-**Next free ID: T154.** (T108 was allocated retroactively — see the archive's addendum;
+**Next free ID: T155.** (T108 was allocated retroactively — see the archive's addendum;
 T109–T114 were filed on 2026-09-22 from the task-history audit, T115–T121 from the logic audit;
 T122–T124 were filed and finished on 2026-09-23 — see the addendum; T125–T127 were filed on
 2026-09-25 for the ThetaData initiative, [plans/thetadata/](plans/thetadata/README.md); T128–T133
@@ -513,6 +513,26 @@ not useful to them. They want a message the moment a flip cross or a wall bounce
   be fixed before a demo trade.
 - **Deploy check:** the homeserver's `.env` may set `SIGNALS_HOURLY_CRON` explicitly. If it
   does, the new `off` default does not apply.
+- **Deployed 2026-10-12** (`d41ce18`). The server `.env` does not set it; `research-search`
+  logs `signals_hourly is off`. No events fired in the first session after deploy: the detectors,
+  run by hand in the container, found none on the day's rows.
+
+### T154 · Opus · T153
+
+**Level events on 0DTE levels too, and IWM → US2000**
+
+Filed 2026-10-12 at the user's request, after the first live session showed the all-expiries walls
+far from price (SPX 7500/8000 with spot 7804; GLD 335/450 with spot 382).
+
+- Both rules, unchanged, also run on `gex_levels` filter `ZERO_DTE`, as separate keys with a
+  `_0DTE` suffix. They are new stage-0 candidates. The alert says "0DTE".
+- IWM joins the core symbols. It moves from `EXTENDED_SYMBOLS` to `SYMBOLS` (captured intraday,
+  and at EOD by the 16:20 job instead of 16:45) and into `INTRADAY_BARS_SYMBOLS`. A new basis pair,
+  IWM → US2000 (cash, no rolls, 0.1-lot minimum), sits in `broker.basis.PAIRS`.
+
+**Result (2026-10-12, not yet deployed).** Built and tested. On deploy, the homeserver's `.env`
+sets `SYMBOLS=SPX,SPY,QQQ,GLD,DIA` explicitly and must get `,IWM` added, or IWM will not be
+captured intraday.
 
 ---
 

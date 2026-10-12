@@ -37,12 +37,12 @@ def test_symbols_core_and_extended_are_disjoint():
     assert set(body["core"]).isdisjoint(set(body["extended"]))
 
 
-def test_symbols_core_is_exactly_the_five_p0_symbols():
+def test_symbols_core_is_exactly_the_core_symbols():
     """SYMBOLS (the 16:20 EOD job's input) is untouched by T47 -- pinned here so a future
     change to EXTENDED_SYMBOLS can never accidentally widen this one too."""
     response = _client().get("/api/gex/symbols")
     body = response.json()
-    assert body["core"] == ["SPX", "SPY", "QQQ", "GLD", "DIA"]
+    assert body["core"] == ["SPX", "SPY", "QQQ", "GLD", "DIA", "IWM"]
 
 
 def test_symbols_extended_includes_a_verified_sector_etf():

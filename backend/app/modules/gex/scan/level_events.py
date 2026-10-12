@@ -28,6 +28,11 @@ forward record.
 * W is the wall known at the touch bar's close. After an event, the next touch of the same key
   must come after the confirming bar, so one touch sequence is one event.
 
+**0DTE variants** (T154, frozen 2026-10-12): both rules run unchanged on the `ZERO_DTE` levels
+too, as separate keys suffixed `_0DTE` (:func:`variant_key`). 0DTE walls sit close to price and
+move during the session, so these fire far more often; their records never mix with the
+all-expiries keys.
+
 Two kinds of follow-through are measured, both signed **in the event's direction** (`+1` for
 `FLIP_CROSS_UP` and `PUT_WALL_BOUNCE`, `-1` for the other two), so a positive number means price
 kept going the way the event pointed:
@@ -60,10 +65,12 @@ __all__ = [
     "KEY_PUT_BOUNCE",
     "KEY_UP",
     "TOUCH_TOL",
+    "ZERO_DTE_SUFFIX",
     "Capture",
     "Excursions",
     "LevelEvent",
     "OhlcBar",
+    "base_key",
     "detect_crosses",
     "detect_wall_bounces",
     "direction_of",
@@ -72,13 +79,35 @@ __all__ = [
     "minute_points",
     "path_unit",
     "side_at",
+    "variant_key",
 ]
 
 KEY_DOWN = "FLIP_CROSS_DOWN"
 KEY_UP = "FLIP_CROSS_UP"
 KEY_PUT_BOUNCE = "PUT_WALL_BOUNCE"
 KEY_CALL_BOUNCE = "CALL_WALL_BOUNCE"
-KEYS: tuple[str, ...] = (KEY_DOWN, KEY_UP, KEY_PUT_BOUNCE, KEY_CALL_BOUNCE)
+#: T154: the same two rules on the **0DTE** levels (`gex_levels` filter `ZERO_DTE`) are separate
+#: keys with this suffix, frozen 2026-10-12. Same detectors, different inputs, separate records:
+#: mixing them into the all-expiries keys would change those keys' evidence.
+ZERO_DTE_SUFFIX = "_0DTE"
+
+KEYS: tuple[str, ...] = tuple(
+    k + s for s in ("", ZERO_DTE_SUFFIX) for k in (KEY_DOWN, KEY_UP, KEY_PUT_BOUNCE, KEY_CALL_BOUNCE)
+)
+
+
+def variant_key(key: str, level_filter: str) -> str:
+    """The key an event carries for a `gex_levels` filter: unchanged for `ALL`, suffixed for 0DTE."""
+    if level_filter == "ALL":
+        return key
+    if level_filter == "ZERO_DTE":
+        return key + ZERO_DTE_SUFFIX
+    raise ValueError(f"no level-event keys for filter {level_filter!r}")
+
+
+def base_key(key: str) -> str:
+    """`key` without its filter suffix."""
+    return key.removesuffix(ZERO_DTE_SUFFIX)
 
 #: The desk's intraday bar length. A bar's `ts` is its opening instant; it closes at `ts + BAR`.
 BAR = dt.timedelta(minutes=5)
@@ -147,7 +176,7 @@ class LevelEvent:
 
 def direction_of(key: str) -> int:
     """+1 for an event that points up, -1 for one that points down."""
-    return 1 if key in (KEY_UP, KEY_PUT_BOUNCE) else -1
+    return 1 if base_key(key) in (KEY_UP, KEY_PUT_BOUNCE) else -1
 
 
 def _latest(close_at: dt.datetime, captures: Sequence[Capture]) -> Capture | None:

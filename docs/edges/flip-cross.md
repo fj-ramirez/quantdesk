@@ -54,6 +54,20 @@ from those logs. Then the journal's "signals not taken" column comes from the de
 memory. T142's scored log gives the hypothetical record. The demo journal gives the real
 costs.
 
+## 0DTE variant (separate keys, frozen 2026-10-12, T154)
+
+The same rule, unchanged, on the **0DTE** levels: `gex_levels` filter `ZERO_DTE` instead of `ALL`.
+It is logged under its own keys (`FLIP_CROSS_DOWN_0DTE`, `FLIP_CROSS_UP_0DTE`), so its record never mixes with this one. It is a
+**new candidate at stage 0** with no evidence, added at the user's request because the
+all-expiries levels often sit far from price (on 2026-10-12, SPX's ALL put/call walls were
+7500/8000 with spot at 7804; the 0DTE ones were 7810/7820). 0DTE levels sit close to price and move
+within the session, so expect many more events. Read it with
+`gex_level_events(key="FLIP_CROSS_DOWN_0DTE")`.
+
+**IWM → US2000 added 2026-10-12 (T154).** US2000 is Axi's *cash* Russell 2000 CFD: no rolls, but a
+**0.1-lot minimum** at 1 USD per point, ten times the `.fs` indices' minimum size. IWM events are
+recorded per symbol, so they can be read apart from the original five.
+
 ## Kill rules (from the first demo trade)
 
 The bootstrap-based thresholds need a trade distribution, which doesn't exist yet. Until 30 demo
