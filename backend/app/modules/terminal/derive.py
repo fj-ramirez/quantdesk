@@ -41,6 +41,7 @@ from .models import Observation
 # so); `Connection` is the alias it exports, so the next swap is one line there.
 from .store.db import Connection
 from .store.query import get
+from .universe import COT_KEYS
 
 log = get_logger("derive")
 
@@ -297,7 +298,7 @@ COT_PERCENTILES: tuple[Derivation, ...] = tuple(
         expect_input_unit="contracts",
         window=COT_PERCENTILE_WEEKS,
     )
-    for key in ("ust10y", "es", "dxy", "crude", "gold")
+    for key, _ in COT_KEYS
 )
 
 DERIVATIONS = (*DERIVATIONS, *COT_PERCENTILES)

@@ -37,6 +37,7 @@ from .logging import get_logger
 # so); `Connection` is the alias it exports, so the next swap is one line there.
 from .store.db import Connection
 from .store.query import get
+from .universe import COT_KEYS
 
 log = get_logger("brief")
 
@@ -428,9 +429,9 @@ def section_priced(
 
     # Positioning.
     lines += ["### Positioning", "",
-              "| contract | net spec | 3y %ile | as of |",
+              "| series | net | 3y %ile | as of |",
               "|---|---:|---:|---|"]
-    for key in ("ust10y", "es", "dxy", "crude", "gold"):
+    for key, _ in COT_KEYS:
         raw, _, _, vd = _level_percentile(conn, f"pos.cot.{key}", as_of)
         pct, _, _, _ = _level_percentile(conn, f"pos.cot.{key}.pctile", as_of)
         lines.append(
@@ -441,6 +442,10 @@ def section_priced(
         ("> Read the percentile, not the count: contract counts are not "
         "comparable across time as open interest grows (spec 2.2). Tuesday-"
         "dated, published the following Friday."),
+        ("> A bare key is the Legacy non-commercial total. `.lev_money` (hedge "
+        "funds, CTAs) and `.asset_mgr` (pensions, mutual funds) split it on "
+        "financial futures, and often point opposite ways; `.m_money` is the "
+        "managed-money line of the Disaggregated report."),
     ]
     return Section("4. What's priced", "\n".join(lines))
 
