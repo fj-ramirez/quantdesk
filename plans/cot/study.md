@@ -61,9 +61,13 @@ independent signals. All 84 still count towards N.
     7 points on 1.12).
   - Swap per calendar night held, from `broker.symbol_specs`. `XAUUSD`: long −1.48e-4, short
     +9.7e-5. `EURUSD`: long −5.7e-5, short +3.05e-5. The `.fs` CFDs: 0.
-  - Rolls: a `.fs` trade held across a quarterly index roll (the Monday eight days before the
-    third Friday of Mar/Jun/Sep/Dec) pays one extra round-trip spread, on the assumption that
-    it is closed and reopened.
+  - Rolls: a `.fs` trade held across a quarterly index roll (the Monday of the week of the
+    third Friday of Mar/Jun/Sep/Dec, which is where T145 found every observed `.fs` roll, for
+    example 2026-12-14) pays one extra round-trip spread, on the assumption that it is closed
+    and reopened.
+    *Amended 2026-10-13, before the first run: the first draft said "eight days before the
+    third Friday", which does not match T145's observed roll Mondays. This is a cost-model
+    fact, not a searched parameter.*
   - The gate doubles the spread and the swap together.
 - **Index carry (gross, not a cost):** a cash index is not the future the `.fs` CFD tracks. A
   long future earns the cash return minus (r − q). r is the 13-week T-bill (`^IRX`). q is
