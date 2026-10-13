@@ -67,6 +67,10 @@ plans/
     06-doc-drift.md                 T107  three documented facts the data contradicts
   charter-mt5/                      Axi demo MT5 on the desk: CFD data, basis, price action (2026-10-08) — merged 2026-10-09, T143-T146 done, T147 open
     README.md                       the design decisions, task specs, and (when landed) the Result
+  cot/                              CFTC positioning: TFF/Disaggregated coverage, stage-1 study (2026-10-13) — T155, T157 done; T156 partial; T158 open
+    README.md                       verified facts, task specs, Result
+    study.md                        T156's search space, declared before the run
+    DECISIONS.md                    calls made while the user was away: taken or deferred
   audit-and-compaction/             logic audit + TASKS.md archive and decisions index (2026-09-22)
     README.md                       the plan and its Result: T108-T121, audit lanes, verification
 ```

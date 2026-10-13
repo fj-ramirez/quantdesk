@@ -97,4 +97,67 @@ stay visible at that early instant. Deciding how to handle them is the user's ca
 
 ## Result
 
-*(filled as each task lands)*
+### T155: landed 2026-10-13 (`8e02d52`). Deploy pending.
+
+- **Code:**
+  - `adapters/cftc.py` reads the Legacy, TFF and Disaggregated reports. Source codes are
+    `<report>:<code>:<group>`, and a bare code is still Legacy non-commercial.
+  - `universe.COT_LEGACY`, `COT_SPLIT` and `COT_KEYS` are the one list. `derive` builds a
+    percentile per key, and the brief prints a row per key.
+- **New series:** 13 raw and 13 percentiles. Legacy `nas`, `dji` and `eur`; TFF
+  `{es,nas,dji,eur}.{lev_money,asset_mgr}`; Disaggregated `{gold,crude}.m_money`.
+- **Verified:**
+  - Every one of the 18 CFTC series was live-fetched through the adapter on 2026-10-13. The
+    Legacy series reach back to 2000 (the Dow from 2002-05), and TFF and Disaggregated to
+    2006-06-13.
+  - `pos.cot.es` and `pos.cot.gold` for 2026-10-06 match the desk's stored values exactly.
+  - The adapter had no contract tests until now: there are 16 in
+    `tests/test_terminal_cftc_adapter.py`.
+- **Not done:** the deploy. The next nightly `terminal-ingest` run after the backend image
+  is rebuilt backfills everything from `backfill_start`. No migration is needed (decision:
+  "new capture symbols need no migration" applies here too).
+
+### T156: study run 2026-10-13. No trial passes and there is no lead. Registry write open.
+
+**The answer is no.** None of the 84 trials passes stage 1, and none qualifies as a lead.
+
+| Gate | Trials passing (of 84) |
+|---|---|
+| ≥ 100 trades and ≥ 30 episodes | 64 |
+| mean R > 0 after doubled costs | 39 |
+| mean > 2 episode-clustered SE | **1** |
+| positive in most calendar years | 30 |
+| positive in both IS (< 2018) and OOS | 9 |
+| OOS Sharpe above the noise ceiling (1.66 at N = 172,591; 1.00 for the family alone) | **0** |
+
+What the numbers say:
+
+1. **Costs don't decide it.** At holds of one to four weeks the spread is 0.002–0.006R
+   per trade, and swap at most 0.02R. The gross signal is about zero. That is the opposite of
+   T147, where cost was everything.
+2. **Gold's positive "follow" rows are just gold's trend.** Following crowded-long specs
+   means being long gold most of the time. Always-long gold over the same span earns
+   +0.07 / +0.22 / +0.35R gross at 5 / 10 / 20 days, which is more than any gold COT row. The
+   same holds for the indices.
+3. **The one t > 2 is in-sample only.** EURUSD Legacy follow at 20 days: +0.29R, t 2.56,
+   14 of 21 years positive. But it is +0.41R before 2018 and −0.04R after. That is how the
+   2009–17 euro trend looks, not an edge.
+4. **The textbook reading is wrong here.** Fading speculators at extremes (contrarian on
+   Legacy non-commercial or managed money) loses on gold and EURUSD at every hold.
+5. **The TFF split doesn't rescue it.** Leveraged-fund and asset-manager extremes are no
+   better than the Legacy total on any instrument.
+
+Files:
+- Search space: [study.md](study.md).
+- Harness: `app/modules/research/cot_study.py` (16 tests).
+- Ledger: [docs/edges/search-log.md](../../docs/edges/search-log.md) #440–523.
+- The per-trade output was written to the session scratchpad and is reproducible with
+  `cot_study --out <dir> --n-registry <n>`.
+
+**Open:**
+- Record the 84 trials. Run `cot_study --out <dir> --n-registry <n> --record` on the
+  homeserver. Until then the noise ceiling undercounts by 84 (D9).
+- COT stays useful as **context**: the brief's positioning table, the market-research
+  read. It is not a trigger. Anything further, such as COT as a regime filter on a rule that
+  has its own edge, would be a new declared family, and the result above says to expect
+  little from it.

@@ -150,6 +150,13 @@ number to be true, it belongs in a plan file's *Result* heading or behind an MCP
 - faireconomy.media's weekly feed is an approved source and its forecast is stored as
   `consensus`, but only when first seen strictly before the event; a past event is frozen. —
   T139, user decision 2026-10-07.
+- A COT source code is `<report>:<code>:<group>` (`tff:13874A:lev_money`); a bare contract code
+  is the Legacy non-commercial line, kept bare so rows stored under it keep their identity. The
+  series keys live once, in `universe.COT_KEYS`, and `derive` and the brief read them from
+  there. — T155; P:cot.
+- A COT study enters no earlier than the close of the first trading day after the release, and
+  drops shutdown-delayed reports rather than re-dating them. The stored `as_of` is early in those
+  weeks (T158, open). — T156; P:cot.
 
 ## MCP connector
 
@@ -208,3 +215,4 @@ number to be true, it belongs in a plan file's *Result* heading or behind an MCP
 | T99–T107 | Desk integrity | complete | P:desk-integrity |
 | T108–T121 | Retroactive allocation, task-history and logic audit follow-ups | see TASKS.md | P:audit-and-compaction |
 | T143–T147 | charter-mt5: Axi MT5 data, basis, price action | open: T147 | P:charter-mt5 |
+| T155–T158 | cot: TFF and Disaggregated positioning, stage-1 study of COT extremes | open: T156 (registry write), T158 | P:cot |
