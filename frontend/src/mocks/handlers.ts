@@ -14,10 +14,12 @@ import { handlers as gexHandlers } from '../modules/gex/mocks/handlers';
 import { shellHandlers } from './shellHandlers';
 import { researchHandlers } from '../modules/research/mocks/handlers';
 import { terminalHandlers } from '../modules/terminal/mocks/handlers';
+import { brokerHandlers } from '../modules/broker/mocks/handlers';
 
 export const handlers = [
   ...shellHandlers,
   ...gexHandlers,
   ...researchHandlers,
   ...terminalHandlers,
+  ...brokerHandlers,
 ];

@@ -14,12 +14,12 @@
  * the active nav pill, a metric card's edge, the identity mark — reads that variable instead
  * of picking a colour, so a module has one accent rather than one per component.
  */
-import { IconEdgeLabMark, IconGexMark, IconXactxMark } from './icons';
+import { IconBrokerMark, IconEdgeLabMark, IconGexMark, IconXactxMark } from './icons';
 import type { ReactElement, SVGProps } from 'react';
 
 export type IconComponent = (props: SVGProps<SVGSVGElement>) => ReactElement;
 
-export type ModuleKey = 'gex' | 'research' | 'terminal';
+export type ModuleKey = 'gex' | 'research' | 'terminal' | 'broker';
 
 export interface ModuleEntry {
   key: ModuleKey;
@@ -66,6 +66,18 @@ export const MODULES: readonly ModuleEntry[] = [
     mark: IconXactxMark,
     accent: '#8b6cff',
     accentLight: '#6341e8',
+  },
+  {
+    // T159: the fourth module. The broker's own CFD prices, with price action and the GEX
+    // levels in the price the user actually trades.
+    key: 'broker',
+    name: 'Broker',
+    blurb: 'The Axi CFDs you trade, charted from the broker’s own bars, with price action and the gamma walls in CFD price.',
+    tag: 'Price Action & CFDs',
+    to: '/broker',
+    mark: IconBrokerMark,
+    accent: '#f0a33a',
+    accentLight: '#b45309',
   },
 ];
 

@@ -319,6 +319,18 @@ export function IconEdgeLabMark(props: IconProps) {
   );
 }
 
+/** Broker — two candles: the broker's own prices (T159). */
+export function IconBrokerMark(props: IconProps) {
+  return (
+    <Icon {...props}>
+      <line x1="8" y1="3.5" x2="8" y2="20.5" />
+      <rect x="5.5" y="7" width="5" height="9" rx="0.6" />
+      <line x1="16" y1="5" x2="16" y2="19" />
+      <rect x="13.5" y="9.5" width="5" height="5.5" rx="0.6" />
+    </Icon>
+  );
+}
+
 /** xactx — a transmission graph: nodes and the edges between them. */
 export function IconXactxMark(props: IconProps) {
   return (

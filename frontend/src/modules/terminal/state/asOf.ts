@@ -28,25 +28,9 @@ export interface AsOfState {
   clear: () => void;
 }
 
-/** `datetime-local` gives `YYYY-MM-DDTHH:mm`; the API needs a timezone-aware instant. */
-export function toIsoInstant(localValue: string): string | undefined {
-  if (!localValue) return undefined;
-  const parsed = new Date(localValue);
-  if (Number.isNaN(parsed.getTime())) return undefined;
-  return parsed.toISOString();
-}
-
-/** The inverse, for populating the input from the URL. */
-export function toLocalInput(iso: string | undefined): string {
-  if (!iso) return '';
-  const parsed = new Date(iso);
-  if (Number.isNaN(parsed.getTime())) return '';
-  const pad = (n: number) => String(n).padStart(2, '0');
-  return (
-    `${parsed.getFullYear()}-${pad(parsed.getMonth() + 1)}-${pad(parsed.getDate())}` +
-    `T${pad(parsed.getHours())}:${pad(parsed.getMinutes())}`
-  );
-}
+// The two `datetime-local` converters moved to `lib/time.ts` in T159, when the broker chart
+// needed the same as-of input. Re-exported so existing imports keep working.
+export { toIsoInstant, toLocalInput } from '../../../lib/time';
 
 export function useAsOf(): AsOfState {
   const [params, setParams] = useSearchParams();

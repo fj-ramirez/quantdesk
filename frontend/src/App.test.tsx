@@ -172,6 +172,8 @@ describe('T55 scan-family nav and stub routes', () => {
     // reachable would look identical to one that was never built.
     expect(screen.getByRole('link', { name: /EdgeLab/ })).toHaveAttribute('href', '/research');
     expect(screen.getByRole('link', { name: /xactx/ })).toHaveAttribute('href', '/terminal');
+    // T159: the fourth.
+    expect(screen.getByRole('link', { name: /Broker/ })).toHaveAttribute('href', '/broker');
   });
 
   it('/overview renders the real overview page (T56), not a stub', async () => {

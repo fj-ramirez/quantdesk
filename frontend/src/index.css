@@ -2007,12 +2007,14 @@ code {
 .app-frame--gex { --module-accent: #6ea8ff; }
 .app-frame--research { --module-accent: #16c7b7; }
 .app-frame--terminal { --module-accent: #8b6cff; }
+.app-frame--broker { --module-accent: #f0a33a; }
 
 /* The same three hues, deepened for a light surface — the dark values are 2.4:1 and 2.6:1 on
    white, which is under the 3:1 a non-text UI colour needs, let alone text. */
 :root[data-theme='light'] .app-frame--gex { --module-accent: #2f6fe0; }
 :root[data-theme='light'] .app-frame--research { --module-accent: #0d9488; }
 :root[data-theme='light'] .app-frame--terminal { --module-accent: #6341e8; }
+:root[data-theme='light'] .app-frame--broker { --module-accent: #b45309; }
 
 /* --- rail ------------------------------------------------------------------------------ */
 
@@ -3127,7 +3129,8 @@ code {
   position: relative;
   z-index: 1;
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  /* Four modules since T159. */
+  grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 24px;
   margin: 0;
   padding: 0;
@@ -3143,6 +3146,8 @@ code {
 .lx-card--gex { --lx-accent: var(--lx-blue); }
 .lx-card--research { --lx-accent: var(--lx-teal); }
 .lx-card--terminal { --lx-accent: var(--lx-purple); }
+.lx-card--broker { --lx-accent: #f0a33a; }
+:root[data-theme='light'] .lx-card--broker { --lx-accent: #b45309; }
 
 .lx-card__face {
   display: flex;
@@ -3974,3 +3979,168 @@ code {
 .report-fullreport { display: flex; justify-content: flex-end; }
 /* Inside the sheet the sheet itself scrolls, so the text no longer needs its own capped box. */
 .detail-drawer .report-fulltext { max-height: none; overflow: visible; }
+
+/* =========================================================================================
+   Broker chart (T159)
+   ========================================================================================= */
+
+.broker-page {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.broker-toolbar__symbol {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  color: var(--text-muted);
+  font-size: 0.85em;
+}
+
+.broker-toolbar__symbol select {
+  padding: var(--space-1) var(--space-2);
+  border: 1px solid var(--border-default);
+  border-radius: 4px;
+  background: var(--surface-app);
+  color: var(--text-default);
+  font: inherit;
+}
+
+.broker-page .asof {
+  flex-wrap: wrap;
+}
+
+.broker-page .asof__clear:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+.broker-layers {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2) var(--space-3);
+  margin: 0;
+  padding: 0;
+  border: 0;
+  font-size: 0.85em;
+}
+
+.broker-layers__legend {
+  float: left;
+  margin-right: var(--space-2);
+  padding: 0;
+  color: var(--text-muted);
+}
+
+.broker-layers__item {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  cursor: pointer;
+}
+
+.broker-layers__item input {
+  accent-color: var(--module-accent);
+}
+
+.broker-workspace {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 300px;
+  gap: var(--space-3);
+  align-items: start;
+}
+
+@media (max-width: 1100px) {
+  .broker-workspace {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+.broker-workspace__chart {
+  min-width: 0;
+}
+
+.broker-chart {
+  width: 100%;
+  min-height: 520px;
+}
+
+.broker-context {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.broker-context__title {
+  margin: 0 0 var(--space-2);
+  font-size: 0.95em;
+}
+
+.broker-context__note {
+  margin: var(--space-2) 0 0;
+  color: var(--text-muted);
+  font-size: 0.82em;
+  line-height: 1.45;
+}
+
+.broker-context__warn {
+  margin: var(--space-2) 0 0;
+  color: var(--status-caution);
+  font-size: 0.82em;
+  line-height: 1.45;
+}
+
+.broker-context__levels {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 4px var(--space-3);
+  margin: 0;
+  font-variant-numeric: tabular-nums;
+}
+
+.broker-context__levels dt {
+  color: var(--text-muted);
+}
+
+.broker-context__levels dd {
+  margin: 0;
+  text-align: right;
+}
+
+.broker-events {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  font-size: 0.82em;
+}
+
+.broker-events__item {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 0 var(--space-2);
+  padding-left: var(--space-2);
+  border-left: 3px solid var(--border-default);
+}
+
+.broker-events__item--up { border-left-color: var(--status-positive); }
+.broker-events__item--down { border-left-color: var(--status-negative); }
+
+.broker-events__px {
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+
+.broker-events__time {
+  grid-column: 1 / -1;
+  color: var(--text-muted);
+}
+
+.broker-loading {
+  padding: var(--space-3);
+  color: var(--text-muted);
+}
