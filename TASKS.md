@@ -23,7 +23,7 @@ How to use this file:
   `context/decisions.md` if it settled a rule. A finished block does not stay here.
 - New work gets the next free ID and is filed here, never fixed silently.
 
-**Next free ID: T159.** (T108 was allocated retroactively — see the archive's addendum;
+**Next free ID: T165.** (T108 was allocated retroactively — see the archive's addendum;
 T109–T114 were filed on 2026-09-22 from the task-history audit, T115–T121 from the logic audit;
 T122–T124 were filed and finished on 2026-09-23 — see the addendum; T125–T127 were filed on
 2026-09-25 for the ThetaData initiative, [plans/thetadata/](plans/thetadata/README.md); T128–T133
@@ -32,7 +32,7 @@ finished 2026-10-07, see the addendum; T139 filed 2026-10-07, split from T96, an
 [docs/read-review-2026-10-08.md](docs/read-review-2026-10-08.md); T143–T147 filed 2026-10-08 on the
 `experiment/charter-mt5` branch for [plans/charter-mt5/](plans/charter-mt5/README.md); T148 filed
 2026-10-08 from T145's basis work; T149 filed 2026-10-09 for the `xau-range-rejection` edge candidate; T150 filed 2026-10-09 at
-the charter-mt5 merge; T155–T158 filed 2026-10-13 for [plans/cot/](plans/cot/README.md), T155 and T157 finished the same day.)
+the charter-mt5 merge; T155–T158 filed 2026-10-13 for [plans/cot/](plans/cot/README.md), T155 and T157 finished the same day; T159–T163 filed 2026-10-13/14 on `feat/broker-chart`; T164 filed 2026-10-14 from the first reel batch, the wall-break log.)
 
 ---
 
@@ -116,6 +116,19 @@ Anything that becomes a lead later is added to this table by the same rule.
   kill rules active;
 - its doc's stage log records the demo start date;
 - the forward summary query exists.
+
+### T164 · Opus · T153
+**Log wall breaks forward: `PUT_WALL_BREAK`, `CALL_WALL_BREAK` (+ `_0DTE`).** The other half of
+wall-bounce, from a reel's claim (the first reeler batch, 2026-10-14) that a broken gamma level
+runs to the next one. Spec frozen in [wall-break.md](docs/edges/wall-break.md): two 5-minute
+closes through a wall that stayed on the same strike, after a close on the near side. Same
+detector shape as the flip cross; logged, scored and alerted on Telegram like every level event
+(the user's request), but **not traded**: no executor class. No schema change: new keys only.
+
+**Partial (2026-10-14):** code landed (`detect_wall_breaks` in `scan/level_events.py`, wired
+into `record_level_events`, tests in `tests/test_level_events.py`, full suite green). Still
+open: deploy `gex-capture` and check that the first break rows appear in `gex.level_events`
+and that the first one reaches Telegram.
 
 ### T150 · Sonnet · —
 **`gex.snapshots` session_date index: the model's name and the database's disagree.** Found at

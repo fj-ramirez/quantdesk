@@ -11,6 +11,7 @@ with its own slug and start date.
 |---|---|---|---|---|---|
 | [flip-cross](flip-cross.md) (+ `_0DTE` variant) | SPY/SPX → US500, QQQ → NAS100, DIA → US30, GLD → XAUUSD, IWM → US2000 | 0 → 2 (no stage 1 possible) | Demo: ≥ 50 trades over ≥ 2 months | 2026-10-08 | [read review 10-08 §4](../read-review-2026-10-08.md), T142 |
 | [wall-bounce](wall-bounce.md) (+ `_0DTE` variant) | SPY/SPX → US500, QQQ → NAS100, DIA → US30, GLD → XAUUSD, IWM → US2000 | 0 → 2 (no stage 1 possible) | Fix the exit; then demo: ≥ 50 trades over ≥ 2 months | 2026-10-12 | the user's alert request, T153 |
+| [wall-break](wall-break.md) (+ `_0DTE` variant) | SPY/SPX, QQQ, DIA, GLD, IWM (measured on the CFD path) | 0, **logged and alerted, not traded** (no executor class) | First read at ≥ 30 sessions with events | 2026-10-14 | a reel's "break → runs to the next level" claim, T164 |
 | [gold-asia-drift](gold-asia-drift.md) | — → XAUUSD | 1 passed → 2 | Demo: ≥ 30 trades, measured 18:00 spread ≤ $0.48 | 2026-10-09 | documented-effects test 10-09, `scripts/edges/` |
 | [nas-mean-reversion](nas-mean-reversion.md) | — → NAS100.fs | 1 passed (independent 2000–19) → 2 | Demo: ≥ 30 trades | 2026-10-09 | leads #334/#378/#419 → composite #428 |
 | [index-hold-sma200](index-hold-sma200.md) | — → NAS100.fs, S&P.fs | risk premium (no edge gate) | Demo 0.01 lot; verify the 2026-12-14 roll adjustment | 2026-10-09 | pass 3 summary, search-log.md |

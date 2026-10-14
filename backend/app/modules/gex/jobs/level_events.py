@@ -1,10 +1,10 @@
-"""Log flip crosses and wall bounces forward, alert the tradeable ones, and score them once their
+"""Log flip crosses, wall bounces and wall breaks forward, alert the tradeable ones, and score them once their
 session is over (T142, T153).
 
 Two steps, both run by the `gex-capture` worker, never by the API (invariant 7):
 
 * :func:`record_level_events` runs after every 5-minute bar poll. It re-reads **today's**
-  session only -- bars and in-session captures for the five symbols -- runs both frozen
+  session only -- bars and in-session captures for the five symbols -- runs the frozen
   detectors in `app.modules.gex.scan.level_events`, and inserts events it has not stored yet.
   Re-reading the whole day makes a missed poll cost nothing. Only today is ever read, so the
   record cannot reach back into sessions before it was deployed (no backfill, by construction).
@@ -52,13 +52,16 @@ from app.modules.gex.models.db import (
 from app.modules.gex.scan.level_events import (
     BAR,
     KEY_CALL_BOUNCE,
+    KEY_CALL_BREAK,
     KEY_DOWN,
     KEY_PUT_BOUNCE,
+    KEY_PUT_BREAK,
     KEY_UP,
     Capture,
     base_key,
     detect_crosses,
     detect_wall_bounces,
+    detect_wall_breaks,
     direction_of,
     excursion_path,
     horizon_returns,
@@ -207,6 +210,8 @@ _HEADLINE = {
     KEY_UP: ("🔺", "FLIP CROSS UP", "crossed above the flip", "fade: short, hold 60 min"),
     KEY_PUT_BOUNCE: ("🟢", "PUT WALL BOUNCE", "bounced off the put wall", "long bias"),
     KEY_CALL_BOUNCE: ("🔴", "CALL WALL BOUNCE", "rejected at the call wall", "short bias"),
+    KEY_PUT_BREAK: ("⏬", "PUT WALL BREAK", "broke below the put wall", "down, untraded"),
+    KEY_CALL_BREAK: ("⏫", "CALL WALL BREAK", "broke above the call wall", "up, untraded"),
 }
 
 _STAGE = {
@@ -214,6 +219,8 @@ _STAGE = {
     KEY_UP: "Flip-cross: stage-2 candidate. An in-sample leaning, not an edge.",
     KEY_PUT_BOUNCE: "Wall-bounce: stage-0 rule, untested. No evidence yet.",
     KEY_CALL_BOUNCE: "Wall-bounce: stage-0 rule, untested. No evidence yet.",
+    KEY_PUT_BREAK: "Wall-break: logged for the record, not traded. No evidence yet.",
+    KEY_CALL_BREAK: "Wall-break: logged for the record, not traded. No evidence yet.",
 }
 
 
@@ -298,7 +305,11 @@ def record_level_events(
                         caps = _captures(session, symbol, day, level_filter)
                         found += [
                             dataclasses.replace(e, key=variant_key(e.key, level_filter))
-                            for e in detect_crosses(symbol, bars, caps) + detect_wall_bounces(symbol, bars, caps)
+                            for e in (
+                                detect_crosses(symbol, bars, caps)
+                                + detect_wall_bounces(symbol, bars, caps)
+                                + detect_wall_breaks(symbol, bars, caps)
+                            )
                         ]
                 except Exception:
                     logger.exception("level_events: detection failed for %s", symbol)

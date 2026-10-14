@@ -451,7 +451,8 @@ def gex_track_record(key: str | None = None, since: str | None = None) -> str:
 
 @server.tool(
     description=(
-        "The gamma-level forward record (T142, T153): every intraday flip cross and wall bounce "
+        "The gamma-level forward record (T142, T153, T164): every intraday flip cross, wall bounce "
+        "and wall break "
         "since the logger went live, per key, with the mean and the session-clustered standard "
         "error at 15/30/60 minutes and the close, and the excursion-path summary on the traded "
         "CFD. Pass `recent` to list the latest events with their MAE/MFE swing sequences."
@@ -465,7 +466,8 @@ def gex_level_events(key: str | None = None, since: str | None = None, recent: i
     events are averaged first and the standard error is taken across sessions. A per-event SE
     overstates certainty, which is how the 10-08 review was nearly misread.
 
-    Returns are signed in the event's direction (up for `FLIP_CROSS_UP` and `PUT_WALL_BOUNCE`).
+    Returns are signed in the event's direction (up for `FLIP_CROSS_UP`, `PUT_WALL_BOUNCE` and
+    `CALL_WALL_BREAK`).
     The flip-cross spec trades `FLIP_CROSS_UP` as a fade, so that key wins when it is negative.
     """
     start = _parse_date(since, field="since")
@@ -530,7 +532,8 @@ def gex_level_events(key: str | None = None, since: str | None = None, recent: i
 
     note = (
         "**bps are signed in the event's direction**: positive = price kept going the way the "
-        "event pointed (up for FLIP_CROSS_UP and PUT_WALL_BOUNCE). The flip-cross spec shorts "
+        "event pointed (up for FLIP_CROSS_UP, PUT_WALL_BOUNCE and CALL_WALL_BREAK; a break points "
+        "through the wall). The flip-cross spec shorts "
         "the CFD on both cross keys, so `FLIP_CROSS_UP` (the fade) wins when it is negative.\n\n"
         "**`*_se` is clustered by session**: each session's events are averaged first, then the "
         "SE is taken across sessions. Same-day events on SPX, SPY and DIA are one event. A mean "

@@ -5,6 +5,7 @@ sessions for the wall bounce, and SQLite for the job."""
 
 from __future__ import annotations
 
+import dataclasses
 import datetime as dt
 import json
 from dataclasses import dataclass
@@ -26,12 +27,16 @@ from app.modules.gex.models.db import (
 )
 from app.modules.gex.scan.level_events import (
     KEY_CALL_BOUNCE,
+    KEY_CALL_BREAK,
     KEY_DOWN,
     KEY_PUT_BOUNCE,
+    KEY_PUT_BREAK,
     KEY_UP,
     Capture,
     detect_crosses,
     detect_wall_bounces,
+    detect_wall_breaks,
+    direction_of,
     excursion_path,
     horizon_returns,
     minute_points,
@@ -179,6 +184,59 @@ def test_the_wall_must_be_known_at_the_touch():
     bars = _session(t0, [(771.8, None, None), (770.9, 770.2, None), (771.3, None, None), (771.6, None, None)])
     later = [Capture(t0 + dt.timedelta(minutes=11), 775.0, put_wall=770.0)]  # after the touch closed
     assert detect_wall_bounces("SPY", bars, later) == []
+
+
+# --- wall breaks -------------------------------------------------------------------------------
+
+
+def test_two_closes_through_the_put_wall_is_a_break_down():
+    t0 = _at("2026-10-13", "14:00")
+    bars = [_bar(t0 + dt.timedelta(minutes=5 * i), c) for i, c in enumerate([771.0, 769.5, 769.0, 768.0])]
+    (ev,) = detect_wall_breaks("SPY", bars, [Capture(t0, 775.0, call_wall=780.0, put_wall=770.0)])
+    assert ev.key == KEY_PUT_BREAK and ev.level == 770.0 and ev.level_kind == "put_wall"
+    assert ev.bar_ts == t0 + dt.timedelta(minutes=10) and ev.spot == 769.0 and ev.touch_ts is None
+    assert direction_of(ev.key) == -1
+
+
+def test_a_call_wall_break_is_the_mirror_image_and_points_up():
+    t0 = _at("2026-10-13", "14:00")
+    bars = [_bar(t0 + dt.timedelta(minutes=5 * i), c) for i, c in enumerate([779.0, 780.5, 781.0])]
+    (ev,) = detect_wall_breaks("SPY", bars, [Capture(t0, 775.0, call_wall=780.0, put_wall=770.0)])
+    assert ev.key == KEY_CALL_BREAK and direction_of(ev.key) == 1
+
+
+@pytest.mark.parametrize("closes, caps_at, why", [
+    ([771.0, 769.5, 770.5], None, "one close through and straight back is not a break"),
+    ([771.0, 770.0, 769.0, 768.5], None, "a close exactly on the wall breaks the run"),
+    ([769.0, 768.0, 767.0], None, "already below the wall: nothing was broken"),
+    ([771.0, 771.0, 770.8], [0, 6], "price stood still; the wall moved above it to another strike"),
+])
+def test_what_is_not_a_break(closes, caps_at, why):
+    t0 = _at("2026-10-13", "14:00")
+    bars = [_bar(t0 + dt.timedelta(minutes=5 * i), c) for i, c in enumerate(closes)]
+    caps = [Capture(t0, 775.0, put_wall=770.0)]
+    if caps_at:  # the wall jumps from 770 to 772 after the first bar's close
+        caps = [Capture(t0 + dt.timedelta(minutes=m), 775.0, put_wall=w)
+                for m, w in zip(caps_at, (770.0, 772.0), strict=True)]
+    assert detect_wall_breaks("SPY", bars, caps) == [], why
+
+
+def test_a_break_and_the_bounce_never_fire_on_the_same_run():
+    t0 = _at("2026-10-13", "14:00")
+    bars = [_bar(t0 + dt.timedelta(minutes=5 * i), c) for i, c in enumerate([771.0, 769.5, 769.0, 768.0])]
+    caps = [Capture(t0, 775.0, put_wall=770.0)]
+    assert detect_wall_bounces("SPY", bars, caps) == [] and len(detect_wall_breaks("SPY", bars, caps)) == 1
+
+
+def test_breaks_are_alerted_and_say_they_are_not_traded():
+    now = _at("2026-10-13", "15:00")
+    ev = Event("SPY", now - dt.timedelta(minutes=10), KEY_PUT_BREAK, 769.0, 770.0, "put_wall", None, now)
+    zero = dataclasses.replace(ev, key=KEY_CALL_BREAK + "_0DTE", level_kind="call_wall")
+    assert len(job.select_alerts([ev, zero], [], now)) == 2
+    text = job.alert_text(ev, cfd_price=None)
+    assert "PUT WALL BREAK" in text and "broke below the put wall" in text and "not traded" in text
+    text = job.alert_text(zero, cfd_price=None)
+    assert "CALL WALL BREAK (0DTE)" in text and "broke above the 0DTE call wall" in text
 
 
 # --- returns and the excursion path --------------------------------------------------------------
@@ -406,7 +464,8 @@ def test_variant_keys_and_their_direction():
     assert variant_key(KEY_UP, "ALL") == KEY_UP
     assert variant_key(KEY_UP, "ZERO_DTE") == "FLIP_CROSS_UP_0DTE"
     assert direction_of("FLIP_CROSS_UP_0DTE") == 1 and direction_of("CALL_WALL_BOUNCE_0DTE") == -1
-    assert len(KEYS) == 8 and all(len(k) <= 32 for k in KEYS)  # the key column is String(32)
+    assert direction_of("PUT_WALL_BREAK") == -1 and direction_of("CALL_WALL_BREAK_0DTE") == 1
+    assert len(KEYS) == 12 and all(len(k) <= 32 for k in KEYS)  # the key column is String(32)
     with pytest.raises(ValueError):
         variant_key(KEY_UP, "THIS_WEEK")
 
