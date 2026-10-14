@@ -23,7 +23,7 @@ How to use this file:
   `context/decisions.md` if it settled a rule. A finished block does not stay here.
 - New work gets the next free ID and is filed here, never fixed silently.
 
-**Next free ID: T155.** (T108 was allocated retroactively — see the archive's addendum;
+**Next free ID: T159.** (T108 was allocated retroactively — see the archive's addendum;
 T109–T114 were filed on 2026-09-22 from the task-history audit, T115–T121 from the logic audit;
 T122–T124 were filed and finished on 2026-09-23 — see the addendum; T125–T127 were filed on
 2026-09-25 for the ThetaData initiative, [plans/thetadata/](plans/thetadata/README.md); T128–T133
@@ -32,7 +32,7 @@ finished 2026-10-07, see the addendum; T139 filed 2026-10-07, split from T96, an
 [docs/read-review-2026-10-08.md](docs/read-review-2026-10-08.md); T143–T147 filed 2026-10-08 on the
 `experiment/charter-mt5` branch for [plans/charter-mt5/](plans/charter-mt5/README.md); T148 filed
 2026-10-08 from T145's basis work; T149 filed 2026-10-09 for the `xau-range-rejection` edge candidate; T150 filed 2026-10-09 at
-the charter-mt5 merge.)
+the charter-mt5 merge; T155–T158 filed 2026-10-13 for [plans/cot/](plans/cot/README.md), T155 and T157 finished the same day.)
 
 ---
 
@@ -126,6 +126,26 @@ without renaming it), so the model's naming convention and the migrated name dif
 column, so no query is affected; but autogenerate will keep proposing the swap. Fix with a
 migration that renames the index (or pin the model's `name=`), and make `alembic check` pass on
 a fresh chain.
+
+---
+
+## COT positioning (2026-10-13)
+
+> Initiative: [plans/cot/README.md](plans/cot/README.md). T155, T157 and T158 are done and in
+> the archive's addendum. Decisions taken while the user was away are in
+> [plans/cot/DECISIONS.md](plans/cot/DECISIONS.md).
+
+### T156 · Opus · T155
+**Stage-1 test of COT positioning extremes** ([study.md](plans/cot/study.md), declared before
+the run).
+
+**Partial (2026-10-13):** the study ran. **None of the 84 trials passes stage 1, and there is
+no lead.** See the plan's *Result*. Still open: recording the 84 trials in `research.trials`.
+It needs the branch deployed, then on the homeserver (the stack directory):
+`docker compose -f compose.yaml -f compose.prod.yaml exec backend python -m
+app.modules.research.cot_study --out /tmp/cot --n-registry <n> --record`, with `<n>` the
+registry's trial count from `desk_status`. Dev has no route to the server's database or shell
+(D9).
 
 ---
 

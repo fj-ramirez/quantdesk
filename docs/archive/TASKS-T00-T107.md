@@ -1974,6 +1974,24 @@ At merge the `broker` schema moved from the worker's `create_all` into the chain
 the fresh and the pre-existing case), and `broker` joined `app.core.schemas.SCHEMAS`. T147 (the
 price-action event study) stays open.
 
+## T155, T157 · cot (filed and finished 2026-10-13, [plans/cot/](../../plans/cot/README.md))
+
+**T155:** the CFTC adapter reads the TFF and Disaggregated reports as well as the Legacy one.
+Thirteen new raw positioning series, each with a three-year percentile, cover the futures behind
+every traded CFD: Legacy `nas`, `dji` and `eur`; TFF leveraged funds and asset managers for es,
+nas, dji and eur; and managed money for gold and crude. All of them were live-fetched on
+2026-10-13, and 16 adapter contract tests were added. Deploy pending; the first nightly ingest
+backfills them. **T157:** the brief prints every COT series, and the market-research skill reads
+the TFF split as context and says that T156 found no signal in it. T156 (the study) is partial:
+the 84 trials are not yet in the registry.
+
+**T158** (finished 2026-10-13): COT `as_of` is now the day CFTC actually published.
+`adapters/cftc.release_date` pushes past federal holidays, executive-order closures and the day
+after Thanksgiving, and takes shutdown and ION-incident reports from CFTC's catch-up schedules.
+Migration `c0d1e2f3a4b5` deletes the `pos.cot.*` rows stored with an earlier `as_of` (850 of
+11,619 on the homeserver, 89 report weeks, counted read-only on 2026-10-13). That is the one
+sanctioned exception to invariant 10, by the user's decision (plans/cot/DECISIONS.md D4).
+
 ## Status corrections
 
 - **Done, no Done marker above:** T00–T14, T16, T27, T29, T30, T34–T41, T59 (all merged, per

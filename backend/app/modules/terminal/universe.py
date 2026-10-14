@@ -428,12 +428,58 @@ _COT_NOTE = (
     "matching .pctile series, not the raw count: contract counts are not "
     "comparable across time as open interest grows (spec 2.2)."
 )
+_TFF_NOTE = (
+    "Traders in Financial Futures report, futures only, from 2006-06. Leveraged "
+    "funds are hedge funds and CTAs; asset managers are pensions, endowments and "
+    "mutual funds -- two groups the Legacy 'non-commercial' line lumps together "
+    "on financial futures (T155). Same Tuesday measurement and Friday release as "
+    "the Legacy report. Read the .pctile series."
+)
+_DISAGG_NOTE = (
+    "Disaggregated report, futures only, from 2006-06: managed money, the "
+    "speculative line the Legacy 'non-commercial' total dilutes with swap dealers "
+    "and other reportables (T155). Same Tuesday measurement and Friday release. "
+    "Read the .pctile series."
+)
+
+#: (key, contract code, label) for the Legacy net-spec series. The key names the series
+#: `pos.cot.<key>`; T155 added nas, dji and eur, the futures behind the traded CFDs.
+COT_LEGACY = [
+    ("ust10y", "043602", "UST 10Y note"),
+    ("es", "13874A", "E-mini S&P 500"),
+    ("dxy", "098662", "USD index"),
+    ("crude", "067651", "WTI crude"),
+    ("gold", "088691", "gold"),
+    ("nas", "209742", "E-mini Nasdaq-100"),
+    ("dji", "124603", "E-mini Dow ($5)"),
+    ("eur", "099741", "Euro FX"),
+]
+
+#: (key, report, group, label) for the split reports (T155). Each becomes
+#: `pos.cot.<key>.<group>`, read from the contract the Legacy key names.
+COT_SPLIT_GROUPS = {"lev_money": "leveraged funds", "asset_mgr": "asset managers",
+                    "m_money": "managed money"}
+COT_SPLIT = [
+    *[(k, "tff", g) for k in ("es", "nas", "dji", "eur") for g in ("lev_money", "asset_mgr")],
+    *[(k, "disagg", "m_money") for k in ("gold", "crude")],
+]
+_COT_CODE = {k: code for k, code, _ in COT_LEGACY}
+_COT_LABEL = {k: label for k, _, label in COT_LEGACY}
+
+#: Every raw COT series key under `pos.cot.`, in display order. derive builds one
+#: percentile per entry; the brief prints one row per entry.
+COT_KEYS: list[tuple[str, str]] = [
+    *[(k, f"{label}, net spec") for k, _, label in COT_LEGACY],
+    *[(f"{k}.{g}", f"{_COT_LABEL[k]}, {COT_SPLIT_GROUPS[g]}") for k, _, g in COT_SPLIT],
+]
+
 POSITIONING = [
-    _cftc("pos.cot.ust10y", "043602", "COT net spec, UST 10Y note", _COT_NOTE),
-    _cftc("pos.cot.es", "13874A", "COT net spec, E-mini S&P 500", _COT_NOTE),
-    _cftc("pos.cot.dxy", "098662", "COT net spec, USD index", _COT_NOTE),
-    _cftc("pos.cot.crude", "067651", "COT net spec, WTI crude", _COT_NOTE),
-    _cftc("pos.cot.gold", "088691", "COT net spec, gold", _COT_NOTE),
+    *[_cftc(f"pos.cot.{k}", code, f"COT net spec, {label}", _COT_NOTE)
+      for k, code, label in COT_LEGACY],
+    *[_cftc(f"pos.cot.{k}.{g}", f"{report}:{_COT_CODE[k]}:{g}",
+            f"COT {COT_SPLIT_GROUPS[g]} net, {_COT_LABEL[k]}",
+            _TFF_NOTE if report == "tff" else _DISAGG_NOTE)
+      for k, report, g in COT_SPLIT],
 ]
 
 _PCTILE_NOTE = (
@@ -447,13 +493,10 @@ POSITIONING_PERCENTILES = [
     # weekly series joined against daily ones collapses the panel to weekly
     # dates. The max_gap_days rule happens to reject it today, but that is
     # incidental protection, not the declaration being right.
-    _derived(f"pos.cot.{k}.pctile", f"COT net spec percentile, {label}",
+    _derived(f"pos.cot.{k}.pctile", f"COT percentile, {label}",
              "macro", "positioning", "index", "diff", "derived_lag", _PCTILE_NOTE,
              frequency="w")
-    for k, label in [
-        ("ust10y", "UST 10Y note"), ("es", "E-mini S&P 500"),
-        ("dxy", "USD index"), ("crude", "WTI crude"), ("gold", "gold"),
-    ]
+    for k, label in COT_KEYS
 ]
 
 # --- Implied policy path (spec 2.1) -----------------------------------------

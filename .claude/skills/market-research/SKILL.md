@@ -169,6 +169,42 @@ that Friday.
 **Group by `session_date`, not `captured_at`** (T102). A weekend or pre-open capture holds the
 previous session's book, so the capture date invents sessions that never traded.
 
+## Positioning (CFTC COT)
+
+Read it with `terminal_series` and the `.pctile` series ids. **Always read the percentile, not
+the raw count.**
+
+| CFD | Series (`pos.cot.…`) |
+|---|---|
+| `S&P.fs` | `es`, `es.lev_money`, `es.asset_mgr` |
+| `NAS100.fs` | `nas`, `nas.lev_money`, `nas.asset_mgr` |
+| `DJ30.fs` | `dji`, `dji.lev_money`, `dji.asset_mgr` |
+| `XAUUSD` | `gold`, `gold.m_money` |
+| `EURUSD` | `eur`, `eur.lev_money`, `eur.asset_mgr` |
+
+What the series are:
+- A bare key is the Legacy non-commercial total.
+- `.lev_money` is hedge funds and CTAs, and `.asset_mgr` is pensions and mutual funds (from
+  the TFF report). On index futures the two usually point **opposite** ways: asset managers
+  are structurally long and hedge funds take the other side. So a bare `es` reading is a
+  blend of the two, not "the speculators".
+- `.m_money` is managed money from the Disaggregated report.
+
+**Positioning is context, not a signal.** T156 tested extremes (3-year percentile ≥ 90 or
+≤ 10) as trades on all five CFDs, 84 ways, contrarian and follow, holding one to four weeks.
+Nothing passed, and nothing beat simply holding the instrument
+([plans/cot/README.md](../../../plans/cot/README.md), search log #440–523). Fading crowded
+speculators lost money on gold and EURUSD. So say "specs are at the 95th percentile", and do
+not say "crowded, expect a reversal".
+
+**Timing:**
+- The report is Tuesday-dated and published Friday at 15:30 ET. In holiday weeks it can be
+  Monday. During government shutdowns (2013, 2018–19, 2025) and the 2023 ION incident it was
+  weeks late.
+- So a reading is at least three days old the moment it appears. Give its `value_date`.
+- The stored `as_of` is the actual publication day, since T158. A report that has not been
+  published yet does not appear at all. That is not missing data.
+
 ## Output
 
 Lead with the answer. Freshness caveat early and short. Levels in tables. When fresh data
