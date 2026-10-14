@@ -25,6 +25,7 @@ def test_percentile_matches_the_terminals_derivation():
     (dt.date(2025, 11, 28), dt.date(2025, 12, 1)),    # day after Thanksgiving -> Monday
     (dt.date(2020, 12, 25), dt.date(2020, 12, 28)),   # Christmas Friday -> Monday
     (dt.date(2022, 11, 11), dt.date(2022, 11, 14)),   # Veterans Day Friday, NYSE open
+    (dt.date(2004, 11, 12), dt.date(2004, 11, 12)),   # Veterans Day Thursday: not Black Friday
 ])
 def test_release_date_never_earlier_than_cftc_could_publish(nominal, expected):
     assert cs.release_date(nominal) == expected

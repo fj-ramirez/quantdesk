@@ -199,10 +199,11 @@ not say "crowded, expect a reversal".
 
 **Timing:**
 - The report is Tuesday-dated and published Friday at 15:30 ET. In holiday weeks it can be
-  Monday, and during government shutdowns it was weeks late (2013, 2018–19, 2025).
+  Monday. During government shutdowns (2013, 2018–19, 2025) and the 2023 ION incident it was
+  weeks late.
 - So a reading is at least three days old the moment it appears. Give its `value_date`.
-- The stored `as_of` is early for the holiday and shutdown weeks (T158). Don't use it to
-  argue that a value was known on that exact day.
+- The stored `as_of` is the actual publication day, since T158. A report that has not been
+  published yet does not appear at all. That is not missing data.
 
 ## Output
 

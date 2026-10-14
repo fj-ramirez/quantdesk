@@ -155,8 +155,12 @@ number to be true, it belongs in a plan file's *Result* heading or behind an MCP
   series keys live once, in `universe.COT_KEYS`, and `derive` and the brief read them from
   there. — T155; P:cot.
 - A COT study enters no earlier than the close of the first trading day after the release, and
-  drops shutdown-delayed reports rather than re-dating them. The stored `as_of` is early in those
-  weeks (T158, open). — T156; P:cot.
+  drops shutdown-delayed reports rather than re-dating them. — T156; P:cot.
+- A COT row's `as_of` is the day CFTC actually published (`cftc.release_date`): the Friday,
+  pushed past holidays, closures and Black Friday, or the catch-up schedule's date for a delayed
+  report. A row whose `as_of` precedes publication is a defect, not a vintage, and is deleted
+  rather than kept beside the corrected one. That is the only exception to invariant 10, and it
+  needs the user's say-so each time. — T158, user decision 2026-10-13; P:cot.
 
 ## MCP connector
 
@@ -215,4 +219,4 @@ number to be true, it belongs in a plan file's *Result* heading or behind an MCP
 | T99–T107 | Desk integrity | complete | P:desk-integrity |
 | T108–T121 | Retroactive allocation, task-history and logic audit follow-ups | see TASKS.md | P:audit-and-compaction |
 | T143–T147 | charter-mt5: Axi MT5 data, basis, price action | open: T147 | P:charter-mt5 |
-| T155–T158 | cot: TFF and Disaggregated positioning, stage-1 study of COT extremes | open: T156 (registry write), T158 | P:cot |
+| T155–T158 | cot: TFF and Disaggregated positioning, stage-1 study of COT extremes | open: T156 (registry write) | P:cot |

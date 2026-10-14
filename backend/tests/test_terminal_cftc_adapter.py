@@ -6,18 +6,22 @@ Disaggregated report's `swap__positions_short_all` with its double underscore.
 
 from __future__ import annotations
 
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
+from itertools import pairwise
 from zoneinfo import ZoneInfo
 
 import pytest
 
 from app.modules.terminal import universe
 from app.modules.terminal.adapters.cftc import (
+    DELAYED_RELEASES,
     KNOWN_CONTRACTS,
     REPORTS,
+    SHUTDOWN_WINDOWS,
     CftcAdapter,
     SourceCode,
     parse_source_code,
+    release_date,
 )
 from app.modules.terminal.errors import EmptyFetchError, UnknownSeriesError
 
@@ -147,3 +151,85 @@ def test_fetch_downloads_from_the_reports_dataset(monkeypatch):
     obs = a.fetch(["disagg:067651:m_money"], date(2026, 1, 1), date(2026, 10, 9), "b")
     assert seen == [(REPORTS["disagg"].url, "067651")]
     assert obs[0].series_id == "pos.cot.crude.m_money"
+
+
+# T158: the day CFTC actually published, not always the Friday.
+
+
+@pytest.mark.parametrize("report, published", [
+    (date(2026, 10, 6), date(2026, 10, 9)),     # ordinary Tuesday -> Friday
+    (date(2024, 11, 26), date(2024, 12, 2)),    # Thanksgiving week: Black Friday -> Monday
+    (date(2020, 12, 22), date(2020, 12, 28)),   # Christmas Friday -> Monday
+    (date(2022, 11, 8), date(2022, 11, 14)),    # Veterans Day Friday -> Monday
+    (date(2004, 11, 9), date(2004, 11, 12)),    # Veterans Day THURSDAY: not Black Friday
+    (date(2008, 12, 23), date(2008, 12, 29)),   # executive-order closure, 2008-12-26
+    (date(2004, 6, 8), date(2004, 6, 14)),      # national day of mourning, 2004-06-11
+    (date(2021, 12, 21), date(2021, 12, 27)),   # Christmas observed Friday 12-24
+])
+def test_release_date_holidays_push_to_the_next_business_day(report, published):
+    assert release_date(report) == published
+
+
+# CFTC's accelerated schedule of 2025-12-09, the "New Publish Date" column, verbatim, then
+# the normal schedule resuming (12-30's report on Monday 01-05, after the 01-02 closure).
+CATCH_UP_2025 = {
+    "2025-09-30": "2025-11-19", "2025-10-07": "2025-11-21", "2025-10-14": "2025-11-25",
+    "2025-10-21": "2025-12-02", "2025-10-28": "2025-12-05", "2025-11-04": "2025-12-09",
+    "2025-11-10": "2025-12-10", "2025-11-18": "2025-12-12", "2025-11-25": "2025-12-15",
+    "2025-12-02": "2025-12-17", "2025-12-09": "2025-12-19", "2025-12-16": "2025-12-23",
+    "2025-12-23": "2025-12-29", "2025-12-30": "2026-01-05", "2026-01-06": "2026-01-09",
+}
+
+# CFTC's ION announcements: each names the original publication date it is issuing.
+CATCH_UP_2023 = {
+    "2023-01-31": "2023-02-24", "2023-02-07": "2023-03-03", "2023-02-14": "2023-03-08",
+    "2023-02-21": "2023-03-10", "2023-02-28": "2023-03-14", "2023-03-07": "2023-03-16",
+    "2023-03-14": "2023-03-21", "2023-03-21": "2023-03-24",
+}
+
+
+@pytest.mark.parametrize(
+    "report, published", sorted({**CATCH_UP_2023, **CATCH_UP_2025}.items())
+)
+def test_2023_and_2025_catch_up_schedules(report, published):
+    assert release_date(date.fromisoformat(report)) == date.fromisoformat(published)
+
+
+def test_2019_catch_up_runs_tuesday_and_friday_until_current():
+    assert release_date(date(2018, 12, 24)) == date(2019, 2, 1)
+    assert release_date(date(2019, 2, 26)) == date(2019, 3, 5)
+    assert release_date(date(2019, 3, 5)) == date(2019, 3, 8)  # current again
+    lo = date(2019, 2, 1)
+    assert all(p.weekday() in (1, 4) for r, p in DELAYED_RELEASES.items() if p >= lo
+               and p.year == 2019)
+
+
+def test_a_shutdown_report_off_the_table_gets_the_resume_date():
+    # A Wednesday-dated report inside the 2013 window is not in the table.
+    assert release_date(date(2013, 10, 16)) == date(2013, 11, 8)
+
+
+def test_the_corrected_rule_is_never_earlier_than_the_old_friday():
+    # The old rule is what the stored rows carry; the migration deletes the rows it
+    # made early, so the new date must never precede it.
+    d = date(2003, 1, 7)
+    while d < date(2027, 1, 1):
+        earliest = d + timedelta(days=3)
+        old = earliest + timedelta(days=(4 - earliest.weekday()) % 7)
+        assert release_date(d) >= old, d
+        d += timedelta(weeks=1)
+
+
+def test_delayed_releases_are_monotone_and_inside_their_windows():
+    pairs = sorted(DELAYED_RELEASES.items())
+    # Non-decreasing: 2013's are dated to the end of a week, so two can share one.
+    assert all(a[1] <= b[1] for a, b in pairwise(pairs))
+    for r in DELAYED_RELEASES:
+        assert any(lo <= r <= hi for lo, hi, _ in SHUTDOWN_WINDOWS), r
+
+
+def test_parse_gives_a_shutdown_report_its_catch_up_as_of():
+    rows = [_row("088691", "2025-10-07", noncomm_positions_long_all="10",
+                 noncomm_positions_short_all="4")]
+    (o,) = _adapter().parse(rows, "088691", "pos.cot.gold", "b")
+    assert o.as_of == datetime(2025, 11, 21, 15, 30, tzinfo=NY)

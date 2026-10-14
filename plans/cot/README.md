@@ -53,13 +53,17 @@ Decisions taken while the user was away are in [DECISIONS.md](DECISIONS.md). Eac
 - **The release lag is not always Friday.** CFTC's own catch-up schedules show:
   - 2013 shutdown: first delayed report published 2013-10-25, back on schedule by 2013-11-08;
   - 2018–19 shutdown: first delayed report 2019-02-01, current again around 2019-03-08;
-  - 2025 shutdown: reports dated 2025-09-30 → 2026-01-13 published 2025-11-19 → 2026-01-20
-    ([release 9138-25](https://www.cftc.gov/PressRoom/PressReleases/9138-25));
+  - 2025 shutdown: reports dated 2025-09-30 → 2025-12-23 published 2025-11-19 → 2025-12-29.
+    That is the accelerated schedule CFTC posted on 2025-12-09, which superseded
+    [release 9138-25](https://www.cftc.gov/PressRoom/PressReleases/9138-25)'s table from the
+    11-10 report on ([COT special announcements](https://www.cftc.gov/MarketReports/CommitmentsofTraders/HistoricalSpecialAnnouncements/index.htm));
+  - 2023 ION cyber incident (found during T158): reports dated 2023-01-31 → 2023-03-14
+    published 2023-02-24 → 2023-03-21, one CFTC announcement per report;
   - holiday weeks: for example the 2025-11-25 report went out on Monday 12-01 (Thanksgiving
     week), and the 2025-12-23 report on Monday 12-29.
 
-  The adapter's `release_as_of` gives the Friday in all these cases, so the stored `as_of` is
-  **early** for them. That is a point-in-time leak (invariant 10) and is filed as T158.
+  Until T158 the adapter's `release_as_of` gave the Friday in all these cases, so the stored
+  `as_of` was **early** for them: a point-in-time leak (invariant 10).
 
 ## Tasks
 
@@ -90,10 +94,9 @@ because `terminal_series` already serves any series id. Writing that down in the
 whole job.
 
 ### T158 · Opus · —
-**COT `as_of` is early in shutdown and holiday weeks.** See *Verified facts*. The fix must add
-rows and never overwrite them (invariant 10), and rows already stored with an early `as_of`
-stay visible at that early instant. Deciding how to handle them is the user's call: see
-[DECISIONS.md](DECISIONS.md) D4.
+**COT `as_of` is early in shutdown and holiday weeks.** See *Verified facts*. The user chose
+the recommended fix on 2026-10-13 ([DECISIONS.md](DECISIONS.md) D4): correct the rule, and
+delete the early rows in a one-off migration that documents the exception.
 
 ## Result
 
@@ -161,3 +164,49 @@ Files:
   read. It is not a trigger. Anything further, such as COT as a regime filter on a rule that
   has its own edge, would be a new declared family, and the result above says to expect
   little from it.
+
+**Post-run correction (T158, 2026-10-13).** Two bugs in the harness's release dates, both found
+while fixing the adapter:
+- `_no_release_on` treated a Thursday Veterans Day (2004, 2010, 2021) as Thanksgiving, which
+  pushed those weeks' releases to Monday. The error was late, never early.
+- The ION incident's reports (2023-01-31 → 03-14) were published 3–4 weeks late, but were not in
+  `SHUTDOWN_REPORT_WINDOWS`, so they entered weeks before they were public. That error **was**
+  early. The window is now dropped like the shutdowns.
+
+Both fixed and re-run on the cached data. **The verdict is unchanged: 84 of 84 fail.** 45 trials
+lost or gained a trade, and no trial's doubled-cost mean moved by more than 0.02R. The only
+t > 2 is still EURUSD Legacy follow at 20 days (t 2.58, IS +0.41R, OOS −0.04R). The numbers in
+the table above and in the search log are from the first run.
+
+### T158: landed 2026-10-13. Deploy pending.
+
+- **Rule:** `adapters/cftc.release_date(report_date)`.
+  - A report a delay held back takes its date from `DELAYED_RELEASES`: the 2013, 2018–19 and
+    2025 shutdowns and the 2023 ION incident.
+    - 2025 and 2023 are exact, from CFTC's tables and announcements.
+    - 2019 follows the Tuesday-and-Friday cadence CFTC announced in release 7864-19.
+    - 2013 dates each report to the Friday ending the week CFTC announced, because release
+      6745-13 named weeks, not days. Those dates can be late, never early.
+    - A delayed report not in the table gets the date its delay ended.
+  - Otherwise it is the Friday, pushed to the next day CFTC could publish on. That skips
+    weekends, federal holidays, the day after Thanksgiving, and four executive-order or
+    mourning closures (2004-06-11, 2008-12-26, 2025-12-26, 2026-01-02).
+  - A test checks every week from 2003 to 2026: the new date is never earlier than the old
+    Friday. That is the property the migration relies on.
+- **Migration** `c0d1e2f3a4b5_t158_cot_early_as_of.py`.
+  - It deletes every `pos.cot.*` row, raw or `.pctile`, whose `as_of` is earlier than 15:30 ET
+    on its corrected release date.
+  - The percentile rows are caught by the same test. A percentile's `as_of` is the running
+    maximum over its window, and corrected release dates never go backwards.
+  - Counted read-only against the homeserver on 2026-10-13: **850 of 11,619 rows, in 89 report
+    weeks.**
+  - After deploy, the nightly ingest inserts the corrected rows and the derivation rebuilds the
+    percentiles. Until that run, those weeks are simply missing.
+- **Acceptance:**
+  - Tests pin the 2025 and 2023 catch-up dates, Thanksgiving and the other holidays, a Thursday
+    Veterans Day, and the as_of `parse` stores for a shutdown report.
+  - Not yet checkable, because it needs the deploy and one ingest: `terminal_series
+    pos.cot.gold as_of=2025-11-01` should return the 2025-09-23 report, not 10-28's.
+- **Not covered:** a delay CFTC announced that this list misses. The sources checked were CFTC's
+  COT special-announcements page and the press releases above. Hurricane Sandy (2012) turned up
+  no COT delay.

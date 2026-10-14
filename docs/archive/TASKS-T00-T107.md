@@ -1983,7 +1983,14 @@ nas, dji and eur; and managed money for gold and crude. All of them were live-fe
 2026-10-13, and 16 adapter contract tests were added. Deploy pending; the first nightly ingest
 backfills them. **T157:** the brief prints every COT series, and the market-research skill reads
 the TFF split as context and says that T156 found no signal in it. T156 (the study) is partial:
-the 84 trials are not yet in the registry. T158 is open.
+the 84 trials are not yet in the registry.
+
+**T158** (finished 2026-10-13): COT `as_of` is now the day CFTC actually published.
+`adapters/cftc.release_date` pushes past federal holidays, executive-order closures and the day
+after Thanksgiving, and takes shutdown and ION-incident reports from CFTC's catch-up schedules.
+Migration `c0d1e2f3a4b5` deletes the `pos.cot.*` rows stored with an earlier `as_of` (850 of
+11,619 on the homeserver, 89 report weeks, counted read-only on 2026-10-13). That is the one
+sanctioned exception to invariant 10, by the user's decision (plans/cot/DECISIONS.md D4).
 
 ## Status corrections
 

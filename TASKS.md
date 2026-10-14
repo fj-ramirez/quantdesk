@@ -131,8 +131,8 @@ a fresh chain.
 
 ## COT positioning (2026-10-13)
 
-> Initiative: [plans/cot/README.md](plans/cot/README.md). T155 and T157 are done and in the
-> archive's addendum. Decisions taken while the user was away are in
+> Initiative: [plans/cot/README.md](plans/cot/README.md). T155, T157 and T158 are done and in
+> the archive's addendum. Decisions taken while the user was away are in
 > [plans/cot/DECISIONS.md](plans/cot/DECISIONS.md).
 
 ### T156 · Opus · T155
@@ -141,26 +141,11 @@ the run).
 
 **Partial (2026-10-13):** the study ran. **None of the 84 trials passes stage 1, and there is
 no lead.** See the plan's *Result*. Still open: recording the 84 trials in `research.trials`.
-Run `python -m app.modules.research.cot_study --out <dir> --n-registry <n> --record` on the
-homeserver.
-
-### T158 · Opus · —
-**COT `as_of` is early in shutdown and holiday weeks.** `CftcAdapter.release_as_of` always
-returns the Friday. CFTC published Monday in some holiday weeks (for example the 2025-11-25
-report on 12-01), and weeks late during the 2013, 2018–19 and 2025 shutdowns (release
-9138-25). That is a point-in-time leak (invariant 10) on a handful of weeks a year, and on
-every report in a shutdown.
-
-**The fix is a decision for the user** ([DECISIONS.md](plans/cot/DECISIONS.md) D4):
-- Correcting the rule adds rows with the right `as_of`.
-- The early rows already stored stay visible at their early instant.
-- Recommended: correct the rule (federal holidays, the day after Thanksgiving, and a table of
-  the published shutdown catch-up schedules), and remove the early rows in a one-off migration
-  that documents why this is not a revision.
-
-Acceptance:
-- a test pins the 2025 catch-up dates and the Thanksgiving case;
-- `terminal_series` at an instant inside a shutdown no longer returns that week's report.
+It needs the branch deployed, then on the homeserver (the stack directory):
+`docker compose -f compose.yaml -f compose.prod.yaml exec backend python -m
+app.modules.research.cot_study --out /tmp/cot --n-registry <n> --record`, with `<n>` the
+registry's trial count from `desk_status`. Dev has no route to the server's database or shell
+(D9).
 
 ---
 

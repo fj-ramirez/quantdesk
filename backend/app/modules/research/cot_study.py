@@ -94,10 +94,12 @@ PAIRS: list[tuple[str, str, str]] = [
 ]
 
 #: Report dates whose publication a government shutdown delayed by weeks (CFTC's catch-up
-#: schedules; plans/cot/README.md). Dropped as signals, never re-dated by guesswork.
+#: schedules; plans/cot/README.md). Dropped as signals, never re-dated by guesswork. The 2023
+#: window is the ION cyber incident, the same kind of delay, found by T158 after the first run.
 SHUTDOWN_REPORT_WINDOWS = (
     (dt.date(2013, 9, 30), dt.date(2013, 10, 31)),
     (dt.date(2018, 12, 24), dt.date(2019, 3, 1)),
+    (dt.date(2023, 1, 31), dt.date(2023, 3, 14)),
     (dt.date(2025, 9, 30), dt.date(2026, 1, 13)),
 )
 
@@ -124,7 +126,9 @@ def _no_release_on(d: dt.date) -> bool:
     """CFTC does not publish on weekends, federal holidays or the day after Thanksgiving."""
     if d.weekday() >= 5 or d in _HOLIDAYS:
         return True
-    return d.month == 11 and d.weekday() == 4 and (d - dt.timedelta(days=1)) in _HOLIDAYS
+    # Thanksgiving is the fourth Thursday (22nd-28th); a Thursday Veterans Day is not it (T158).
+    thursday = d - dt.timedelta(days=1)
+    return d.month == 11 and d.weekday() == 4 and thursday.day >= 22 and thursday in _HOLIDAYS
 
 
 def release_date(nominal: dt.date) -> dt.date:

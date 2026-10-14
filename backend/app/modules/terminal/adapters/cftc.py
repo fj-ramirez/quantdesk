@@ -27,9 +27,15 @@ release instant.
 
 In weeks containing a federal holiday the measurement date moves, nearly always
 to the Monday, while publication stays on the Friday. as_of is therefore derived
-from the release WEEKDAY rather than a fixed offset -- see release_as_of. No
-holiday calendar is needed, which matters because the rest of the codebase
-deliberately does without one (spec 7).
+from the release WEEKDAY rather than a fixed offset -- see release_date.
+
+**The Friday is not always the release day (T158).** When the Friday is a federal
+holiday, the day after Thanksgiving, or a day the government closed by order,
+CFTC publishes the next business day: the 2025-11-25 report went out Monday
+12-01. Three government shutdowns delayed reports by weeks, and those dates come
+from CFTC's published catch-up schedules (DELAYED_RELEASES), as do the reports
+the 2023 ION cyber incident held back. Until T158 every one
+of these got the Friday as its as_of, so it was visible before it was public.
 
 Positions are stored as raw contracts. Spec 2.2 wants them read as a percentile
 of their own trailing three-year range, since contract counts are not comparable
@@ -42,6 +48,8 @@ from __future__ import annotations
 from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import date, time, timedelta
+
+from pandas.tseries.holiday import USFederalHolidayCalendar
 
 from ..errors import EmptyFetchError, UnknownSeriesError
 from ..models import Observation
@@ -68,6 +76,127 @@ RELEASE_LOCAL_TIME = time(15, 30)
 # which is the safe direction: a value can be invisible too long, never visible
 # too early.
 MIN_RELEASE_LAG_DAYS = 3
+
+_FEDERAL_HOLIDAYS = frozenset(
+    d.date() for d in USFederalHolidayCalendar().holidays("1986-01-01", "2040-12-31")
+)
+
+# Days federal offices closed by order, outside the holiday calendar, that fell on
+# a release day. 2004-06-11 was the national day of mourning for President Reagan;
+# 2008-12-26 and 2025-12-26 / 2026-01-02 were closed by executive order (CFTC's
+# "original publish date" column in release 9138-25 moves those weeks to Monday).
+_AD_HOC_CLOSURES = frozenset({
+    date(2004, 6, 11),
+    date(2008, 12, 26),
+    date(2025, 12, 26),
+    date(2026, 1, 2),
+})
+
+
+def _d(s: str) -> date:
+    return date.fromisoformat(s)
+
+
+# Report date -> the day it was actually published, for reports a government
+# shutdown (or, in 2023, the ION cyber incident) delayed.
+#
+# - 2025: exact, from the accelerated schedule CFTC posted on 2025-12-09 (COT
+#   Historical Special Announcements). It superseded release 9138-25's table from
+#   the 2025-11-10 report on, and was back on schedule with 12-23's report on 12-29.
+# - 2023: exact, from CFTC's announcement of each catch-up report, 2023-02-24 to
+#   2023-03-21. The 2023-01-31 report was the first held back.
+# - 2018-19: CFTC release 7864-19 put the 2018-12-24 report on 2019-02-01, then
+#   "one report on Tuesday and another on Friday of each week until the reports are
+#   current". That cadence makes 2019-03-05's report the first current one (03-08),
+#   which matches contemporaneous reporting (Saxo, 2019-02-18, on the week to
+#   January 22).
+# - 2013: release 6745-13 gave weeks, not days: the 10-01 report on 10-25, two more
+#   in the week of 10-28, at least two more in the week of 11-04, and back on
+#   schedule by 11-08. Each is dated to the Friday ending its week, which can only
+#   be late, never early.
+DELAYED_RELEASES: dict[date, date] = {
+    _d(r): _d(p) for r, p in (
+        ("2013-10-01", "2013-10-25"),
+        ("2013-10-08", "2013-11-01"),
+        ("2013-10-15", "2013-11-01"),
+        ("2013-10-22", "2013-11-08"),
+        ("2013-10-29", "2013-11-08"),
+        ("2018-12-24", "2019-02-01"),
+        ("2018-12-31", "2019-02-05"),
+        ("2019-01-08", "2019-02-08"),
+        ("2019-01-15", "2019-02-12"),
+        ("2019-01-22", "2019-02-15"),
+        ("2019-01-29", "2019-02-19"),
+        ("2019-02-05", "2019-02-22"),
+        ("2019-02-12", "2019-02-26"),
+        ("2019-02-19", "2019-03-01"),
+        ("2019-02-26", "2019-03-05"),
+        ("2023-01-31", "2023-02-24"),
+        ("2023-02-07", "2023-03-03"),
+        ("2023-02-14", "2023-03-08"),
+        ("2023-02-21", "2023-03-10"),
+        ("2023-02-28", "2023-03-14"),
+        ("2023-03-07", "2023-03-16"),
+        ("2023-03-14", "2023-03-21"),
+        ("2025-09-30", "2025-11-19"),
+        ("2025-10-07", "2025-11-21"),
+        ("2025-10-14", "2025-11-25"),
+        ("2025-10-21", "2025-12-02"),
+        ("2025-10-28", "2025-12-05"),
+        ("2025-11-04", "2025-12-09"),
+        ("2025-11-10", "2025-12-10"),
+        ("2025-11-18", "2025-12-12"),
+        ("2025-11-25", "2025-12-15"),
+        ("2025-12-02", "2025-12-17"),
+        ("2025-12-09", "2025-12-19"),
+        ("2025-12-16", "2025-12-23"),
+        ("2025-12-23", "2025-12-29"),
+    )
+}
+
+# The span of report dates each delay covered, and the day the last of them came out. A report inside one that is not in
+# DELAYED_RELEASES (a contract reporting on an unusual date) gets the window's last
+# catch-up date: late, but never early.
+SHUTDOWN_WINDOWS = (
+    (date(2013, 10, 1), date(2013, 10, 29), date(2013, 11, 8)),
+    (date(2018, 12, 22), date(2019, 2, 26), date(2019, 3, 5)),
+    (date(2023, 1, 31), date(2023, 3, 14), date(2023, 3, 21)),
+    (date(2025, 9, 30), date(2025, 12, 23), date(2025, 12, 29)),
+)
+
+
+def _no_release_on(d: date) -> bool:
+    """CFTC does not publish on weekends, federal holidays, closures or Black Friday."""
+    if d.weekday() >= 5 or d in _FEDERAL_HOLIDAYS or d in _AD_HOC_CLOSURES:
+        return True
+    # The Friday after Thanksgiving: the fourth Thursday is the 22nd-28th. Testing only
+    # "yesterday was a November holiday" would also catch a Thursday Veterans Day.
+    thursday = d - timedelta(days=1)
+    return (
+        d.month == 11 and d.weekday() == 4 and thursday.day >= 22
+        and thursday in _FEDERAL_HOLIDAYS
+    )
+
+
+def release_date(report_date: date) -> date:
+    """The day a report dated `report_date` was published.
+
+    A shutdown-delayed report takes its date from the catch-up schedule. Otherwise it
+    is the first RELEASE_WEEKDAY on or after report_date + MIN_RELEASE_LAG_DAYS,
+    pushed to the next day CFTC could publish on. Derived from the weekday rather
+    than a fixed offset so holiday-week reports, which are measured on the Monday
+    but still published that Friday, do not get an as_of three days early.
+    """
+    if report_date in DELAYED_RELEASES:
+        return DELAYED_RELEASES[report_date]
+    for lo, hi, resumed in SHUTDOWN_WINDOWS:
+        if lo <= report_date <= hi:
+            return resumed
+    earliest = report_date + timedelta(days=MIN_RELEASE_LAG_DAYS)
+    d = earliest + timedelta(days=(RELEASE_WEEKDAY - earliest.weekday()) % 7)
+    while _no_release_on(d):
+        d += timedelta(days=1)
+    return d
 
 # Socrata caps a page; paginate rather than assume one request holds a history
 # that reaches back to 1986.
@@ -181,18 +310,8 @@ class CftcAdapter(BaseAdapter):
         return super().resolve(source_code)
 
     def release_as_of(self, report_date: date):
-        """The instant a report dated `report_date` became public.
-
-        The first RELEASE_WEEKDAY on or after report_date + MIN_RELEASE_LAG_DAYS.
-        Derived from the weekday rather than a fixed offset so holiday-week
-        reports, which are measured on the Monday but still published that
-        Friday, do not get an as_of three days early.
-        """
-        earliest = report_date + timedelta(days=MIN_RELEASE_LAG_DAYS)
-        days_to_release = (RELEASE_WEEKDAY - earliest.weekday()) % 7
-        return self.at_local(
-            earliest + timedelta(days=days_to_release), RELEASE_LOCAL_TIME
-        )
+        """The instant a report dated `report_date` became public: release_date at 15:30 ET."""
+        return self.at_local(release_date(report_date), RELEASE_LOCAL_TIME)
 
     def fetch(
         self,
