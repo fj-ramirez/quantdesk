@@ -129,26 +129,6 @@ a fresh chain.
 
 ---
 
-## COT positioning (2026-10-13)
-
-> Initiative: [plans/cot/README.md](plans/cot/README.md). T155, T157 and T158 are done and in
-> the archive's addendum. Decisions taken while the user was away are in
-> [plans/cot/DECISIONS.md](plans/cot/DECISIONS.md).
-
-### T156 · Opus · T155
-**Stage-1 test of COT positioning extremes** ([study.md](plans/cot/study.md), declared before
-the run).
-
-**Partial (2026-10-13):** the study ran. **None of the 84 trials passes stage 1, and there is
-no lead.** See the plan's *Result*. Still open: recording the 84 trials in `research.trials`.
-It needs the branch deployed, then on the homeserver (the stack directory):
-`docker compose -f compose.yaml -f compose.prod.yaml exec backend python -m
-app.modules.research.cot_study --out /tmp/cot --n-registry <n> --record`, with `<n>` the
-registry's trial count from `desk_status`. Dev has no route to the server's database or shell
-(D9).
-
----
-
 ## ThetaData (Options Standard, bought 2026-09-24)
 
 > Initiative: [plans/thetadata/README.md](plans/thetadata/README.md). Options only — no Stocks,

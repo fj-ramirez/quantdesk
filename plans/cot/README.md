@@ -100,7 +100,7 @@ delete the early rows in a one-off migration that documents the exception.
 
 ## Result
 
-### T155: landed 2026-10-13 (`8e02d52`). Deploy pending.
+### T155: landed 2026-10-13 (`8e02d52`). Deployed 2026-10-14 (`d98ce5d`).
 
 - **Code:**
   - `adapters/cftc.py` reads the Legacy, TFF and Disaggregated reports. Source codes are
@@ -120,7 +120,7 @@ delete the early rows in a one-off migration that documents the exception.
   is rebuilt backfills everything from `backfill_start`. No migration is needed (decision:
   "new capture symbols need no migration" applies here too).
 
-### T156: study run 2026-10-13. No trial passes and there is no lead. Registry write open.
+### T156: study run 2026-10-13. No trial passes and there is no lead. Recorded 2026-10-14.
 
 **The answer is no.** None of the 84 trials passes stage 1, and none qualifies as a lead.
 
@@ -158,8 +158,8 @@ Files:
   `cot_study --out <dir> --n-registry <n>`.
 
 **Open:**
-- Record the 84 trials. Run `cot_study --out <dir> --n-registry <n> --record` on the
-  homeserver. Until then the noise ceiling undercounts by 84 (D9).
+- ~~Record the 84 trials.~~ Done 2026-10-14 on the homeserver: `research.trials` has 84
+  `cfd_cot` rows, and 172,591 trials in all (D9).
 - COT stays useful as **context**: the brief's positioning table, the market-research
   read. It is not a trigger. Anything further, such as COT as a regime filter on a rule that
   has its own edge, would be a new declared family, and the result above says to expect
@@ -178,7 +178,15 @@ lost or gained a trade, and no trial's doubled-cost mean moved by more than 0.02
 t > 2 is still EURUSD Legacy follow at 20 days (t 2.58, IS +0.41R, OOS −0.04R). The numbers in
 the table above and in the search log are from the first run.
 
-### T158: landed 2026-10-13. Deploy pending.
+### T158: landed 2026-10-13. Deployed 2026-10-14 (`d98ce5d`).
+
+**Verified on the homeserver after the deploy:**
+- `alembic_version` is `c0d1e2f3a4b5`.
+- `pos.cot.*` went from 11,619 rows to 10,769: exactly the 850 counted beforehand.
+- The latest `pos.cot.gold` known at 2025-11-01 is the 2025-09-23 report, stored with an `as_of`
+  of 09-26. That is the acceptance check.
+- The 2025 shutdown window (reports from 09-30 to 12-23) is empty until the next nightly ingest
+  re-adds it with the catch-up dates.
 
 - **Rule:** `adapters/cftc.release_date(report_date)`.
   - A report a delay held back takes its date from `DELAYED_RELEASES`: the 2013, 2018–19 and
