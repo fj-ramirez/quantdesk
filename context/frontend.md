@@ -54,6 +54,7 @@ Every GEX route is one segment deeper since T75. `modules/gex/routes.tsx` nests 
 | `/research/paper` | `Paper` — the forward-tracking watchlist |
 | `/terminal` | `Board` — the normalized change board (T80) |
 | `/terminal/regime`, `/graph`, `/policy`, `/brief` | the other four screens |
+| `/broker` | `Chart` — CFD candles with price action and GEX levels, as of `end` (T159) |
 
 ## Data layer — three files, three jobs
 
@@ -118,6 +119,17 @@ informative part.
 - **The z scale is banded, not continuous**, nothing under 1 sigma is coloured, and the number is
   always printed. Colour reinforces; it never carries the value alone.
 - **`expected_sign === 0` means regime-dependent, not unknown**, and the graph says so in words.
+
+## The broker module (T159) — the chart is drawn as of its right edge
+
+- **One response per chart.** Bars, events, zones and levels come from `GET /api/broker/chart`
+  together, all as of the same `end`, so nothing on the chart is from another moment.
+- **The forming bar is muted and carries no marker**, because no detector saw it.
+- **Markers must land on a bar's time exactly** (lightweight-charts drops the rest silently).
+  `chartData.buildMarkers` counts the ones that matched no bar and the page shows that count.
+- **A null level is whitespace, never zero.** The step lines break across a gap in capture.
+- `symbol`, `tf`, `end` and `layers` are URL state, defaults never written. The as-of input and
+  the ◀ / ▶ step buttons are the replay control, flagged like the terminal's.
 
 ## Error and empty states (T37 — do not regress)
 

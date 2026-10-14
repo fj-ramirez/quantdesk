@@ -160,6 +160,10 @@ Vue UI is **not** ported: everything a chart needs is already on the desk (`brok
   step lines. Symbol, timeframe and `end` are URL state.
 - Not here: Flex Renko (a later port of charter's engine as a pure module), ticks, live push.
 
+**Partial (2026-10-14):** code landed on `feat/broker-chart`, all suites green; see the plan's
+*Result*. Still open: deploy the backend and frontend to the homeserver and look at XAUUSD and
+S&P.fs on M15 and D1 against MT5's own chart; time the D1 request.
+
 ---
 
 ## ThetaData (Options Standard, bought 2026-09-24)

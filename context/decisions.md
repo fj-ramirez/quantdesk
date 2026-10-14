@@ -98,6 +98,9 @@ number to be true, it belongs in a plan file's *Result* heading or behind an MCP
 - The build is stamped per service, never stack-wide; unknown says `unknown`. — T98.
 - A response cache is keyed on a fingerprint of its inputs, never a timer, and never holds anything
   derived from the wall clock (chain age, `stale`). A GET never writes. — T124.
+- The broker chart is drawn as of `end`: bars cut on the broker's server clock (D1 is the New
+  York 17:00 session), the forming bar flagged and never shown to a detector, each bar's GEX
+  levels from the newest snapshot at or before its close. Charter's UI is not ported. — T159.
 
 ## Decisions and scoring (GEX)
 
@@ -219,4 +222,5 @@ number to be true, it belongs in a plan file's *Result* heading or behind an MCP
 | T99–T107 | Desk integrity | complete | P:desk-integrity |
 | T108–T121 | Retroactive allocation, task-history and logic audit follow-ups | see TASKS.md | P:audit-and-compaction |
 | T143–T147 | charter-mt5: Axi MT5 data, basis, price action | open: T147 | P:charter-mt5 |
+| T159 | Broker chart: CFD candles, price action, GEX levels in CFD price | open: homeserver check | P:charter-mt5 |
 | T155–T158 | cot: TFF and Disaggregated positioning, stage-1 study of COT extremes | done, deployed 2026-10-14 (PR #26) | P:cot |
