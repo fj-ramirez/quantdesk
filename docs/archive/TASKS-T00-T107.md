@@ -1982,8 +1982,13 @@ every traded CFD: Legacy `nas`, `dji` and `eur`; TFF leveraged funds and asset m
 nas, dji and eur; and managed money for gold and crude. All of them were live-fetched on
 2026-10-13, and 16 adapter contract tests were added. Deploy pending; the first nightly ingest
 backfills them. **T157:** the brief prints every COT series, and the market-research skill reads
-the TFF split as context and says that T156 found no signal in it. T156 (the study) is partial:
-the 84 trials are not yet in the registry.
+the TFF split as context and says that T156 found no signal in it.
+
+**T156** (finished 2026-10-14): the stage-1 study of COT extremes. 0 of 84 trials pass, and there
+is no lead. The 84 trials are recorded in `research.trials` (`market = 'cfd_cot'`, 172,591 in all
+afterwards).
+
+All four deployed 2026-10-14 in `d98ce5d` (PR #26).
 
 **T158** (finished 2026-10-13): COT `as_of` is now the day CFTC actually published.
 `adapters/cftc.release_date` pushes past federal holidays, executive-order closures and the day

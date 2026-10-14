@@ -219,4 +219,4 @@ number to be true, it belongs in a plan file's *Result* heading or behind an MCP
 | T99–T107 | Desk integrity | complete | P:desk-integrity |
 | T108–T121 | Retroactive allocation, task-history and logic audit follow-ups | see TASKS.md | P:audit-and-compaction |
 | T143–T147 | charter-mt5: Axi MT5 data, basis, price action | open: T147 | P:charter-mt5 |
-| T155–T158 | cot: TFF and Disaggregated positioning, stage-1 study of COT extremes | open: T156 (registry write) | P:cot |
+| T155–T158 | cot: TFF and Disaggregated positioning, stage-1 study of COT extremes | done, deployed 2026-10-14 (PR #26) | P:cot |
