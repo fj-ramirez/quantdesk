@@ -629,9 +629,9 @@ class Decision(Base):
 
 
 class LevelEvent(Base):
-    """One intraday event at a gamma level -- a flip cross or a wall bounce -- as it was
-    knowable at the bar that confirmed it (T142, T153; `docs/edges/flip-cross.md`,
-    `docs/edges/wall-bounce.md`).
+    """One intraday event at a gamma level -- a flip cross, a wall bounce or a wall break -- as
+    it was knowable at the bar that confirmed it (T142, T153, T164; `docs/edges/flip-cross.md`,
+    `docs/edges/wall-bounce.md`, `docs/edges/wall-break.md`).
 
     **Insert-only.** The job re-reads the whole session on every poll, so the key
     `(symbol, bar_ts, key)` turns repeats into no-ops; a row is never updated or deleted. If a
@@ -651,7 +651,8 @@ class LevelEvent(Base):
     symbol: Mapped[str] = mapped_column(String(16), primary_key=True)
     #: The confirming bar's opening instant (`gex.intraday_bars.ts`).
     bar_ts: Mapped[dt.datetime] = mapped_column(UTCDateTime, primary_key=True)
-    #: `FLIP_CROSS_DOWN`, `FLIP_CROSS_UP`, `PUT_WALL_BOUNCE` or `CALL_WALL_BOUNCE`.
+    #: `FLIP_CROSS_DOWN`, `FLIP_CROSS_UP`, `PUT_WALL_BOUNCE`, `CALL_WALL_BOUNCE`, `PUT_WALL_BREAK`
+    #: or `CALL_WALL_BREAK`, each with an optional `_0DTE` suffix.
     key: Mapped[str] = mapped_column(String(32), primary_key=True)
     session_date: Mapped[dt.date] = mapped_column(Date, nullable=False)
     #: The confirming bar's close instant: the entry.
@@ -682,8 +683,8 @@ class LevelEventScore(Base):
     """What price did after one `LevelEvent`, written **once**, after its session ended.
 
     Insert-only like the event table: a score is written when it can be complete, never
-    updated. Every number is signed **in the event's direction** (up for `FLIP_CROSS_UP` and
-    `PUT_WALL_BOUNCE`, down for the other two), so a positive value means price kept going the
+    updated. Every number is signed **in the event's direction** (up for `FLIP_CROSS_UP`,
+    `PUT_WALL_BOUNCE` and `CALL_WALL_BREAK`, down for the other three), so a positive value means price kept going the
     way the event pointed. The flip-cross spec trades `FLIP_CROSS_UP` as a fade (short), so that
     key wins when its numbers are negative.
 

@@ -1,6 +1,6 @@
 """Intraday events at the desk's gamma levels, and what price did afterwards (T142, T153).
 
-Two frozen rules, in code exactly as specified. **Do not change either.** A variant is a new
+Three frozen rules, in code exactly as specified. **Do not change either.** A variant is a new
 key with its own start date; editing a rule would quietly mix two rules' evidence in one
 forward record.
 
@@ -28,13 +28,25 @@ forward record.
 * W is the wall known at the touch bar's close. After an event, the next touch of the same key
   must come after the confirming bar, so one touch sequence is one event.
 
+**Wall break** (`docs/edges/wall-break.md`, frozen 2026-10-14, T164):
+
+* The flip cross's structure on a wall: **two consecutive 5-minute closes beyond the wall, with
+  the close two bars earlier on the near side**. Through the put wall (downward) is
+  `PUT_WALL_BREAK`, pointing down; through the call wall (upward) is `CALL_WALL_BREAK`, pointing
+  up. "Consecutive" means consecutive bars that have that wall, as for the flip.
+* The wall known at **all three** closes must be the same strike. A wall that moves to another
+  strike between captures is not price breaking through it, so that run is no event.
+* A close exactly on the wall has no side and breaks a run.
+* Logged, scored and alerted like the others, but not traded: it is a forward record of the
+  bounce's failure mode, with no executor class.
+
 **0DTE variants** (T154, frozen 2026-10-12): both rules run unchanged on the `ZERO_DTE` levels
 too, as separate keys suffixed `_0DTE` (:func:`variant_key`). 0DTE walls sit close to price and
 move during the session, so these fire far more often; their records never mix with the
 all-expiries keys.
 
 Two kinds of follow-through are measured, both signed **in the event's direction** (`+1` for
-`FLIP_CROSS_UP` and `PUT_WALL_BOUNCE`, `-1` for the other two), so a positive number means price
+`FLIP_CROSS_UP`, `PUT_WALL_BOUNCE` and `CALL_WALL_BREAK`, `-1` for the other three), so a positive number means price
 kept going the way the event pointed:
 
 * fixed-horizon returns from the desk symbol's own 5-minute closes -- 15, 30 and 60 minutes and
@@ -61,8 +73,10 @@ __all__ = [
     "HORIZONS_MIN",
     "KEYS",
     "KEY_CALL_BOUNCE",
+    "KEY_CALL_BREAK",
     "KEY_DOWN",
     "KEY_PUT_BOUNCE",
+    "KEY_PUT_BREAK",
     "KEY_UP",
     "TOUCH_TOL",
     "ZERO_DTE_SUFFIX",
@@ -73,6 +87,7 @@ __all__ = [
     "base_key",
     "detect_crosses",
     "detect_wall_bounces",
+    "detect_wall_breaks",
     "direction_of",
     "excursion_path",
     "horizon_returns",
@@ -86,13 +101,18 @@ KEY_DOWN = "FLIP_CROSS_DOWN"
 KEY_UP = "FLIP_CROSS_UP"
 KEY_PUT_BOUNCE = "PUT_WALL_BOUNCE"
 KEY_CALL_BOUNCE = "CALL_WALL_BOUNCE"
+#: T164, frozen 2026-10-14: two closes through a wall that stood still. Alerted, not traded.
+KEY_PUT_BREAK = "PUT_WALL_BREAK"
+KEY_CALL_BREAK = "CALL_WALL_BREAK"
 #: T154: the same two rules on the **0DTE** levels (`gex_levels` filter `ZERO_DTE`) are separate
 #: keys with this suffix, frozen 2026-10-12. Same detectors, different inputs, separate records:
 #: mixing them into the all-expiries keys would change those keys' evidence.
 ZERO_DTE_SUFFIX = "_0DTE"
 
 KEYS: tuple[str, ...] = tuple(
-    k + s for s in ("", ZERO_DTE_SUFFIX) for k in (KEY_DOWN, KEY_UP, KEY_PUT_BOUNCE, KEY_CALL_BOUNCE)
+    k + s
+    for s in ("", ZERO_DTE_SUFFIX)
+    for k in (KEY_DOWN, KEY_UP, KEY_PUT_BOUNCE, KEY_CALL_BOUNCE, KEY_PUT_BREAK, KEY_CALL_BREAK)
 )
 
 
@@ -176,7 +196,7 @@ class LevelEvent:
 
 def direction_of(key: str) -> int:
     """+1 for an event that points up, -1 for one that points down."""
-    return 1 if base_key(key) in (KEY_UP, KEY_PUT_BOUNCE) else -1
+    return 1 if base_key(key) in (KEY_UP, KEY_PUT_BOUNCE, KEY_CALL_BREAK) else -1
 
 
 def _latest(close_at: dt.datetime, captures: Sequence[Capture]) -> Capture | None:
@@ -263,6 +283,40 @@ def detect_wall_bounces(
                 t += 3  # the next touch must come after the confirming bar
             else:
                 t += 1
+    return sorted(out, key=lambda e: (e.bar_ts, e.key))
+
+
+def detect_wall_breaks(
+    symbol: str, bars: Sequence[OhlcBar], captures: Sequence[Capture]
+) -> list[LevelEvent]:
+    """Every put- and call-wall break in one symbol's session, oldest first. Closed bars only."""
+    bars = sorted(bars, key=lambda b: b.ts)
+    out: list[LevelEvent] = []
+    # sign = the side price breaks *to*: below the put wall, above the call wall
+    for key, kind, sign in ((KEY_PUT_BREAK, "put_wall", -1), (KEY_CALL_BREAK, "call_wall", 1)):
+        caps = sorted(
+            (c for c in captures if getattr(c, kind) is not None), key=lambda c: c.captured_at
+        )
+        rows: list[tuple[int, float, int, Capture]] = []  # (bar index, wall, side, capture)
+        for i, b in enumerate(bars):
+            cap = _latest(b.ts + BAR, caps)
+            if cap is not None:
+                w = getattr(cap, kind)
+                rows.append((i, w, _sign(b.close - w), cap))
+        for j in range(2, len(rows)):
+            i, w, side, cap = rows[j]
+            if (
+                side == sign
+                and rows[j - 1][2] == sign
+                and rows[j - 2][2] == -sign
+                and rows[j - 1][1] == w
+                and rows[j - 2][1] == w
+            ):
+                b = bars[i]
+                out.append(LevelEvent(
+                    symbol=symbol, bar_ts=b.ts, key=key, spot=b.close, level=w,
+                    level_kind=kind, net_gex=cap.net_gex, capture_at=cap.captured_at,
+                ))
     return sorted(out, key=lambda e: (e.bar_ts, e.key))
 
 
