@@ -64,6 +64,8 @@ class Settings:
     #: T139. The last raw response from the weekly feed, kept for debugging a parse failure
     #: without fetching again. **Nothing reads it back**: `terminal.releases` is the only store.
     calendar_raw_path: Path
+    #: T168. One JSON file per settled day of Cboe's daily put/call statistics.
+    cboe_pc_cache_dir: Path
 
     # `fomc_calendar_path` was here until T139: the FOMC calendar was a JSON file under
     # `DATA_DIR` because it "has no row to live in". It has one now, in `terminal.releases`, and
@@ -96,4 +98,5 @@ def load_settings() -> Settings:
         log_level=_core.XA_LOG_LEVEL,
         calendar_min_interval_minutes=_core.XA_CALENDAR_MIN_INTERVAL_MINUTES,
         calendar_raw_path=Path(_core.DATA_DIR) / "terminal" / "faireconomy_latest.json",
+        cboe_pc_cache_dir=Path(_core.DATA_DIR) / "terminal" / "cboe_pc",
     )

@@ -31,7 +31,9 @@ RETIRED_CODES = {
 # schema rather than a vendor over HTTP. It is a source in every sense that matters here --
 # codes resolve, batches are recorded, failures are reported -- and making it one is what let
 # three series that had been pending since phase 1 fill without a new vendor.
-FETCHABLE_SOURCES = frozenset({"fred", "treasury", "cboe", "cftc", "prices"})
+FETCHABLE_SOURCES = frozenset(
+    {"fred", "treasury", "cboe", "cftc", "prices", "cboe_pc", "aaii", "desk_gex"}
+)
 
 # Series computed from other stored series rather than fetched. Filled by
 # `xactx derive`; see derive.DERIVATIONS for the recipes.
@@ -536,10 +538,80 @@ PRICES = [
             "commodity", "level", "usd", "log_return"),
 ]
 
+# --- Sentiment (T168-T170, plans/sentiment) ---------------------------------
+def _sentiment(
+    series_id: str,
+    code: str,
+    name: str,
+    source: str,
+    unit: str,
+    frequency: str,
+    local_time: str,
+    note: str,
+) -> SeriesMeta:
+    """A sentiment or desk-positioning input. Each source's adapter documents its as_of."""
+    return SeriesMeta(
+        series_id=series_id,
+        display_name=name,
+        source=source,
+        source_code=code,
+        asset_class="equity",
+        category="positioning",
+        unit=unit,
+        frequency=frequency,
+        default_transform="level",
+        revisable=False,
+        vintage_source="derived_lag",
+        snapshot_tz="America/New_York",
+        snapshot_local_time=local_time,
+        notes=note,
+    )
+
+
+_PC_NOTE = (
+    "Cboe exchange put/call volume ratio: history CSV to 2019-10-04, the daily "
+    "market-statistics JSON from 2019-10-07. as_of is the next day 06:00 ET; see "
+    "adapters/cboe_pc.py."
+)
+_AAII_NOTE = (
+    "AAII Sentiment Survey, weekly from 1987-06-26, in percent of respondents. "
+    "as_of is the reported Thursday at 12:00 ET; see adapters/aaii.py."
+)
+_DESK_GEX_NOTE = (
+    "The desk's own EOD dealer gamma (gex.gex_levels, filter ALL), one value per "
+    "session. as_of is when the engine computed it; see adapters/desk_gex.py. "
+    "Starts where the desk's captures start, so it is short next to the other inputs."
+)
+SENTIMENT = [
+    _sentiment("sent.pc.total", "TOTAL", "Cboe total put/call", "cboe_pc", "ratio", "d",
+               "06:00", _PC_NOTE),
+    _sentiment("sent.pc.equity", "EQUITY", "Cboe equity put/call", "cboe_pc", "ratio", "d",
+               "06:00", _PC_NOTE),
+    _sentiment("sent.pc.index", "INDEX", "Cboe index put/call", "cboe_pc", "ratio", "d",
+               "06:00", _PC_NOTE),
+    _sentiment("sent.aaii.bull", "BULLISH", "AAII bullish", "aaii", "pct", "w", "12:00",
+               _AAII_NOTE),
+    _sentiment("sent.aaii.neutral", "NEUTRAL", "AAII neutral", "aaii", "pct", "w", "12:00",
+               _AAII_NOTE),
+    _sentiment("sent.aaii.bear", "BEARISH", "AAII bearish", "aaii", "pct", "w", "12:00",
+               _AAII_NOTE),
+    *[
+        m
+        for u in ("SPX", "QQQ")
+        for m in (
+            _sentiment(f"desk.gex.{u.lower()}.net", f"{u}:net", f"{u} net dealer gamma (desk)",
+                       "desk_gex", "usd", "d", "16:20", _DESK_GEX_NOTE),
+            _sentiment(f"desk.gex.{u.lower()}.flip_dist", f"{u}:flip_dist",
+                       f"{u} spot vs gamma flip, % (desk)", "desk_gex", "pct", "d", "16:20",
+                       _DESK_GEX_NOTE),
+        )
+    ],
+]
+
 UNIVERSE: list[SeriesMeta] = [
     *RATES, *INFLATION, *CREDIT, *FX, *EQUITY, *COMMODITIES, *MACRO,
     *TREASURY_CURVE, *VOL, *POSITIONING, *DERIVED, *POSITIONING_PERCENTILES,
-    *POLICY_PATH, *PRICES, *PENDING,
+    *POLICY_PATH, *PRICES, *SENTIMENT, *PENDING,
 ]
 
 
