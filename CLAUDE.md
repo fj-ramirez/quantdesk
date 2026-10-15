@@ -55,7 +55,8 @@ backend/app/
   modules/broker/     the Axi MT5 terminal (charter-mt5, T143–T145, T151, T159): client.py talks
                  to the bridge in docker/mt5/; ingest.py (M1 bars, ticks, specs);
                  basis.py + basis_job.py (CFD↔desk basis, rolls, the `broker.levels` view);
-                 strategies.py (frozen specs as legs + kill rules) and executor.py (the order path)
+                 strategies.py (frozen specs as legs + kill rules) and executor.py (the order path);
+                 watch.py (T174): capture-watch's check that the executor is beating when a leg is due
   modules/terminal/   xactx, ported in T79; its screens are T80
     api/         board.py, edges.py, calendar.py, conditions.py — board, regime, edges, policy,
                  brief, series, calendar (T139), sentiment + conditions (T171); all take `as_of`

@@ -23,7 +23,7 @@ How to use this file:
   `context/decisions.md` if it settled a rule. A finished block does not stay here.
 - New work gets the next free ID and is filed here, never fixed silently.
 
-**Next free ID: T174.** (T108 was allocated retroactively — see the archive's addendum;
+**Next free ID: T175.** (T108 was allocated retroactively — see the archive's addendum;
 T109–T114 were filed on 2026-09-22 from the task-history audit, T115–T121 from the logic audit;
 T122–T124 were filed and finished on 2026-09-23 — see the addendum; T125–T127 were filed on
 2026-09-25 for the ThetaData initiative, [plans/thetadata/](plans/thetadata/README.md); T128–T133
@@ -32,7 +32,7 @@ finished 2026-10-07, see the addendum; T139 filed 2026-10-07, split from T96, an
 [docs/read-review-2026-10-08.md](docs/read-review-2026-10-08.md); T143–T147 filed 2026-10-08 on the
 `experiment/charter-mt5` branch for [plans/charter-mt5/](plans/charter-mt5/README.md); T148 filed
 2026-10-08 from T145's basis work; T149 filed 2026-10-09 for the `xau-range-rejection` edge candidate; T150 filed 2026-10-09 at
-the charter-mt5 merge; T155–T158 filed 2026-10-13 for [plans/cot/](plans/cot/README.md), T155 and T157 finished the same day; T159–T163 filed 2026-10-13/14 on `feat/broker-chart`; T164 filed 2026-10-14 from the first reel batch, the wall-break log; T165–T167 filed 2026-10-14 for [plans/gex-intraday-backfill/](plans/gex-intraday-backfill/README.md); T168–T173 filed 2026-10-15 for [plans/sentiment/](plans/sentiment/README.md), T168–T172 finished the same day, see the addendum.)
+the charter-mt5 merge; T155–T158 filed 2026-10-13 for [plans/cot/](plans/cot/README.md), T155 and T157 finished the same day; T159–T163 filed 2026-10-13/14 on `feat/broker-chart`; T164 filed 2026-10-14 from the first reel batch, the wall-break log; T165–T167 filed 2026-10-14 for [plans/gex-intraday-backfill/](plans/gex-intraday-backfill/README.md); T168–T173 filed 2026-10-15 for [plans/sentiment/](plans/sentiment/README.md), T168–T172 finished the same day, see the addendum; T174 filed 2026-10-15, an alert when the executor is not running.)
 
 ---
 
@@ -68,6 +68,10 @@ open: the homeserver acceptance.
 1. Deploy `mt5`, `executor` and the backend (for migration `a8b9c0d1e2f3`).
 2. Check that the dry-run legs are journalled.
 3. Enable on the demo login, and confirm that one round trip fills with its spread recorded.
+
+**2026-10-15:** steps 1 and 3's enable are done. The executor first ran on the homeserver at
+18:18 New York on 10-15 (see T174 for why it had not run since 10-09), enabled on
+`#10067647 Axi-US50-Demo`. The first leg it can fill is Monday 2026-10-19 at 18:00.
 
 ### T152 · Opus · T151
 **Demo-test every lead with t ≥ 2, alongside the candidates.**
@@ -129,6 +133,40 @@ detector shape as the flip cross; logged, scored and alerted on Telegram like ev
 into `record_level_events`, tests in `tests/test_level_events.py`, full suite green). Still
 open: deploy `gex-capture` and check that the first break rows appear in `gex.level_events`
 and that the first one reaches Telegram.
+
+### T174 · Sonnet · T151
+**An alert when the executor is not running.** From 2026-10-09 to 2026-10-15 the homeserver
+never ran the executor, and nothing reported it. The executor is in the `broker` compose
+profile, `.env` had no `COMPOSE_PROFILES`, and the `compose@quantdesk` unit's
+`docker compose up -d` skipped it. Every gold-asia-drift entry in that week went unsent. It was
+started by hand at 18:18 New York on 10-15, 8 minutes after that night's 10-minute entry window
+closed. `COMPOSE_PROFILES=broker` is now in the server's `.env`. This task is the check that
+would have caught it on the first night.
+
+- **Heartbeat:** each executor tick (every 20 s) updates one row per process, with the time, the
+  login and server, `enabled`, and the strategy names. Store it in the `broker` schema (a
+  migration), not the version file: the alert has to see a heartbeat that stops, and the version
+  file is written once at boot.
+- **Check:** in `capture-watch`, which runs in its own container, so the alert does not die with
+  the executor. Alert when `EXECUTOR_ENABLED` is expected and the heartbeat is missing or older
+  than 5 minutes, from 30 minutes before any enabled strategy's next leg is due until that leg
+  expires. Keep the alerted state in memory, so one outage sends one alert, as
+  `check_capture_outage` does.
+- **Also alert on any leg journalled `expired`.** That is a missed trade, whatever caused it.
+- **Expected-on:** a setting in `capture-watch` (for example `EXECUTOR_EXPECTED=true`), so dev
+  and other stacks without the broker profile stay quiet.
+
+**Acceptance:** with the executor stopped, an alert fires before the next 18:00 New York entry,
+and only once. With it running, nothing fires. An expired leg sends its own alert.
+
+**Partial (2026-10-15):** the code has landed, and `tests/test_broker_watch.py` covers the
+acceptance cases against SQLite. The pieces: `broker.executor_heartbeat` (migration
+`d1e2f3a4b5c6`), written by `Executor.heartbeat` at the end of each tick;
+`app/modules/broker/watch.py`; and an `executor_watch` job in `capture-watch`, every 2 minutes.
+An outage alerts once per New York day while it lasts, and a fresh heartbeat after an alert
+sends "executor heartbeat is back". `EXECUTOR_EXPECTED` defaults to `EXECUTOR_ENABLED` in
+compose. Still open: deploy the backend (for the migration), the executor and capture-watch,
+then see one alert with the executor stopped before an entry.
 
 ### T150 · Sonnet · —
 **`gex.snapshots` session_date index: the model's name and the database's disagree.** Found at

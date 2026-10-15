@@ -102,6 +102,11 @@ class Settings(BaseSettings):
     # Lots per order, and the hard cap above which the executor refuses to start.
     EXECUTOR_VOLUME: float = 0.01
     EXECUTOR_MAX_VOLUME: float = 0.05
+    # T174: capture-watch alerts when the executor's heartbeat is stale while a leg is due, and
+    # on every leg journalled expired. compose defaults it to EXECUTOR_ENABLED, so a stack that
+    # trades is watched without a second switch, and dev stays quiet.
+    EXECUTOR_EXPECTED: bool = False
+    EXECUTOR_WATCH_INTERVAL_MINUTES: int = 2
     # --- T76: the read-only role's password ---------------------------------------------------
     # Empty by default, same rule as MARKETDATA_TOKEN and TIINGO_TOKEN above: a dev stack that
     # never asked for a read-only connection is not blocked by a missing credential. When it is

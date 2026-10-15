@@ -14,6 +14,9 @@ Every leg is written to `broker.order_intents` **before** it is sent. The fill, 
 it and any error are recorded on the same row. A restart therefore picks up the pending rows,
 and the table is the trade journal. A close that fails stays pending and is retried every tick,
 because leaving the position open is the worse outcome.
+
+A tick that completes overwrites `broker.executor_heartbeat` (T174). `capture-watch` alerts when
+that row goes stale while a leg is due: the executor cannot report its own absence.
 """
 
 from __future__ import annotations
@@ -28,7 +31,7 @@ from sqlalchemy.orm import Session, sessionmaker
 
 from app.modules.broker.client import BridgeClient, BridgeError
 from app.modules.broker.strategies import NY, ClosedTrade
-from app.modules.broker.tables import OrderIntent, StrategyState
+from app.modules.broker.tables import ExecutorHeartbeat, OrderIntent, StrategyState
 
 log = logging.getLogger(__name__)
 
@@ -48,6 +51,7 @@ class Executor:
         self.client, self.factory, self.strategies = client, factory, strategies
         self.enabled, self.volume, self.max_volume = enabled, volume, max_volume
         self.notify = notify
+        self.started_at: dt.datetime | None = None
         if volume > max_volume:
             raise ValueError(f"EXECUTOR_VOLUME {volume} exceeds the hard cap {max_volume}")
 
@@ -94,6 +98,17 @@ class Executor:
                     await self._open(s, strat, intent, now)
                 else:
                     await self._close(s, strat, intent, now)
+        self.heartbeat(now)
+
+    def heartbeat(self, now: dt.datetime) -> None:
+        """Overwrite this process's liveness row. Last in the tick, so a tick that raises does
+        not beat, and a database or bridge failure that keeps recurring reads as an outage."""
+        self.started_at = self.started_at or now
+        with self.factory() as s:
+            s.merge(ExecutorHeartbeat(
+                service="executor", beat_at=now, started_at=self.started_at,
+                enabled=self.enabled, strategies=",".join(x.name for x in self.strategies)))
+            s.commit()
 
     def _strategy(self, name: str):
         return next((x for x in self.strategies if x.name == name), None)

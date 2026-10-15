@@ -35,6 +35,7 @@ __all__ = [
     "Base",
     "BasisRow",
     "ClockCheck",
+    "ExecutorHeartbeat",
     "OrderIntent",
     "RollRow",
     "StrategyState",
@@ -200,6 +201,21 @@ class StrategyState(Base):
     paused: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     reason: Mapped[str | None] = mapped_column(String(256), nullable=True)
     updated_at: Mapped[dt.datetime] = mapped_column(UTCDateTime(), nullable=False)
+
+
+class ExecutorHeartbeat(Base):
+    """The executor's last completed tick (T174). One row per service, overwritten every tick:
+    it is a liveness signal, not a record, so replacing it loses nothing. `capture-watch` alerts
+    when it stops moving while a leg is due, which is how a week with no executor at all
+    (2026-10-09 to 10-15) would have been one alert on the first night."""
+
+    __tablename__ = "executor_heartbeat"
+
+    service: Mapped[str] = mapped_column(String(32), primary_key=True)
+    beat_at: Mapped[dt.datetime] = mapped_column(UTCDateTime(), nullable=False)
+    started_at: Mapped[dt.datetime] = mapped_column(UTCDateTime(), nullable=False)
+    enabled: Mapped[bool] = mapped_column(Boolean, nullable=False)
+    strategies: Mapped[str] = mapped_column(String(256), nullable=False)
 
 
 # `broker.levels`, the GEX levels in CFD price (T145), is a view defined in migration
