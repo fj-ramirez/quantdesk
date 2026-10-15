@@ -11,6 +11,7 @@ from fastapi import APIRouter
 
 from app.modules.terminal.api.board import router as board_router
 from app.modules.terminal.api.calendar import router as calendar_router
+from app.modules.terminal.api.conditions import router as conditions_router
 from app.modules.terminal.api.edges import router as edges_router
 
 __all__ = ["router"]
@@ -20,3 +21,4 @@ router = APIRouter(prefix="/terminal")
 router.include_router(board_router)
 router.include_router(edges_router)
 router.include_router(calendar_router)
+router.include_router(conditions_router)

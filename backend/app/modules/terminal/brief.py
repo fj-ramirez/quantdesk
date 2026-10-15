@@ -446,6 +446,32 @@ def section_priced(
         "funds, CTAs) and `.asset_mgr` (pensions, mutual funds) split it on "
         "financial futures, and often point opposite ways; `.m_money` is the "
         "managed-money line of the Disaggregated report."),
+        "",
+    ]
+
+    # Sentiment composite (T171).
+    from .analytics.sentiment import MIN_COMPONENTS, read_sentiment
+
+    reading = read_sentiment(conn, as_of)
+    headline = (
+        f"**{reading.score:.0f} / 100, {reading.band.replace('_', ' ')}**"
+        if reading.score is not None and reading.band is not None
+        else f"**Insufficient:** {reading.used} components, {MIN_COMPONENTS} needed"
+    )
+    lines += ["### Sentiment", "", headline + f" ({reading.used} of "
+              f"{len(reading.components)} components).", "",
+              "| component | value | %ile | score | as of | status |",
+              "|---|---:|---:|---:|---|---|"]
+    for c in reading.components:
+        lines.append(
+            f"| {c.label} | {_fmt(c.value, '.3f')} | {_fmt(c.percentile, '.0f')} "
+            f"| {_fmt(c.score, '.0f')} | {c.value_date or '—'} | {c.status} |"
+        )
+    lines += [
+        "",
+        ("> Score 100 = greed, 0 = fear: each component's percentile within its "
+        "own three years, oriented, equal-weighted. A description, not a signal; "
+        "missing components are left out, never imputed."),
     ]
     return Section("4. What's priced", "\n".join(lines))
 
