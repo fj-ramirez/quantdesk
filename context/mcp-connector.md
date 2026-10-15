@@ -92,6 +92,7 @@ a malicious one.
 | `terminal_board(as_of?, limit?)` | the cross-asset board, point-in-time |
 | `terminal_series(series_id, as_of?, limit?)` | one series as known at a moment |
 | `terminal_edges(conflicts_only?, limit?)` | transmission graph and sign conflicts |
+| `terminal_conditions(as_of?)` | macro regime, SPX/QQQ dealer gamma and the sentiment composite with every component, plus the synthesis label; computed by `analytics/sentiment.py` over a `quantdesk_ro` connection (T171) |
 | `query_sql(sql, limit?)` | anything else, read-only, row-capped |
 
 `app/mcp/server.py` is the authority for signatures; this table is the map.

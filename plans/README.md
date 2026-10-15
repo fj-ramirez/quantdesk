@@ -73,6 +73,8 @@ plans/
     README.md                       verified facts, task specs, Result
     study.md                        T156's search space, declared before the run
     DECISIONS.md                    calls made while the user was away: taken or deferred
+  sentiment/                        market sentiment inputs + one conditions reading (2026-10-15) — T168-T172 done, T173 conditional
+    README.md                       verified sources, the composite's method, task specs, Result
   audit-and-compaction/             logic audit + TASKS.md archive and decisions index (2026-09-22)
     README.md                       the plan and its Result: T108-T121, audit lanes, verification
 ```

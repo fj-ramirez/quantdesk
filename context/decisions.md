@@ -156,6 +156,14 @@ number to be true, it belongs in a plan file's *Result* heading or behind an MCP
   there. — T155; P:cot.
 - A COT study enters no earlier than the close of the first trading day after the release, and
   drops shutdown-delayed reports rather than re-dating them. — T156; P:cot.
+- The sentiment composite is fixed components, fixed orientation, equal weights and fixed
+  bands; fitting any of them to returns would be an EdgeLab trial, not plumbing. A missing or
+  stale component drops out and is listed, never imputed; under four present, no score. — T171;
+  P:sentiment.
+- Desk gamma reaches the terminal with `as_of` = `gex_levels.computed_at`, the moment the number
+  existed, so a recompute adds a row. — T170; P:sentiment.
+- A source that is one request per day (Cboe's daily put/call JSON) caches each settled day
+  under `DATA_DIR`, and a day is settled only once it is older than a week. — T168; P:sentiment.
 - A COT row's `as_of` is the day CFTC actually published (`cftc.release_date`): the Friday,
   pushed past holidays, closures and Black Friday, or the catch-up schedule's date for a delayed
   report. A row whose `as_of` precedes publication is a defect, not a vintage, and is deleted

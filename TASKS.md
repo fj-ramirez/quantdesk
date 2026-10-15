@@ -23,7 +23,7 @@ How to use this file:
   `context/decisions.md` if it settled a rule. A finished block does not stay here.
 - New work gets the next free ID and is filed here, never fixed silently.
 
-**Next free ID: T168.** (T108 was allocated retroactively — see the archive's addendum;
+**Next free ID: T174.** (T108 was allocated retroactively — see the archive's addendum;
 T109–T114 were filed on 2026-09-22 from the task-history audit, T115–T121 from the logic audit;
 T122–T124 were filed and finished on 2026-09-23 — see the addendum; T125–T127 were filed on
 2026-09-25 for the ThetaData initiative, [plans/thetadata/](plans/thetadata/README.md); T128–T133
@@ -32,7 +32,7 @@ finished 2026-10-07, see the addendum; T139 filed 2026-10-07, split from T96, an
 [docs/read-review-2026-10-08.md](docs/read-review-2026-10-08.md); T143–T147 filed 2026-10-08 on the
 `experiment/charter-mt5` branch for [plans/charter-mt5/](plans/charter-mt5/README.md); T148 filed
 2026-10-08 from T145's basis work; T149 filed 2026-10-09 for the `xau-range-rejection` edge candidate; T150 filed 2026-10-09 at
-the charter-mt5 merge; T155–T158 filed 2026-10-13 for [plans/cot/](plans/cot/README.md), T155 and T157 finished the same day; T159–T163 filed 2026-10-13/14 on `feat/broker-chart`; T164 filed 2026-10-14 from the first reel batch, the wall-break log; T165–T167 filed 2026-10-14 for [plans/gex-intraday-backfill/](plans/gex-intraday-backfill/README.md).)
+the charter-mt5 merge; T155–T158 filed 2026-10-13 for [plans/cot/](plans/cot/README.md), T155 and T157 finished the same day; T159–T163 filed 2026-10-13/14 on `feat/broker-chart`; T164 filed 2026-10-14 from the first reel batch, the wall-break log; T165–T167 filed 2026-10-14 for [plans/gex-intraday-backfill/](plans/gex-intraday-backfill/README.md); T168–T173 filed 2026-10-15 for [plans/sentiment/](plans/sentiment/README.md), T168–T172 finished the same day, see the addendum.)
 
 ---
 
@@ -737,6 +737,14 @@ mapping is left alone; the job never touches the weekly feed.
 
 **Out of scope:** surprise indices themselves (a follow-up once actuals accrue), and actuals for
 releases FRED does not carry.
+
+### T173 · Opus · T171 — conditional
+**Stage-1: do sentiment extremes carry a forward return on the index CFDs?** Only if the user
+asks for it. Through the `edge-research` skill, search space declared before the first run:
+horizons 5 and 20 sessions, thresholds score < 20 and > 80, instruments `S&P.fs` and `NAS100.fs`,
+from 2007. Noise ceiling, doubled cost, walk-forward (invariant 9). The composite's own history
+must be rebuilt point-in-time, one `as_of` per session, never from today's vintages. Spec in
+[plans/sentiment/](plans/sentiment/README.md).
 
 ---
 
