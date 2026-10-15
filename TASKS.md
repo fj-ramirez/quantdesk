@@ -203,6 +203,10 @@ measured pace recorded.
 ### T166 · Sonnet · T165
 **Full load 2023-01-03 → 2026-09-18**, six symbols, on the homeserver outside capture hours.
 
+**Partial (2026-10-14):** the `gex-backfill` service is built (profile `backfill`, 2 GiB, sleeps
+through 09:15–17:00 ET, pipelined, resumable). Still open: deploy it and start it for Friday
+2026-10-16 17:00 ET (command in the plan's *Result*), then record sessions loaded and failed.
+
 ### T167 · Opus · T166
 **Stage 1 for the level rules**: one declared run per frozen key (flip-cross, wall-bounce,
 wall-break, + `_0DTE`). P&L on the CFD's M1 bars at the doubled spread, SE clustered by session,

@@ -190,6 +190,25 @@ services:
         max-size: 10m
         max-file: "3"
 
+  # T166. Same image discipline as the other workers. `on-failure`, not `unless-stopped`: the
+  # loader resumes per file, so a crash or an OOM kill restarts into exactly what is missing,
+  # and a clean finish (exit 0) stays down instead of looping over a completed range.
+  gex-backfill:
+    image: gex-backfill:prod
+    environment:
+      <<: *prod_backend_environment
+      GEX_BACKFILL_NOT_BEFORE: ${GEX_BACKFILL_NOT_BEFORE:-}
+    networks:
+      internal: {}
+    restart: on-failure
+    # The T165 pilot measured SPX at 1,082 MB peak; 1 GiB was not enough headroom.
+    mem_limit: 2048m
+    logging:
+      driver: json-file
+      options:
+        max-size: 10m
+        max-file: "3"
+
   # T79. Like `research-search`, this one gets a CPU ceiling: the nightly sequence pulls five
   # sources and recomputes the transmission graph over the full panel, and it must not be able
   # to starve the API. One core is ample -- the work is mostly waiting on HTTP.

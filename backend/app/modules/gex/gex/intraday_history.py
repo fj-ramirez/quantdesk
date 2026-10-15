@@ -22,7 +22,7 @@ not fetched again.
 A stamp whose rows carry no ``underlying_price`` (SPX at 09:30, before the index prints) yields
 no levels for that stamp, never a guessed spot.
 
-Run only outside 09:15-16:30 ET: the homeserver's terminal also serves the live capture, and
+Run only outside 09:15-17:00 ET on weekdays: the homeserver's terminal also serves the live capture, and
 serves four requests at a time.
 """
 
@@ -33,6 +33,7 @@ import asyncio
 import datetime as dt
 import logging
 import time
+from dataclasses import dataclass, field
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
@@ -43,8 +44,8 @@ from app.modules.gex.providers.base import Underlying, UpstreamUnavailable
 from app.modules.gex.providers.thetadata import ThetaDataClient, _assemble, _snapshot, vendor_roots
 
 __all__ = [
-    "FILTERS", "LOADER_VERSION", "bars_from_minutes", "compact", "levels_by_stamp", "load_bars", "load_levels",
-    "main",
+    "FILTERS", "LOADER_VERSION", "Fetched", "bars_from_minutes", "compact", "fetch_session", "levels_by_stamp",
+    "load_bars", "main", "seconds_until_window",
 ]
 
 logger = logging.getLogger("app.modules.gex.gex.intraday_history")
@@ -52,7 +53,8 @@ logger = logging.getLogger("app.modules.gex.gex.intraday_history")
 _NY = ZoneInfo("America/New_York")
 LOADER_VERSION = 1
 FILTERS: tuple[ExpiryFilter, ...] = (ExpiryFilter.ALL, ExpiryFilter.ZERO_DTE)
-_BLACKOUT = (dt.time(9, 15), dt.time(16, 30))
+#: Weekday hours the live work owns the terminal (see `seconds_until_window`).
+_BLACKOUT = (dt.time(9, 15), dt.time(17, 0))
 #: Terminal concurrency (the probe reports 4 max concurrent requests).
 _CONCURRENCY = 4
 _SOURCE = "thetadata-history"
@@ -160,10 +162,22 @@ async def _expirations(client: ThetaDataClient, root: str, cache: dict) -> list[
     return cache[root]
 
 
-async def load_levels(
-    client: ThetaDataClient, underlying: Underlying, day: dt.date, cache: dict, *, max_dte: int | None
-) -> tuple[list[dict], dict]:
-    """One session's levels, plus request and row counts and the fetch/compute split."""
+@dataclass
+class Fetched:
+    """One session's raw inputs, held until its levels are computed."""
+
+    day: dt.date
+    greeks: pd.DataFrame | None
+    oi: list[tuple[str, dict[str, str]]]
+    bars: list[dict]
+    stats: dict = field(default_factory=dict)
+
+
+async def fetch_session(
+    client: ThetaDataClient, underlying: Underlying, day: dt.date, cache: dict, *,
+    max_dte: int | None, need_levels: bool = True, need_bars: bool = True,
+) -> Fetched:
+    """Everything the terminal has to serve for one session: greeks per expiry, OI, 1-minute bars."""
     d = f"{day:%Y%m%d}"
     sem = asyncio.Semaphore(_CONCURRENCY)
     stats = {"requests": 0, "rows": 0}
@@ -180,25 +194,24 @@ async def load_levels(
             frames.append(compact(root, rows))  # the dicts are dropped here, one response at a time
 
     t0 = time.monotonic()
+    bars = await load_bars(client, underlying, day, cache) if need_bars else []
     oi: list[tuple[str, dict[str, str]]] = []
-    for root in vendor_roots(underlying):
-        exps = [e for e in await _expirations(client, root, cache)
-                if e >= day and (max_dte is None or (e - day).days <= max_dte)]
-        stats["requests"] += 1
-        oi += [(root, r) for r in await client.get_rows(
-            "/v3/option/history/open_interest", {"symbol": root, "expiration": "*", "date": d})]
-        await asyncio.gather(*(greeks_for(root, e) for e in exps))
+    if need_levels:
+        for root in vendor_roots(underlying):
+            exps = [e for e in await _expirations(client, root, cache)
+                    if e >= day and (max_dte is None or (e - day).days <= max_dte)]
+            stats["requests"] += 1
+            oi += [(root, r) for r in await client.get_rows(
+                "/v3/option/history/open_interest", {"symbol": root, "expiration": "*", "date": d})]
+            await asyncio.gather(*(greeks_for(root, e) for e in exps))
     stats["fetch_s"] = time.monotonic() - t0
-    if not frames:
-        return [], stats
-    greeks = pd.concat(frames, ignore_index=True)
-    for c in _TEXT:  # concat of differing categories falls back to object; re-compact
-        greeks[c] = greeks[c].astype("category")
-    frames.clear()
-    t1 = time.monotonic()
-    levels = await asyncio.to_thread(levels_by_stamp, underlying, greeks, oi)
-    stats["compute_s"] = time.monotonic() - t1
-    return levels, stats
+    greeks = None
+    if frames:
+        greeks = pd.concat(frames, ignore_index=True)
+        for c in _TEXT:  # concat of differing categories falls back to object; re-compact
+            greeks[c] = greeks[c].astype("category")
+        frames.clear()
+    return Fetched(day, greeks, oi, bars, stats)
 
 
 async def load_bars(client: ThetaDataClient, underlying: Underlying, day: dt.date, cache: dict) -> list[dict]:
@@ -224,49 +237,121 @@ def _sessions(start: dt.date, end: dt.date) -> list[dt.date]:
     return days
 
 
-async def _run(args: argparse.Namespace) -> None:
+def seconds_until_window(now: dt.datetime) -> float:
+    """0 when the terminal is free for the backfill; else the seconds until 17:00 ET.
+
+    Weekdays 09:15-17:00 ET belong to the live work on the same terminal: the 15-minute
+    captures, the 16:20 EOD capture and the 16:45 sector-ETF capture. Holidays are treated as
+    weekdays, which only costs idle hours.
+    """
+    t = now.astimezone(_NY)
+    if t.weekday() >= 5 or not _BLACKOUT[0] <= t.time() < _BLACKOUT[1]:
+        return 0.0
+    return (dt.datetime.combine(t.date(), _BLACKOUT[1], tzinfo=_NY) - t).total_seconds()
+
+
+async def _wait_for_window(not_before: dt.datetime | None) -> None:
+    while True:
+        now = dt.datetime.now(dt.UTC)
+        wait = max(seconds_until_window(now), (not_before - now).total_seconds() if not_before else 0.0)
+        if wait <= 0:
+            return
+        logger.warning("intraday_history: waiting %.0f min (capture hours or --not-before)", wait / 60)
+        await asyncio.sleep(min(wait, 3600) + 1)
+
+
+def _write(folder: Path, underlying: Underlying, f: Fetched, t_start: float) -> None:
+    """Compute the levels and write whichever file was missing. Runs in a worker thread."""
+    lv_path, bar_path = folder / f"{f.day}.levels.parquet", folder / f"{f.day}.bars.parquet"
+    if not bar_path.exists():
+        pd.DataFrame(f.bars).to_parquet(bar_path)
+    if lv_path.exists():
+        return
+    t1 = time.monotonic()
+    levels = [] if f.greeks is None else levels_by_stamp(underlying, f.greeks, f.oi)
+    pd.DataFrame(levels).to_parquet(lv_path)
+    logger.warning(
+        "intraday_history %s %s: %d level rows, %d bars, %d requests, %d rows, %.1fs "
+        "(fetch %.1fs, compute %.1fs), peak RSS %s MB",
+        underlying.value, f.day, len(levels), len(f.bars), f.stats["requests"], f.stats["rows"],
+        time.monotonic() - t_start, f.stats.get("fetch_s", 0), time.monotonic() - t1, _peak_rss_mb(),
+    )
+
+
+async def _run(args: argparse.Namespace) -> int:
+    """Load every missing (symbol, session), fetching the next session while computing this one.
+
+    A session that fails is logged and left without files, so the next run retries it; the run
+    goes on. Returns the number of failed sessions.
+    """
+    if args.end >= dt.datetime.now(_NY).date():
+        raise SystemExit(f"--end {args.end} must be before today: today's OI is not in history yet")
     out = Path(args.out)
     cache: dict = {}
+    failed = 0
     async with ThetaDataClient(timeout=600) as client:
         for sym in args.symbols.split(","):
             underlying = Underlying(sym.strip().upper())
             folder = out / underlying.value
             folder.mkdir(parents=True, exist_ok=True)
-            for day in _sessions(args.start, args.end):
-                lv_path, bar_path = folder / f"{day}.levels.parquet", folder / f"{day}.bars.parquet"
-                if lv_path.exists() and bar_path.exists():
-                    continue
-                now = dt.datetime.now(_NY)
-                if not args.ignore_hours and now.weekday() < 5 and _BLACKOUT[0] <= now.time() <= _BLACKOUT[1]:
-                    raise SystemExit(f"stopping at {now:%H:%M} ET: inside capture hours; resume later")
+
+            def missing(day: dt.date, folder: Path = folder) -> tuple[bool, bool]:
+                return (not (folder / f"{day}.levels.parquet").exists(),
+                        not (folder / f"{day}.bars.parquet").exists())
+
+            todo = [d for d in _sessions(args.start, args.end) if any(missing(d))]
+            logger.warning("intraday_history %s: %d sessions to load", underlying.value, len(todo))
+
+            def start(day: dt.date, underlying: Underlying = underlying, missing=missing) -> asyncio.Task:
+                need_levels, need_bars = missing(day)
+                return asyncio.create_task(fetch_session(
+                    client, underlying, day, cache, max_dte=args.max_dte,
+                    need_levels=need_levels, need_bars=need_bars))
+
+            pending: asyncio.Task | None = None
+            for i, day in enumerate(todo):
+                if pending is None:
+                    if not args.ignore_hours:
+                        await _wait_for_window(args.not_before)
+                    pending = start(day)
                 t0 = time.monotonic()
-                if not bar_path.exists():
-                    bars = await load_bars(client, underlying, day, cache)
-                    pd.DataFrame(bars).to_parquet(bar_path)
-                    logger.warning("intraday_history %s %s: %d bars", underlying.value, day, len(bars))
-                if not lv_path.exists():
-                    levels, stats = await load_levels(client, underlying, day, cache, max_dte=args.max_dte)
-                    pd.DataFrame(levels).to_parquet(lv_path)
-                    logger.warning(
-                        "intraday_history %s %s: %d level rows, %d requests, %d rows, %.1fs "
-                        "(fetch %.1fs, compute %.1fs), peak RSS %s MB",
-                        underlying.value, day, len(levels), stats["requests"], stats["rows"],
-                        time.monotonic() - t0, stats.get("fetch_s", 0), stats.get("compute_s", 0),
-                        _peak_rss_mb(),
-                    )
+                try:
+                    fetched = await pending
+                except Exception:
+                    logger.exception("intraday_history %s %s: fetch failed; left for the next run",
+                                     underlying.value, day)
+                    failed += 1
+                    pending = None
+                    continue
+                # the next session's requests run while this one computes, but never into capture hours
+                nxt = todo[i + 1] if i + 1 < len(todo) else None
+                in_window = args.ignore_hours or seconds_until_window(dt.datetime.now(dt.UTC)) == 0
+                pending = start(nxt) if nxt is not None and in_window else None
+                try:
+                    await asyncio.to_thread(_write, folder, underlying, fetched, t0)
+                except Exception:
+                    logger.exception("intraday_history %s %s: compute failed; left for the next run",
+                                     underlying.value, day)
+                    failed += 1
+    logger.warning("intraday_history: done, %d sessions failed", failed)
+    return failed
 
 
 def main(argv: list[str] | None = None) -> None:
     p = argparse.ArgumentParser(description=__doc__.split("\n")[0])
-    p.add_argument("--symbols", required=True)
+    p.add_argument("--symbols", required=True, help="in load order, e.g. SPX,SPY,QQQ,GLD,IWM,DIA")
     p.add_argument("--start", type=dt.date.fromisoformat, required=True)
     p.add_argument("--end", type=dt.date.fromisoformat, required=True)
     p.add_argument("--out", required=True)
     p.add_argument("--max-dte", type=int, default=None, help="skip expiries further out (pilot comparison)")
+    p.add_argument("--not-before", type=dt.datetime.fromisoformat, default=None,
+                   help="ISO datetime with offset; sleep until then before the first request")
     p.add_argument("--ignore-hours", action="store_true", help="tests only")
     args = p.parse_args(argv)
     logging.basicConfig(level=logging.WARNING, format="%(asctime)s %(message)s")
-    asyncio.run(_run(args))
+    failed = asyncio.run(_run(args))
+    # Failed sessions have no files; a restart (`restart: on-failure`) retries exactly those.
+    raise SystemExit(1 if failed else 0)
 
 
 if __name__ == "__main__":

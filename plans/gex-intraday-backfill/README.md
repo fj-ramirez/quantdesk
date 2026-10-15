@@ -71,6 +71,8 @@ validate the levels, never to score events). Then one earlier month, timed.
 The thresholds are judgment, set before the pilot.
 
 ### T166 · Sonnet · T165
+**Status (2026-10-14): built, not yet started.** See *Result → T166*.
+
 **Full load: 2023-01-03 → 2026-09-18**, all six symbols (IWM included), at the pilot's measured
 pace, on the homeserver. Record under *Result*: sessions per symbol, sessions with no
 `underlying_price`, and the first session with a 0DTE expiry per symbol. SPX has had dailies
@@ -189,6 +191,38 @@ about **two weeks**. Fetch is ~60 % of the time and bound by the terminal's 4 co
 requests. Overlapping the next session's fetch with the current one's compute would bring it to
 roughly **10 days**. That is the first change T166 should make, before an expiry cap, which
 would change the levels.
+
+### T166: built (2026-10-14), to start Friday 2026-10-16 17:00 ET
+
+Agreed with the user: build now, and start at the weekend so it gets the 64-hour window first.
+
+- **Service `gex-backfill`** (`app/workers/gex_backfill.py`), behind the `backfill` compose
+  profile, so a plain `up` and `scripts/deploy.sh` never start it. Prod settings: its own image
+  tag, `internal` only, **2 GiB**, `restart: on-failure`. A crash or OOM kill resumes into
+  exactly the missing files; a clean finish stays down.
+- **Window:** it sleeps through weekdays **09:15–17:00 ET**, which covers the 15-minute
+  captures, the 16:20 EOD and the 16:45 sector-ETF capture, all on the same terminal.
+  `GEX_BACKFILL_NOT_BEFORE` holds the first request until a given instant.
+- **Pipelined:** the next session is fetched while the current one computes. A next-session
+  fetch is started only inside the window.
+- **Per-session failures** are logged and leave no files, so the next run retries them. The run
+  goes on, and exits 1 at the end if any failed, so `on-failure` retries them.
+- **Order:** SPX, SPY, QQQ, GLD, IWM, DIA. The index family comes first because flip-cross
+  needs it most; DIA comes last because it mostly duplicates SPX.
+- **Output stays Parquet** under `DATA_DIR/research/gex_intraday/<SYMBOL>/`, not the research
+  tables rule 2 names. A week-long run then never touches the prod database. **T167 imports the
+  files into `research.gex_intraday_levels` / `research.desk_bars_5m` in one step** before
+  testing.
+
+**To start** (on the homeserver, from the stack directory, at any time before Friday 17:00):
+
+```
+GEX_BACKFILL_NOT_BEFORE=2026-10-16T17:00:00-04:00 \
+  docker compose -f compose.yaml -f compose.prod.yaml --profile backfill up -d --build gex-backfill
+docker logs -f quantdesk-gex-backfill-1     # one line per session: timing and peak RSS
+```
+
+Progress: `ls data/research/gex_intraday/*/ | grep -c levels`, out of ~935 sessions per symbol.
 
 ### Exploration of the pilot sessions (2026-10-14, at the user's request)
 

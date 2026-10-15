@@ -2,8 +2,15 @@
 
 from __future__ import annotations
 
+import argparse
+import asyncio
 import datetime as dt
+from pathlib import Path
+from zoneinfo import ZoneInfo
 
+import pytest
+
+from app.modules.gex.gex import intraday_history as ih
 from app.modules.gex.gex.intraday_history import bars_from_minutes
 
 
@@ -47,3 +54,61 @@ def test_compact_rows_round_trip_into_what_assemble_reads():
     assert root == "SPXW" and "rho" not in first
     assert float(first["strike"]) == 7655.0 and first["right"] == "CALL" and float(first["bid"]) == 4.1
     assert second["bid"] == "" and second["ask"] == ""  # missing or unparseable -> empty, never "nan"
+
+
+# --- T166: the run window and the pipelined loop --------------------------------------------------
+
+NY = ZoneInfo("America/New_York")
+
+
+@pytest.mark.parametrize("when, expected_min", [
+    (dt.datetime(2026, 10, 14, 9, 14, tzinfo=NY), 0),       # Wednesday, before the window closes
+    (dt.datetime(2026, 10, 14, 9, 15, tzinfo=NY), 465),     # capture hours start: wait to 17:00
+    (dt.datetime(2026, 10, 14, 16, 30, tzinfo=NY), 30),     # covers the 16:20 and 16:45 captures
+    (dt.datetime(2026, 10, 14, 17, 0, tzinfo=NY), 0),
+    (dt.datetime(2026, 10, 17, 12, 0, tzinfo=NY), 0),       # Saturday
+])
+def test_the_backfill_never_shares_the_terminal_with_capture_hours(when, expected_min):
+    assert ih.seconds_until_window(when) == pytest.approx(expected_min * 60)
+
+
+def _args(tmp_path: Path, **kw) -> argparse.Namespace:
+    base = {"symbols": "SPY", "start": dt.date(2026, 10, 5), "end": dt.date(2026, 10, 9), "out": str(tmp_path),
+            "max_dte": None, "not_before": None, "ignore_hours": True}
+    return argparse.Namespace(**{**base, **kw})
+
+
+def test_every_missing_session_is_loaded_once_and_a_failure_does_not_stop_the_run(tmp_path, monkeypatch):
+    calls: list[tuple[dt.date, bool, bool]] = []
+
+    async def fake_fetch(client, underlying, day, cache, *, max_dte, need_levels, need_bars):
+        calls.append((day, need_levels, need_bars))
+        if day == dt.date(2026, 10, 7):
+            raise RuntimeError("terminal hiccup")
+        return ih.Fetched(day, None, [], [{"symbol": "SPY", "ts": dt.datetime(2026, 10, 5, tzinfo=dt.UTC),
+                                            "open": 1.0, "high": 1.0, "low": 1.0, "close": 1.0}],
+                          {"requests": 1, "rows": 0})
+
+    class FakeClient:
+        def __init__(self, **kw): ...
+        async def __aenter__(self): return self
+        async def __aexit__(self, *exc): ...
+
+    monkeypatch.setattr(ih, "fetch_session", fake_fetch)
+    monkeypatch.setattr(ih, "ThetaDataClient", FakeClient)
+    (tmp_path / "SPY").mkdir()
+    for name in ("2026-10-05.levels.parquet", "2026-10-05.bars.parquet", "2026-10-06.bars.parquet"):
+        (tmp_path / "SPY" / name).write_bytes(b"")  # 10-05 complete, 10-06 has bars only
+
+    failed = asyncio.run(ih._run(_args(tmp_path)))
+
+    assert [c[0].day for c in calls] == [6, 7, 8, 9]
+    assert calls[0] == (dt.date(2026, 10, 6), True, False)  # only what is missing is fetched
+    assert failed == 1
+    assert not (tmp_path / "SPY" / "2026-10-07.levels.parquet").exists()  # retried on the next run
+    assert (tmp_path / "SPY" / "2026-10-09.levels.parquet").exists()
+
+
+def test_the_end_date_must_be_before_today(tmp_path):
+    with pytest.raises(SystemExit, match="before today"):
+        asyncio.run(ih._run(_args(tmp_path, end=dt.datetime.now(NY).date())))

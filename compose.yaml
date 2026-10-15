@@ -237,6 +237,25 @@ services:
       postgres:
         condition: service_healthy
 
+  # T166. The GEX intraday backfill (plans/gex-intraday-backfill): years of 15-minute levels
+  # from ThetaData history, written as Parquet under `DATA_DIR/research/gex_intraday/`. Behind
+  # its own profile, so a plain `up` never starts it; start it by name with
+  # `--profile backfill up -d gex-backfill`. It sleeps through weekday capture hours
+  # (09:15-17:00 ET), when the live work owns the terminal, and exits when every session has
+  # its files. No database: it neither reads nor writes Postgres.
+  gex-backfill:
+    profiles: ["backfill"]
+    build:
+      context: ./backend
+      target: runtime
+      args: *build_stamp
+    command: ["python", "-m", "app.workers.gex_backfill"]
+    environment:
+      <<: *backend_environment
+      GEX_BACKFILL_NOT_BEFORE: ${GEX_BACKFILL_NOT_BEFORE:-}
+    volumes:
+      - ./data:/data
+
   # T79. xactx's nightly cross-asset ingest. The third worker, and the last piece of evidence
   # that the T75 split was the right shape: adding it changed nothing about the API process.
   #
