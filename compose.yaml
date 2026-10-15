@@ -302,7 +302,12 @@ services:
       target: runtime
       args: *build_stamp
     command: ["python", "-m", "app.workers.capture_watch"]
-    environment: *backend_environment
+    # T174: it also watches the executor, so it needs the executor's strategy list, and is
+    # expected to whenever the executor is enabled.
+    environment:
+      <<: *backend_environment
+      EXECUTOR_STRATEGIES: ${EXECUTOR_STRATEGIES:-gold_asia}
+      EXECUTOR_EXPECTED: ${EXECUTOR_EXPECTED:-${EXECUTOR_ENABLED:-false}}
     volumes:
       - ./data:/data
     depends_on:

@@ -146,7 +146,8 @@ The table covers the core GEX keys only. `app/core/config.py` is the authority a
 other key by the task that added it, with its reasoning: `EXTENDED_SYMBOLS`,
 `INTRADAY_BARS_*` (T74), `RESEARCH_*` (T77), the `XA_*` terminal keys (T79),
 `DATABASE_URL_RO` / `QUANTDESK_RO_PASSWORD` (T76, T82), and `TELEGRAM_BOT_TOKEN` /
-`TELEGRAM_CHAT_ID` / `CAPTURE_WATCH_INTERVAL_MINUTES` (T104), and `SIGNALS_*` (T136). Read it
+`TELEGRAM_CHAT_ID` / `CAPTURE_WATCH_INTERVAL_MINUTES` (T104), `SIGNALS_*` (T136), and
+`EXECUTOR_EXPECTED` / `EXECUTOR_WATCH_INTERVAL_MINUTES` (T174, the executor heartbeat check). Read it
 rather than extending this table.
 
 `Settings` uses `extra="ignore"`, so an unknown key in `.env` is silently dropped rather than
