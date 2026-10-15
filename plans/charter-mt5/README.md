@@ -282,8 +282,9 @@ what it is.
 
 ## Out of scope (this round)
 
-- **Charts and charter's UI.** Dropped 2026-10-08. Charter's Flex Renko engine can be ported as a
-  pure module later, when charts come back.
+- **Charts and charter's UI.** Dropped 2026-10-08. **Charts came back in T159 (2026-10-13)**, built
+  on the desk rather than ported: see *Result*. Charter's Flex Renko engine can still be ported
+  as a pure module later.
 - **Step 4, the demo-only executor.** Agreed in principle on 2026-10-08, with these terms:
   - a demo `trade_mode` check in code;
   - order intents in the database, sent by a separate executor container;
@@ -298,6 +299,30 @@ what it is.
 - MT5's Strategy Tester. EdgeLab is the one backtester.
 
 ## Result
+
+### T159 — the broker chart: code landed 2026-10-14; homeserver check open
+
+The user asked to *see* price action (2026-10-13). Nothing from charter's Vue UI was ported:
+the data (`broker.bars`, `broker.levels`), the detectors (`scan/price_action.py`) and the chart
+library (`lightweight-charts`) were all already on the desk.
+
+- **Backend:** `modules/broker/router.py` → `GET /api/broker/symbols`, `GET /api/broker/chart`.
+  `chart.py` is pure and holds the three rules: buckets cut on the server clock from each
+  row's `offset_s`; the last bucket is forming when it ends after the horizon, or when the data
+  stopped short of its end less than 15 minutes before the horizon (ingest lag; an older stop
+  is a closed market); levels joined per bar with `merge_asof` on the bar's close, capped at
+  the horizon, dropped when older than 4 days. Read-only; nothing imports the order path.
+- **Frontend:** a fourth launcher module, `/broker`. Candles, markers by family (structure,
+  BOS/CHoCH, sweeps on by default; swings and bar patterns off), recent zones as dotted price
+  lines, call wall / put wall / flip as step lines that break across capture gaps. The as-of
+  control is also a bar-by-bar replay (◀ ends the chart at the newest closed bar's open).
+- **Checked on real rows (2026-10-14, via the MCP connector):** XAUUSD's Friday close at
+  20:57 UTC and Sunday reopen at 22:00 UTC land in the server-clock D1 buckets MT5 draws.
+- **Judgment calls:** `S&P.fs` draws SPX levels (offset), the first pair in `PAIRS`, not SPY;
+  a request reads at most 400,000 M1 rows, so D1 is capped at 277 bars; times print in New
+  York time.
+- **Open:** deploy and look at it on the homeserver. The D1 request is the heaviest read; if it
+  is slow, aggregate in SQL with `date_bin` on the server clock instead of in pandas.
 
 ### T151 — step 4, the executor: code landed 2026-10-09; homeserver acceptance open
 

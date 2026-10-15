@@ -7,6 +7,7 @@ from sqlalchemy import text
 from app.core.config import settings
 from app.core.db import get_session_factory
 from app.core.version import all_service_versions
+from app.modules.broker.router import router as broker_module_router
 from app.modules.gex.router import router as gex_module_router
 from app.modules.research.router import router as research_module_router
 from app.modules.terminal.router import router as terminal_module_router
@@ -58,6 +59,8 @@ app.include_router(gex_module_router, prefix="/api")
 # the whole point of the T75 split: a module is a router and a worker, not a special case.
 app.include_router(research_module_router, prefix="/api")
 app.include_router(terminal_module_router, prefix="/api")
+# T159. Read-only: the broker chart. The order path stays in `app/workers/executor.py`.
+app.include_router(broker_module_router, prefix="/api")
 
 
 @app.get("/health")

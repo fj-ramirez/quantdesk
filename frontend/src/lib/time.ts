@@ -97,3 +97,26 @@ export function formatBarsThrough(dateIso: string): string {
   const date = new Date(Date.UTC(year, month - 1, day));
   return `${barsWeekdayFormatter.format(date)} ${barsDayFormatter.format(date)} ${barsMonthFormatter.format(date)}`;
 }
+
+// --- datetime-local <-> ISO instant (T80, moved here in T159) -------------------------------
+// Shared by every as-of control: the terminal frame's and the broker chart's.
+
+/** `datetime-local` gives `YYYY-MM-DDTHH:mm`; the API needs a timezone-aware instant. */
+export function toIsoInstant(localValue: string): string | undefined {
+  if (!localValue) return undefined;
+  const parsed = new Date(localValue);
+  if (Number.isNaN(parsed.getTime())) return undefined;
+  return parsed.toISOString();
+}
+
+/** The inverse, for populating the input from the URL. */
+export function toLocalInput(iso: string | undefined): string {
+  if (!iso) return '';
+  const parsed = new Date(iso);
+  if (Number.isNaN(parsed.getTime())) return '';
+  const pad = (n: number) => String(n).padStart(2, '0');
+  return (
+    `${parsed.getFullYear()}-${pad(parsed.getMonth() + 1)}-${pad(parsed.getDate())}` +
+    `T${pad(parsed.getHours())}:${pad(parsed.getMinutes())}`
+  );
+}

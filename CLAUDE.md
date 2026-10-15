@@ -52,7 +52,7 @@ backend/app/
   workers/     gex_capture.py, research_search.py, terminal_ingest.py, capture_watch.py (T104),
                broker_ingest.py (T144), executor.py (T151) — one container each
   mcp/         the read-only MCP connector over every schema in core/schemas.SCHEMAS (T82)
-  modules/broker/     the Axi MT5 terminal (charter-mt5, T143–T145, T151): client.py talks
+  modules/broker/     the Axi MT5 terminal (charter-mt5, T143–T145, T151, T159): client.py talks
                  to the bridge in docker/mt5/; ingest.py (M1 bars, ticks, specs);
                  basis.py + basis_job.py (CFD↔desk basis, rolls, the `broker.levels` view);
                  strategies.py (frozen specs as legs + kill rules) and executor.py (the order path)
@@ -92,6 +92,7 @@ frontend/src/
   modules/research/  leaderboard + paper watchlist, same shape (T78)
   modules/terminal/  change board, regime, transmission graph, policy path, brief (T80)
                  the as-of control lives in the frame, as URL state
+  modules/broker/    the CFD chart (T159): candles, price action, GEX levels in CFD price
   mocks/         composes every module's MSW handlers into one server/worker
   lib/ theme/ components/ui/   shared by every module — formatting, time, theming, primitives,
                  and lib/http.ts (base URL, ApiError, apiFetch)

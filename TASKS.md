@@ -140,6 +140,30 @@ column, so no query is affected; but autogenerate will keep proposing the swap. 
 migration that renames the index (or pin the model's `name=`), and make `alembic check` pass on
 a fresh chain.
 
+### T159 · Opus · T144, T145, T146
+**Price action on screen: a `broker` module with a CFD chart.** Reverses "charts dropped
+2026-10-08" (plans/charter-mt5, *Out of scope*) by the user's request on 2026-10-13. Charter's
+Vue UI is **not** ported: everything a chart needs is already on the desk (`broker.bars`,
+`broker.levels`, `scan/price_action.py`, `lightweight-charts`).
+
+- **Backend:** `app/modules/broker/router.py` (`/api/broker`), read-only:
+  - `GET /symbols`: CFDs that have bars, with their desk pairs;
+  - `GET /chart?symbol=&tf=&bars=&end=`: M1 bars from `broker.bars` resampled to
+    M1/M5/M15/H1/H4/D1 on **server wall-clock** buckets (so D1 is the broker's New York-close
+    day, as in MT5), the price-action events from `price_action.py`, and the GEX levels from
+    `broker.levels` (primary pair, `ALL` filter) over the window.
+- **Point-in-time:** `end` renders the chart as of that instant. The last bucket is flagged
+  `forming` when it has not closed, and no detector sees it, so an event on screen is one that
+  was knowable at the right edge. Levels come only from snapshots at or before each bar.
+- **Frontend:** `modules/broker`: a fourth launcher module with one Chart page. Candles,
+  event markers toggled by family, recent zones as lines, and call wall / put wall / flip as
+  step lines. Symbol, timeframe and `end` are URL state.
+- Not here: Flex Renko (a later port of charter's engine as a pure module), ticks, live push.
+
+**Partial (2026-10-14):** code landed on `feat/broker-chart`, all suites green; see the plan's
+*Result*. Still open: deploy the backend and frontend to the homeserver and look at XAUUSD and
+S&P.fs on M15 and D1 against MT5's own chart; time the D1 request.
+
 ---
 
 ## ThetaData (Options Standard, bought 2026-09-24)

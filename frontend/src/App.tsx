@@ -7,10 +7,11 @@
  * discovery mechanism, and a module that fails to import is a build error rather than a page
  * that quietly does not exist.
  *
- * `research` (T78) and `terminal` (T80) each did exactly that: one import, one line.
+ * `research` (T78), `terminal` (T80) and `broker` (T159) each did exactly that: one import, one line.
  */
 import { Route, Routes } from 'react-router-dom';
 import { Launcher } from './shell/Launcher';
+import { brokerRoutes } from './modules/broker/routes';
 import { gexRoutes } from './modules/gex/routes';
 import { researchRoutes } from './modules/research/routes';
 import { terminalRoutes } from './modules/terminal/routes';
@@ -22,6 +23,7 @@ export function App() {
       {gexRoutes}
       {researchRoutes}
       {terminalRoutes}
+      {brokerRoutes}
     </Routes>
   );
 }
