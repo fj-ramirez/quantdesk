@@ -33,14 +33,11 @@ the day-2 reversal observed in #408), combined and confirmed out-of-sample in #4
   the SMA200 regime: +70% vs −9% for holding in 2000–09.
 - The 2022 bear cost −11% (broker span), with the regime on during bear-market rallies.
 
-## Sizing (0.01 lot NAS100.fs = $0.20 per point, notional ≈ $6,200 at 31,000)
+## Sizing
 
-```
-haircut expectancy  ≈ half of 2000–19: 0.038% per in-market day × ~80 days/yr ≈ 3.0%/yr of notional
-                    ≈ $190/yr ≈ $16/month per 0.01 lot   (broker span unhaircut: ≈ $60/month)
-for $100/month      ≈ 0.06 lot at the haircut — above the executor's 0.05 cap; with gold-asia-drift
-                      and the index hold it is one of three legs, not the whole desk
-```
+**0.01 lot** NAS100.fs ($0.20 per point, notional ≈ $6,200 at 31,000) through stages 2 and 3.
+Expectancy at that size, for reference: half the 2000–19 rate is 0.038% per in-market day ×
+~80 days a year ≈ 3.0% a year of notional ≈ $16 a month (the broker span, unhaircut, ≈ $60).
 
 ## Kill rules (fixed until 30 trades, then replaced with bootstrap values)
 

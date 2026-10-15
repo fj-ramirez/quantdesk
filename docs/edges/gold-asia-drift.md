@@ -57,24 +57,14 @@ registry noise ceiling. The 17 + 288 search count above is the honest denominato
   than the session.
 - There is no stop. The worst single night was −$207 per 0.01 lot.
 
-## Sizing (0.01 lot = 1 oz, $1 per $1 move)
+## Sizing
 
-The 2024+ average after doubled cost was $59 per month per 0.01 lot. The haircut (half) is
-**about $30 per month per 0.01 lot**.
+**0.01 lot** (1 oz, $1 per $1 move) through stages 2 and 3. Size is not a question until stage 4.
 
-```
-monthly target      = $100
-lots needed         = 100 / 30 ≈ 0.03 lot
-bootstrap DD, 250 trades (≈ 1 year), haircut mean, p95: −14.2% of price ≈ −$595 per 0.01 lot
-at 0.03 lot         ≈ −$1,790 p95 one-year drawdown
-```
-
-At about 1% risk per trade, covering $100 per month needs an account of roughly **$10–15k**. On
-a smaller account this strategy cannot carry the desk's cost alone, and more leverage does not
-change that. Over one year at haircut expectancy, the chance of a 20%-of-price drawdown is
-0.5%.
-
-**Demo sizing:** 0.01 lot until stage 3 passes.
+What 0.01 lot carries, for reference: the 2024+ average after doubled cost was $59 a month, about
+$30 at the haircut (half). The bootstrap one-year (250-trade) p95 drawdown at the haircut mean is
+−14.2% of price, about −$595. Over one year at the haircut, the chance of a 20%-of-price
+drawdown is 0.5%.
 
 ## Kill rules (from the first demo trade)
 
