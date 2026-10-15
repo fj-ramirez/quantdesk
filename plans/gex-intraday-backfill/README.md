@@ -155,3 +155,29 @@ The loader is `app/modules/gex/gex/intraday_history.py`, and the check is
 
 **Pace:** SPY **165–187 s a session** (40–48 requests, ~370k rows). The split between terminal
 time and engine time was not measured. One 0DTE expiry alone took 9 s from the terminal.
+
+**SPX was OOM-killed (22:12 ET).** It ran inside the prod backend container (1 GiB limit). The
+kernel killed the loader at 758 MB resident; the API survived (no restart, `/health` 200), but
+it was exposed. Running the pilot in the API container was the wrong call (invariant 7). Before
+T166:
+- the load runs in **its own one-off container**, never the API's;
+- greeks rows are parsed into columnar arrays (a DataFrame of floats and categoricals), not
+  per-row `dict`s. SPX is two roots × ~60 expiries × 27 stamps;
+- SPX's pace is still unmeasured, and it decides the full load's length.
+
+### Exploration of the pilot sessions (2026-10-14, at the user's request)
+
+`scripts/intraday_pilot_explore.py`. **Descriptive only:** these 13 SPY sessions sit inside the
+holdout, and nothing here is a trial. A pattern from it becomes a declared hypothesis tested on
+2023 → 2026-09-18, never on these sessions.
+
+- **Volatility:** the next-30-min |move| was **7.0 ± 0.8 bp with net GEX > 0 and 11.0 ± 1.0 bp
+  with net GEX < 0** (per-session means, 10–11 sessions). That is the textbook
+  long-gamma/short-gamma effect, and it is about volatility, not direction. Above versus below
+  the flip did not separate (11.2 ± 4.0 vs 11.6 ± 1.1).
+- **Frozen events:** 1–13 per key. Nothing to read.
+- **Wall touches, 30 min later:** walls held 19 of 30 (63 %) and broke 9 (30 %). Placebo levels
+  (walls ±0.2 / 0.4 %) held 31 of 65 (48 %) and broke 24 (37 %). A leaning toward walls holding,
+  about 1.5 SE before clustering by session. Not established.
+- **Range:** only 5 of 13 sessions stayed between the first capture's walls. The walls are not
+  the day's range.
