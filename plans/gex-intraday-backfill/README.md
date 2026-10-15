@@ -165,6 +165,31 @@ T166:
   per-row `dict`s. SPX is two roots × ~60 expiries × 27 stamps;
 - SPX's pace is still unmeasured, and it decides the full load's length.
 
+**Both done the same night (22:18–22:32 ET).** Greeks rows are now parsed into columns on
+arrival (`compact`), and only one stamp's chain is built at a time. The run was a one-off
+`docker compose run --rm --no-deps` container (`gex-backfill-pilot`), never the API's:
+
+| Session | Requests | Rows | Total | Fetch | Compute | Peak RSS |
+|---|---|---|---|---|---|---|
+| SPY 2026-10-13 | 35 | 356k | 156 s | 90 s | 62 s | 470 MB |
+| SPX 2026-10-12 | 90 | 803k | 340 s | 204 s | 125 s | **1,082 MB** |
+
+- **Regression:** SPY 10-13 from the compact path equals the first run. Spot, flip, walls and
+  contract counts are identical; net GEX differs by ≤ 1.4e-6 (float formatting).
+- **SPX against live** (2 sessions, 52 captures): `ALL` walls equal **94.2 %**, flip median
+  0.002 %; `ZERO_DTE` walls **92.0 %**; closes median 0.08 bp. It passes. That is two sessions,
+  so it supports SPY's result rather than standing alone.
+- **Memory:** SPX peaked at 1,082 MB against the inherited 1 GiB limit, and only just
+  survived. **T166's container gets 2 GiB** (the homeserver has 7.5 GB available).
+
+**Projection for T166:** per session day, about SPX 340 s + SPY and QQQ ~160 s each + GLD, DIA
+and IWM ~100 s each ≈ **16 min for all six**. 935 sessions (2023-01-03 → 2026-09-18) ≈ **245
+hours**. Off-hours capacity is ~130 h a week (weekday nights 16:30–09:15 plus weekends), so
+about **two weeks**. Fetch is ~60 % of the time and bound by the terminal's 4 concurrent
+requests. Overlapping the next session's fetch with the current one's compute would bring it to
+roughly **10 days**. That is the first change T166 should make, before an expiry cap, which
+would change the levels.
+
 ### Exploration of the pilot sessions (2026-10-14, at the user's request)
 
 `scripts/intraday_pilot_explore.py`. **Descriptive only:** these 13 SPY sessions sit inside the

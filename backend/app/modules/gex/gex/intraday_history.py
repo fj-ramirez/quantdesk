@@ -33,7 +33,6 @@ import asyncio
 import datetime as dt
 import logging
 import time
-from collections import defaultdict
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
@@ -44,7 +43,8 @@ from app.modules.gex.providers.base import Underlying, UpstreamUnavailable
 from app.modules.gex.providers.thetadata import ThetaDataClient, _assemble, _snapshot, vendor_roots
 
 __all__ = [
-    "FILTERS", "LOADER_VERSION", "bars_from_minutes", "levels_by_stamp", "load_bars", "load_levels", "main",
+    "FILTERS", "LOADER_VERSION", "bars_from_minutes", "compact", "levels_by_stamp", "load_bars", "load_levels",
+    "main",
 ]
 
 logger = logging.getLogger("app.modules.gex.gex.intraday_history")
@@ -57,25 +57,62 @@ _BLACKOUT = (dt.time(9, 15), dt.time(16, 30))
 _CONCURRENCY = 4
 _SOURCE = "thetadata-history"
 
+#: The greeks columns `_assemble` reads. Everything else in the response is dropped on arrival.
+_TEXT = ("root", "symbol", "expiration", "right", "timestamp")
+_NUM = ("strike", "bid", "ask", "delta", "theta", "vega", "implied_vol", "underlying_price")
+
+
+def _peak_rss_mb() -> int | None:
+    """This process's peak resident memory, or None where `resource` does not exist (Windows)."""
+    try:
+        import resource
+    except ImportError:
+        return None
+    return resource.getrusage(resource.RUSAGE_SELF).ru_maxrss // 1024  # KiB on Linux
+
 
 def _stamp(raw: str) -> dt.datetime:
     return dt.datetime.fromisoformat(raw).replace(tzinfo=_NY).astimezone(dt.UTC)
 
 
+def compact(root: str, rows: list[dict[str, str]]) -> pd.DataFrame:
+    """One response as columns: floats and categoricals instead of a dict of strings per row.
+
+    An SPX session is ~800k greeks rows; held as `csv.DictReader` dicts it overran the 1 GiB
+    container in the pilot. A value that does not parse becomes NaN, which :func:`_rows` turns
+    back into `""`, the empty cell `_assemble` already reads as `None`.
+    """
+    df = pd.DataFrame.from_records(rows, columns=[c for c in _TEXT if c != "root"] + list(_NUM))
+    df.insert(0, "root", root)
+    for c in _NUM:
+        df[c] = pd.to_numeric(df[c], errors="coerce")
+    for c in _TEXT:
+        df[c] = df[c].astype("category")
+    return df
+
+
+def _rows(df: pd.DataFrame) -> list[tuple[str, dict[str, str]]]:
+    """One stamp's rows back in the `(root, csv_row)` shape `_assemble` takes."""
+    out: list[tuple[str, dict[str, str]]] = []
+    for rec in df.to_dict("records"):
+        row = {c: ("" if pd.isna(rec[c]) else str(rec[c])) for c in _TEXT[1:]}
+        row.update({c: ("" if pd.isna(rec[c]) else repr(float(rec[c]))) for c in _NUM})
+        out.append((str(rec["root"]), row))
+    return out
+
+
 def levels_by_stamp(
     underlying: Underlying,
-    greeks: list[tuple[str, dict[str, str]]],
+    greeks: pd.DataFrame,
     oi: list[tuple[str, dict[str, str]]],
 ) -> list[dict]:
-    """One row per (15-minute stamp, filter). Pure but for the engine's own logging."""
-    by_ts: dict[str, list[tuple[str, dict[str, str]]]] = defaultdict(list)
-    for root, row in greeks:
-        by_ts[row["timestamp"]].append((root, row))
+    """One row per (15-minute stamp, filter). Only one stamp's chain is materialised at a time."""
     out: list[dict] = []
-    for raw in sorted(by_ts):
+    for raw, g in greeks.groupby("timestamp", observed=True, sort=True):
+        raw = str(raw)
         captured_at = _stamp(raw)
         try:
-            contracts, spot = _assemble(underlying, raw, by_ts[raw], oi)
+            contracts, spot = _assemble(underlying, raw, _rows(g), oi)
             snap = _snapshot(underlying, raw, contracts, spot, captured_at, _SOURCE)
         except UpstreamUnavailable as exc:
             logger.info("intraday_history: %s %s skipped: %s", underlying.value, raw, exc)
@@ -126,35 +163,42 @@ async def _expirations(client: ThetaDataClient, root: str, cache: dict) -> list[
 async def load_levels(
     client: ThetaDataClient, underlying: Underlying, day: dt.date, cache: dict, *, max_dte: int | None
 ) -> tuple[list[dict], dict]:
-    """One session's levels, plus request and row counts."""
+    """One session's levels, plus request and row counts and the fetch/compute split."""
     d = f"{day:%Y%m%d}"
     sem = asyncio.Semaphore(_CONCURRENCY)
     stats = {"requests": 0, "rows": 0}
+    frames: list[pd.DataFrame] = []
 
-    async def get(path: str, params: dict) -> list[dict[str, str]]:
+    async def greeks_for(root: str, expiry: dt.date) -> None:
         async with sem:
             stats["requests"] += 1
-            rows = await client.get_rows(path, params)
-            stats["rows"] += len(rows)
-            return rows
+            rows = await client.get_rows("/v3/option/history/greeks/first_order",
+                                         {"symbol": root, "expiration": f"{expiry:%Y%m%d}", "date": d,
+                                          "interval": "15m"})
+        stats["rows"] += len(rows)
+        if rows:
+            frames.append(compact(root, rows))  # the dicts are dropped here, one response at a time
 
-    greeks: list[tuple[str, dict[str, str]]] = []
+    t0 = time.monotonic()
     oi: list[tuple[str, dict[str, str]]] = []
     for root in vendor_roots(underlying):
         exps = [e for e in await _expirations(client, root, cache)
                 if e >= day and (max_dte is None or (e - day).days <= max_dte)]
-        results = await asyncio.gather(
-            get("/v3/option/history/open_interest", {"symbol": root, "expiration": "*", "date": d}),
-            *(get("/v3/option/history/greeks/first_order",
-                  {"symbol": root, "expiration": f"{e:%Y%m%d}", "date": d, "interval": "15m"})
-              for e in exps),
-        )
-        oi += [(root, r) for r in results[0]]
-        for rows in results[1:]:
-            greeks += [(root, r) for r in rows]
-    if not greeks:
+        stats["requests"] += 1
+        oi += [(root, r) for r in await client.get_rows(
+            "/v3/option/history/open_interest", {"symbol": root, "expiration": "*", "date": d})]
+        await asyncio.gather(*(greeks_for(root, e) for e in exps))
+    stats["fetch_s"] = time.monotonic() - t0
+    if not frames:
         return [], stats
-    return await asyncio.to_thread(levels_by_stamp, underlying, greeks, oi), stats
+    greeks = pd.concat(frames, ignore_index=True)
+    for c in _TEXT:  # concat of differing categories falls back to object; re-compact
+        greeks[c] = greeks[c].astype("category")
+    frames.clear()
+    t1 = time.monotonic()
+    levels = await asyncio.to_thread(levels_by_stamp, underlying, greeks, oi)
+    stats["compute_s"] = time.monotonic() - t1
+    return levels, stats
 
 
 async def load_bars(client: ThetaDataClient, underlying: Underlying, day: dt.date, cache: dict) -> list[dict]:
@@ -204,9 +248,11 @@ async def _run(args: argparse.Namespace) -> None:
                     levels, stats = await load_levels(client, underlying, day, cache, max_dte=args.max_dte)
                     pd.DataFrame(levels).to_parquet(lv_path)
                     logger.warning(
-                        "intraday_history %s %s: %d level rows, %d requests, %d rows, %.1fs",
+                        "intraday_history %s %s: %d level rows, %d requests, %d rows, %.1fs "
+                        "(fetch %.1fs, compute %.1fs), peak RSS %s MB",
                         underlying.value, day, len(levels), stats["requests"], stats["rows"],
-                        time.monotonic() - t0,
+                        time.monotonic() - t0, stats.get("fetch_s", 0), stats.get("compute_s", 0),
+                        _peak_rss_mb(),
                     )
 
 

@@ -31,3 +31,19 @@ def test_a_bar_without_its_closing_sample_is_not_written_and_zero_is_absent():
 def test_bars_stop_at_the_close():
     bars = bars_from_minutes("SPY", _minutes("2026-10-01T15:50:00", list(range(1, 13))))
     assert [b["ts"].astimezone(dt.timezone(dt.timedelta(hours=-4))).strftime("%H:%M") for b in bars] == ["15:50", "15:55"]
+
+
+def test_compact_rows_round_trip_into_what_assemble_reads():
+    from app.modules.gex.gex.intraday_history import _rows, compact
+
+    raw = [{"symbol": "SPXW", "expiration": "2026-10-01", "strike": "7655.000", "right": "CALL",
+            "timestamp": "2026-10-01T10:00:00.000", "bid": "4.1", "ask": "4.3", "delta": "0.5",
+            "theta": "-1.2", "vega": "0.8", "implied_vol": "0.14", "underlying_price": "7655.3",
+            "rho": "0.01", "iv_error": "0.0"},
+           {"symbol": "SPXW", "expiration": "2026-10-01", "strike": "7660.000", "right": "PUT",
+            "timestamp": "2026-10-01T10:00:00.000", "bid": "", "ask": "x", "delta": "-0.4",
+            "theta": "-1.1", "vega": "0.7", "implied_vol": "0.15", "underlying_price": "7655.3"}]
+    (root, first), (_, second) = _rows(compact("SPXW", raw))
+    assert root == "SPXW" and "rho" not in first
+    assert float(first["strike"]) == 7655.0 and first["right"] == "CALL" and float(first["bid"]) == 4.1
+    assert second["bid"] == "" and second["ask"] == ""  # missing or unparseable -> empty, never "nan"
