@@ -73,6 +73,8 @@ plans/
     README.md                       verified facts, task specs, Result
     study.md                        T156's search space, declared before the run
     DECISIONS.md                    calls made while the user was away: taken or deferred
+  reel-intake/                      investing claims from reels into a review queue (2026-10-14) — T160-T162 open
+    README.md                       the rules, the reeler→desk contract, task specs
   sentiment/                        market sentiment inputs + one conditions reading (2026-10-15) — T168-T172 done, T173 conditional
     README.md                       verified sources, the composite's method, task specs, Result
   audit-and-compaction/             logic audit + TASKS.md archive and decisions index (2026-09-22)
