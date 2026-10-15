@@ -39,6 +39,7 @@ import { CommandPalette } from './CommandPalette';
 import { openCommandPalette } from './commandPaletteBus';
 import { BuildStamp } from './BuildStamp';
 import { LauncherBackdrop } from './LauncherBackdrop';
+import { LauncherConditions } from './LauncherConditions';
 import { LauncherTape } from './LauncherTape';
 import { MODULES, type ModuleEntry } from './modules';
 import { useTheme } from '../theme/ThemeContext';
@@ -128,7 +129,10 @@ export function Launcher() {
                 Analyze markets, build strategies, backtest ideas and explore data — all in one place.
               </p>
             </div>
-            <LauncherTape />
+            <div className="lx-hero__side">
+              <LauncherTape />
+              <LauncherConditions />
+            </div>
           </section>
 
           <ul className="lx-cards">

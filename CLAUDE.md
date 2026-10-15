@@ -57,8 +57,8 @@ backend/app/
                  basis.py + basis_job.py (CFD↔desk basis, rolls, the `broker.levels` view);
                  strategies.py (frozen specs as legs + kill rules) and executor.py (the order path)
   modules/terminal/   xactx, ported in T79; its screens are T80
-    api/         board.py, edges.py, calendar.py — board, regime, edges, policy, brief, series,
-                 calendar (T139); all take `as_of`
+    api/         board.py, edges.py, calendar.py, conditions.py — board, regime, edges, policy,
+                 brief, series, calendar (T139), sentiment + conditions (T171); all take `as_of`
     store/db.py  the ONLY module that knows the engine — a DuckDB-shaped facade over psycopg
     tables.py    the six tables (named tables.py, not models/, because xactx owns models.py)
     analytics/ adapters/ brief.py graph.py policy.py derive.py — the science, carried over

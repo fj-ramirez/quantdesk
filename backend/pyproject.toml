@@ -27,6 +27,7 @@ dependencies = [
     "yfinance",
     "PyYAML",
     "mcp>=2.2.0",
+    "xlrd>=2.0.2",
 ]
 
 [dependency-groups]

@@ -1997,6 +1997,17 @@ Migration `c0d1e2f3a4b5` deletes the `pos.cot.*` rows stored with an earlier `as
 11,619 on the homeserver, 89 report weeks, counted read-only on 2026-10-13). That is the one
 sanctioned exception to invariant 10, by the user's decision (plans/cot/DECISIONS.md D4).
 
+## T168–T172 · sentiment (filed and finished 2026-10-15, [plans/sentiment/](../../plans/sentiment/README.md))
+
+Market sentiment inputs and one desk-wide conditions reading. **T168** Cboe put/call adapter
+(`sent.pc.*`; history CSV to 2019-10-04, daily JSON after, cached under
+`DATA_DIR/terminal/cboe_pc/`). **T169** AAII adapter (`sent.aaii.*`, percent, `xlrd`). **T170**
+the desk's EOD gamma as terminal series (`desk.gex.{spx,qqq}.{net,flip_dist}`, `as_of` =
+`computed_at`). **T171** `analytics/sentiment.py`, `/api/terminal/sentiment`,
+`/api/terminal/conditions`, the brief's *Sentiment* subsection and MCP `terminal_conditions`.
+**T172** the conditions panel on `/terminal/regime` and the launcher line. Live verification and
+judgment calls are under the plan's *Result*. T173 (stage-1 test) stays open and conditional.
+
 ## Status corrections
 
 - **Done, no Done marker above:** T00–T14, T16, T27, T29, T30, T34–T41, T59 (all merged, per

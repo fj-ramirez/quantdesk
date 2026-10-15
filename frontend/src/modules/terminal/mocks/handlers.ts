@@ -11,6 +11,7 @@ import { http, HttpResponse } from 'msw';
 import type {
   BoardResponse,
   BriefResponse,
+  ConditionsResponse,
   EdgesResponse,
   PolicyResponse,
   RegimeResponse,
@@ -106,6 +107,76 @@ export const terminalHandlers = [
         'credit.hy.oas': -0.01,
         'fx.usd.broad': -0.63,
       },
+    });
+  }),
+
+  http.get('*/api/terminal/conditions', ({ request }) => {
+    const asOf = asOfFrom(request);
+    // The desk's own gamma starts with its captures: before then, no synthesis is possible.
+    const early = asOf < LATE_SERIES_FROM;
+    const component = (
+      key: string,
+      label: string,
+      orientation: number,
+      percentile: number | null,
+      value: number | null,
+      status = 'ok',
+    ) => ({
+      key,
+      label,
+      series: [key],
+      transform: 'level',
+      orientation,
+      status,
+      value: status === 'ok' ? value : null,
+      percentile: status === 'ok' ? percentile : null,
+      score:
+        status === 'ok' && percentile != null
+          ? orientation > 0
+            ? percentile
+            : 100 - percentile
+          : null,
+      value_date: status === 'ok' ? '2026-10-14' : null,
+      detail: status === 'ok' ? `${percentile}th percentile of 756 observations` : 'no observations as of this instant',
+    });
+    const components = [
+      component('vix', 'VIX level', -1, 58, 19.4),
+      component('term', 'VIX term structure', 1, 38, 1.06),
+      component('put_call', 'Equity put/call', -1, 45, 0.63),
+      component('aaii', 'AAII bull - bear', 1, 13, -9.4),
+      component('credit', 'HY credit spread', -1, 97, 0.41),
+      component('trend', 'S&P 500 vs 125-day mean', 1, 21, 0.012),
+      component('cot', 'S&P leveraged-funds positioning', 1, null, null, 'no_data'),
+    ];
+    const scores = components.flatMap((c) => (c.score == null ? [] : [c.score]));
+    const score = scores.reduce((a, b) => a + b, 0) / scores.length;
+    return HttpResponse.json<ConditionsResponse>({
+      as_of: asOf.toISOString(),
+      macro: null,
+      macro_detail: 'regime: see /api/terminal/regime',
+      gamma: early
+        ? [
+            { underlying: 'SPX', status: 'no_data', sign: null, net_gex: null, flip_dist_pct: null, value_date: null, detail: 'no EOD gamma as of this instant' },
+            { underlying: 'QQQ', status: 'no_data', sign: null, net_gex: null, flip_dist_pct: null, value_date: null, detail: 'no EOD gamma as of this instant' },
+          ]
+        : [
+            { underlying: 'SPX', status: 'ok', sign: 'negative', net_gex: -1.84e9, flip_dist_pct: -0.9, value_date: '2026-10-14', detail: '' },
+            { underlying: 'QQQ', status: 'ok', sign: 'positive', net_gex: 3.1e8, flip_dist_pct: 1.4, value_date: '2026-10-14', detail: '' },
+          ],
+      sentiment: {
+        as_of: asOf.toISOString(),
+        status: 'ok',
+        score,
+        band: 'fear',
+        used: scores.length,
+        min_components: 4,
+        components,
+        display: { 'vol.skew': 147.2 },
+      },
+      synthesis: early ? null : 'stressed',
+      synthesis_detail: early
+        ? 'no synthesis: SPX gamma is no_data (no EOD gamma as of this instant)'
+        : 'dealers short gamma amplify moves while sentiment is fearful; moves tend to extend rather than revert',
     });
   }),
 

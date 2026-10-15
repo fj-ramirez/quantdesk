@@ -41,6 +41,7 @@ from app.mcp.db import (
     DEFAULT_ROW_LIMIT,
     MAX_ROW_LIMIT,
     STATEMENT_TIMEOUT_MS,
+    _dsn,
     run_query,
 )
 from app.mcp.format import render_result
@@ -856,6 +857,72 @@ def terminal_calendar(
         f"week only. Last clean fetch per source: {fetch_line}."
     )
     return render_result(run_query(sql, params, limit=limit), note=note)
+
+
+@server.tool(
+    description=(
+        "What kind of market this is, as of an instant: the macro regime (real yield, HY credit, "
+        "dollar), the desk's own SPX/QQQ dealer gamma, and a 0-100 sentiment composite (VIX, VIX "
+        "term structure, equity put/call, AAII, HY spread change, S&P trend, S&P leveraged-funds "
+        "positioning), each component with its percentile and status, plus a fixed synthesis "
+        "label. A description of conditions, not a signal. Read it first for any 'what is the "
+        "market doing' question."
+    )
+)
+def terminal_conditions(as_of: str | None = None) -> str:
+    """The T171 conditions reading, computed from stored observations as the read-only role."""
+    from app.modules.terminal.analytics import sentiment as sent
+    from app.modules.terminal.config import load_settings
+    from app.modules.terminal.store.db import Connection
+
+    instant, explicit = _parse_as_of(as_of)
+    s = load_settings()
+    raw = psycopg.connect(_dsn(), autocommit=True)
+    try:
+        raw.execute(f"SET statement_timeout = {int(STATEMENT_TIMEOUT_MS)}")
+        raw.execute(f"SET search_path TO {SCHEMA_TERMINAL}")
+        raw.execute("SET default_transaction_read_only = on")
+        c = sent.read_conditions(
+            Connection(raw), instant,
+            window_days=s.regime_window_days, score_window=s.regime_score_window,
+            min_z=s.regime_min_z, max_gap_days=s.max_gap_days,
+        )
+    finally:
+        raw.close()
+
+    def f(v: float | None, spec: str = ".1f") -> str:
+        return "·" if v is None else format(v, spec)
+
+    lines = [_as_of_note(instant, explicit), ""]
+    lines.append(f"**Synthesis:** {c.synthesis or '·'} — {c.synthesis_detail}")
+    lines.append("")
+    if c.macro is None:
+        lines.append(f"**Macro regime:** · ({c.macro_detail})")
+    else:
+        ev = ", ".join(f"{k} {v:+.2f}sd" for k, v in c.macro.evidence().items())
+        lines.append(f"**Macro regime:** {c.macro.state} — {c.macro_detail} ({ev})")
+    lines.append("")
+    lines.append("| gamma | status | sign | net GEX | spot vs flip % | as of |")
+    lines.append("|---|---|---|---:|---:|---|")
+    for g in c.gamma:
+        lines.append(f"| {g.underlying} | {g.status} | {g.sign or '·'} | {f(g.net_gex, ',.0f')} "
+                     f"| {f(g.flip_dist_pct, '+.2f')} | {g.value_date or '·'} |")
+    r = c.sentiment
+    headline = (
+        f"**Sentiment:** {f(r.score)} ({r.band or r.status}), {r.used} of "
+        f"{len(r.components)} components; fewer than {sent.MIN_COMPONENTS} is insufficient."
+    )
+    lines += ["", headline, "",
+              "| component | status | value | %ile | score (100 = greed) | as of | detail |",
+              "|---|---|---:|---:|---:|---|---|"]
+    for k in r.components:
+        lines.append(f"| {k.label} | {k.status} | {f(k.value, '.3f')} | {f(k.percentile, '.0f')} "
+                     f"| {f(k.score, '.0f')} | {k.value_date or '·'} | {k.detail} |")
+    lines += ["", (
+        "Missing components are excluded, never imputed. Equal weights, nothing fitted; "
+        "whether extremes predict anything is untested (plans/sentiment T173)."
+    )]
+    return "\n".join(lines)
 
 
 # --- the escape hatch --------------------------------------------------------------------------

@@ -27,8 +27,11 @@ from zoneinfo import ZoneInfo
 
 from . import universe
 from .adapters import (
+    AaiiAdapter,
     CboeAdapter,
+    CboePutCallAdapter,
     CftcAdapter,
+    DeskGexAdapter,
     FredAdapter,
     PricesAdapter,
     TreasuryAdapter,
@@ -56,6 +59,14 @@ def build_adapter(source: str, settings: Settings):
         # T91. Reads gex.daily_bars rather than a vendor; constructed identically so the
         # ingest loop, the batch bookkeeping and the failure reporting treat it the same.
         return PricesAdapter(smap, **kw)
+    if source == "cboe_pc":
+        # T168. Daily files are cached under DATA_DIR so a nightly run asks only for new days.
+        return CboePutCallAdapter(smap, cache_dir=settings.cboe_pc_cache_dir, **kw)
+    if source == "aaii":
+        return AaiiAdapter(smap, **kw)
+    if source == "desk_gex":
+        # T170. Reads gex.gex_levels, T91's pattern.
+        return DeskGexAdapter(smap, **kw)
     raise UnknownSeriesError(f"no network adapter for source {source!r}")
 
 

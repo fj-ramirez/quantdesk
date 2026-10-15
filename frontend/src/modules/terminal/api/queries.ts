@@ -17,6 +17,7 @@ export const terminalQueryKeys = {
   board: (asOf: string | undefined, assetClass?: string) =>
     ['terminal-board', asOf ?? 'latest', assetClass ?? 'all'] as const,
   regime: (asOf: string | undefined) => ['terminal-regime', asOf ?? 'latest'] as const,
+  conditions: (asOf: string | undefined) => ['terminal-conditions', asOf ?? 'latest'] as const,
   edges: (asOf: string | undefined) => ['terminal-edges', asOf ?? 'latest'] as const,
   policy: (asOf: string | undefined) => ['terminal-policy', asOf ?? 'latest'] as const,
   brief: (asOf: string | undefined) => ['terminal-brief', asOf ?? 'latest'] as const,
@@ -35,6 +36,14 @@ export function useRegime(asOf: string | undefined) {
   return useQuery({
     queryKey: terminalQueryKeys.regime(asOf),
     queryFn: () => terminalClient.regime(asOf),
+    staleTime: STALE_MS,
+  });
+}
+
+export function useConditions(asOf: string | undefined) {
+  return useQuery({
+    queryKey: terminalQueryKeys.conditions(asOf),
+    queryFn: () => terminalClient.conditions(asOf),
     staleTime: STALE_MS,
   });
 }

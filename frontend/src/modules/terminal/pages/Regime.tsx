@@ -8,6 +8,9 @@
  *
  * `quiet` is a **real answer**, not a failure to classify: it means no leg moved enough to call a
  * regime, and saying "quiet" is more honest than putting a confident label on noise.
+ *
+ * Below the macro reading sits the conditions panel (T172): dealer gamma, the sentiment
+ * composite and the fixed synthesis of the two.
  */
 import { InfoTip } from '../../../components/ui/InfoTip';
 import { MetricStrip } from '../../../components/ui/MetricCard';
@@ -15,6 +18,7 @@ import { PageHeader } from '../../../components/ui/PageHeader';
 import { Surface } from '../../../components/ui/Surface';
 import { ErrorState } from '../../gex/components/ErrorState';
 import { useRegime } from '../api/queries';
+import { ConditionsPanel } from '../components/ConditionsPanel';
 import { useAsOf } from '../state/asOf';
 
 const STATE_TEXT: Record<string, string> = {
@@ -42,7 +46,7 @@ export function Regime() {
     <div className="terminal-page">
       <PageHeader
         title="Regime"
-        description="Which of four states the last few weeks look like, and the three legs that decide it."
+        description="Which of four states the last few weeks look like and the three legs that decide it, then dealer gamma and sentiment beside it."
         caveat={
           isHistorical ? (
             <p>
@@ -86,6 +90,8 @@ export function Regime() {
                     },
             }))}
           />
+
+          <ConditionsPanel asOf={asOf} />
 
           <Surface className="regime-rules" level="app" bordered>
             <h2>

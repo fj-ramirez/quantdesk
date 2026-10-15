@@ -355,5 +355,6 @@ def test_t105_decisions_note_states_the_real_pending_test():
 def test_t106_tools_are_registered():
     from app.mcp import server as mod
 
-    for name in ("desk_status", "gex_track_record", "gex_levels", "gex_decisions"):
+    for name in ("desk_status", "gex_track_record", "gex_levels", "gex_decisions",
+                 "terminal_conditions"):
         assert callable(getattr(mod, name)), f"{name} missing"
