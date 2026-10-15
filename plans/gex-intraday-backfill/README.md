@@ -78,8 +78,7 @@ since 2022 and SPY since late 2022; GLD and DIA have none, so their `_0DTE` keys
 
 ### T167 · Opus · T166
 **Stage 1 for the level rules.** One declared run each for `FLIP_CROSS_DOWN`, `FLIP_CROSS_UP`,
-`PUT_WALL_BOUNCE`, `CALL_WALL_BOUNCE`, `PUT_WALL_BREAK` and `CALL_WALL_BREAK` (if T164 has
-merged), plus the `_0DTE` keys where data exists.
+`PUT_WALL_BOUNCE`, `CALL_WALL_BOUNCE`, `PUT_WALL_BREAK` and `CALL_WALL_BREAK`, plus the `_0DTE` keys where data exists.
 
 - Each key's frozen entry, exit and session window, applied character for character. The P&L
   is on the CFD's M1 bars, with the doubled recorded spread charged.

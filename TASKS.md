@@ -23,7 +23,7 @@ How to use this file:
   `context/decisions.md` if it settled a rule. A finished block does not stay here.
 - New work gets the next free ID and is filed here, never fixed silently.
 
-**Next free ID: T165.** (T108 was allocated retroactively — see the archive's addendum;
+**Next free ID: T168.** (T108 was allocated retroactively — see the archive's addendum;
 T109–T114 were filed on 2026-09-22 from the task-history audit, T115–T121 from the logic audit;
 T122–T124 were filed and finished on 2026-09-23 — see the addendum; T125–T127 were filed on
 2026-09-25 for the ThetaData initiative, [plans/thetadata/](plans/thetadata/README.md); T128–T133
@@ -32,7 +32,7 @@ finished 2026-10-07, see the addendum; T139 filed 2026-10-07, split from T96, an
 [docs/read-review-2026-10-08.md](docs/read-review-2026-10-08.md); T143–T147 filed 2026-10-08 on the
 `experiment/charter-mt5` branch for [plans/charter-mt5/](plans/charter-mt5/README.md); T148 filed
 2026-10-08 from T145's basis work; T149 filed 2026-10-09 for the `xau-range-rejection` edge candidate; T150 filed 2026-10-09 at
-the charter-mt5 merge; T155–T158 filed 2026-10-13 for [plans/cot/](plans/cot/README.md), T155 and T157 finished the same day; T159–T163 filed 2026-10-13/14 on `feat/broker-chart`; T164 filed 2026-10-14 from the first reel batch, the wall-break log.)
+the charter-mt5 merge; T155–T158 filed 2026-10-13 for [plans/cot/](plans/cot/README.md), T155 and T157 finished the same day; T159–T163 filed 2026-10-13/14 on `feat/broker-chart`; T164 filed 2026-10-14 from the first reel batch, the wall-break log; T165–T167 filed 2026-10-14 for [plans/gex-intraday-backfill/](plans/gex-intraday-backfill/README.md).)
 
 ---
 
@@ -184,6 +184,29 @@ Run `scan/decisions` and `scan/outcomes` over each historical session's levels a
 writing to a research-owned table — **never `gex.decisions`**. Its purpose is to give T112 an
 out-of-sample record years deep instead of waiting for ~100 live resolutions. Gated on
 T115–T117 for the same reason T112 is: the outcome logic is known to be wrong until they land.
+
+### GEX intraday backfill (2026-10-14)
+
+> Initiative: [plans/gex-intraday-backfill/README.md](plans/gex-intraday-backfill/README.md).
+> Years of 15-minute levels from ThetaData history, so flip-cross, wall-bounce and wall-break
+> get a stage 1. The holdout is 2026-09-21 onward. Replayed levels go to research tables, never
+> to `gex.*`. The full specs are in the plan.
+
+### T165 · Sonnet · T26
+**Intraday history loader + a one-month SPY pilot.** `gex/intraday_history.py`: per-expiry
+`greeks/first_order` at 15m + OI on D, run through the engine for `ALL` and `ZERO_DTE`, written to
+`research.gex_intraday_levels`. 5-minute bars are built from 1-minute `underlying_price` into
+`research.desk_bars_5m`. Resumable, with the capture-hours guard. Acceptance: walls equal live on
+≥ 90 % of matched stamps (SPY, 2026-09-25 → 10-14), median flip difference ≤ 0.1 %, and the
+measured pace recorded.
+
+### T166 · Sonnet · T165
+**Full load 2023-01-03 → 2026-09-18**, six symbols, on the homeserver outside capture hours.
+
+### T167 · Opus · T166
+**Stage 1 for the level rules**: one declared run per frozen key (flip-cross, wall-bounce,
+wall-break, + `_0DTE`). P&L on the CFD's M1 bars at the doubled spread, SE clustered by session,
+IS/OOS, noise ceiling, recorded as trials.
 
 ### Real-time (re-pointed from Tradier to ThetaData)
 
