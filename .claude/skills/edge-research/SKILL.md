@@ -12,10 +12,14 @@ description: >
 
 ## The goal, and the boundary
 
-**The desk must pay for itself.** It costs about **$100/month** (as of 2026-10-08: ThetaData
-Options Standard at $80 plus hosting and the rest). Profit comes from trading CFDs (index and
-gold) with leverage. Every recommendation here is judged by whether it moves the desk toward
-covering that cost after trading costs, without risking the account to get there.
+**The long-term goal is a desk that pays for itself.** It costs about **$100/month** (as of
+2026-10-08: ThetaData Options Standard at $80 plus hosting and the rest). That is a **future
+goal, not a gate**: it is not used to judge, size or reject a candidate now. Profit comes from
+trading CFDs (index and gold) with leverage.
+
+**For now, every strategy trades 0.01 lot** (the broker minimum; 0.1 on US2000), from demo
+through micro live. Testing measures the edge and the costs, not the income. Sizing toward the
+$100/month only becomes a question at stage 4, when a strategy has passed stage 3.
 
 **Regime-dependent strategies are fine. Unmonitored ones are not.** A strategy that only works
 in short gamma, or only when rates are rising, is acceptable if it states that condition and
@@ -163,10 +167,14 @@ not something this skill builds inline.
 - **Mapping.** SPX/SPY → US500, QQQ → NAS100 (an NDX proxy, not QQQ itself), DIA → US30,
   GLD → XAUUSD (GLD has US hours and an expense ratio; spot gold trades nearly 24h).
 
-## Sizing: the $100/month arithmetic, shown every time
+## Sizing: 0.01 lot until stage 4
+
+Stages 2 and 3 trade **0.01 lot**, whatever the arithmetic below would say. Don't write a
+$100/month calculation into a candidate file before stage 4.
 
 Leverage changes **position size**, not **edge**. A strategy with no edge loses faster with more
-leverage. Before recommending a size, show this calculation with the candidate's own numbers:
+leverage. At stage 4, before recommending a size above 0.01 lot, show this calculation with the
+candidate's own numbers:
 
 ```
 monthly R          = trades_per_month × mean_R_live_estimate
@@ -180,7 +188,8 @@ account_needed_$   = risk_per_trade_$ / risk_fraction       (risk_fraction ≤ 0
   $3,300 account at 1% risk.
 - If covering $100/month needs **risk_fraction > 2%**, say plainly that the strategy can't carry
   the desk's costs at this account size. Don't solve it with more leverage. Options are a bigger
-  account, more independent strategies, or accepting that it doesn't cover costs yet.
+  account, more independent strategies, or accepting that it doesn't cover costs yet. A
+  candidate that can't cover $100/month alone is still worth testing.
 - **Risk of ruin:** bootstrap the trade distribution (stage-1 or forward trades, resampled in
   session blocks) over 12 months at the proposed size. Report the chance of a 20% and a 50%
   drawdown. Don't scale while the 50% probability is above 1%.
@@ -243,3 +252,9 @@ Lead with **the candidate's stage, the next gate, and what is missing to pass it
 months, data). Then the evidence: n, mean R ± clustered SE, search count, costs used. If a
 size is recommended, show the arithmetic. End with the kill rules in force. Keep a
 recommendation to scale separate from the evidence, and never base it on a single good week.
+
+No generic risk warnings ([context/risk-aversion.md](../../../context/risk-aversion.md)). The
+gates above are the skepticism, so apply them and state the result. A failed gate is a clean
+answer, not a reason to hedge. A passed gate is not a cue to add "but be careful". Concrete CFD
+risks such as gap size, swap, cost drift or correlated exposure are findings, stated with their
+numbers.
