@@ -112,3 +112,11 @@ def test_every_missing_session_is_loaded_once_and_a_failure_does_not_stop_the_ru
 def test_the_end_date_must_be_before_today(tmp_path):
     with pytest.raises(SystemExit, match="before today"):
         asyncio.run(ih._run(_args(tmp_path, end=dt.datetime.now(NY).date())))
+
+
+def test_only_expiries_with_open_interest_on_the_day_are_requested():
+    oi = [{"expiration": "2023-01-03"}, {"expiration": "2023-01-03"}, {"expiration": "2023-01-20"},
+          {"expiration": "2022-12-30"}, {"expiration": "2025-12-19"}, {"expiration": ""}, {}]
+    day = dt.date(2023, 1, 3)
+    assert ih.expirations_with_oi(oi, day, None) == [dt.date(2023, 1, 3), dt.date(2023, 1, 20), dt.date(2025, 12, 19)]
+    assert ih.expirations_with_oi(oi, day, 30) == [dt.date(2023, 1, 3), dt.date(2023, 1, 20)]

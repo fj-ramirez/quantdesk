@@ -44,7 +44,8 @@ from app.modules.gex.providers.base import Underlying, UpstreamUnavailable
 from app.modules.gex.providers.thetadata import ThetaDataClient, _assemble, _snapshot, vendor_roots
 
 __all__ = [
-    "FILTERS", "LOADER_VERSION", "Fetched", "bars_from_minutes", "compact", "fetch_session", "levels_by_stamp",
+    "FILTERS", "LOADER_VERSION", "Fetched", "bars_from_minutes", "compact", "expirations_with_oi", "fetch_session",
+    "levels_by_stamp",
     "load_bars", "main", "seconds_until_window",
 ]
 
@@ -155,6 +156,25 @@ def bars_from_minutes(symbol: str, minutes: list[dict[str, str]]) -> list[dict]:
     return out
 
 
+def expirations_with_oi(oi_rows: list[dict[str, str]], day: dt.date, max_dte: int | None) -> list[dt.date]:
+    """The expiries to request greeks for: those with an OI row reported on `day`.
+
+    Not every expiry ever listed after `day`. For a 2023 session that list is ~1,000 SPXW
+    dates that did not exist yet, each answered 472. Nothing is lost: a contract with no OI row
+    is excluded by the engine anyway (invariant 3), so an expiry absent from the OI report adds
+    no gamma to any level.
+    """
+    out = set()
+    for row in oi_rows:
+        try:
+            e = dt.date.fromisoformat(row["expiration"].strip()[:10])
+        except (KeyError, ValueError):
+            continue
+        if e >= day and (max_dte is None or (e - day).days <= max_dte):
+            out.add(e)
+    return sorted(out)
+
+
 async def _expirations(client: ThetaDataClient, root: str, cache: dict) -> list[dt.date]:
     if root not in cache:
         rows = await client.get_rows("/v3/option/list/expirations", {"symbol": root})
@@ -198,12 +218,11 @@ async def fetch_session(
     oi: list[tuple[str, dict[str, str]]] = []
     if need_levels:
         for root in vendor_roots(underlying):
-            exps = [e for e in await _expirations(client, root, cache)
-                    if e >= day and (max_dte is None or (e - day).days <= max_dte)]
             stats["requests"] += 1
-            oi += [(root, r) for r in await client.get_rows(
-                "/v3/option/history/open_interest", {"symbol": root, "expiration": "*", "date": d})]
-            await asyncio.gather(*(greeks_for(root, e) for e in exps))
+            root_oi = await client.get_rows(
+                "/v3/option/history/open_interest", {"symbol": root, "expiration": "*", "date": d})
+            oi += [(root, r) for r in root_oi]
+            await asyncio.gather(*(greeks_for(root, e) for e in expirations_with_oi(root_oi, day, max_dte)))
     stats["fetch_s"] = time.monotonic() - t0
     greeks = None
     if frames:

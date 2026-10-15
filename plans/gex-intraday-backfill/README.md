@@ -224,6 +224,21 @@ docker logs -f quantdesk-gex-backfill-1     # one line per session: timing and p
 
 Progress: `ls data/research/gex_intraday/*/ | grep -c levels`, out of ~935 sessions per symbol.
 
+**Smoke test, 2026-10-14 23:30 ET** (`docker run -m 2g` on the current image, the loader mounted
+in, SPX 2023-01-03 and 01-04 into the real output folder, so they count):
+
+- **Bug found and fixed:** for old sessions the loader requested every expiration ever listed
+  after D, about 1,000 SPXW dates that did not exist yet, each answered 472. That made a 2023
+  session look hung. Expiries now come from **the OI reported on D** (`expirations_with_oi`). A
+  contract with no OI row is excluded by the engine anyway (invariant 3), so no level can move.
+  Checked: SPY 2026-10-13 re-run has identical spot, flip and walls (net GEX ≤ 2e-6), and 282
+  fewer contracts (13,172 → 12,890).
+- **Pipelining works:** SPX 2023-01-03 took 291 s (fetch 213, compute 78). 2023-01-04 took
+  **197 s**, shorter than its own 202 s fetch, because that fetch ran during the previous
+  session's compute. Peak RSS was **816 MB** with two sessions in flight.
+- 2023 SPX chains are smaller than 2026's (475k rows against 803k), so the earlier sessions run
+  faster than the projection assumed.
+
 ### Exploration of the pilot sessions (2026-10-14, at the user's request)
 
 `scripts/intraday_pilot_explore.py`. **Descriptive only:** these 13 SPY sessions sit inside the
