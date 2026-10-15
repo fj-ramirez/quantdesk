@@ -9,6 +9,7 @@ import { apiFetch } from '../../../lib/http';
 import type {
   BoardResponse,
   BriefResponse,
+  ConditionsResponse,
   EdgesResponse,
   PolicyResponse,
   RegimeResponse,
@@ -27,6 +28,9 @@ export const terminalClient = {
   },
   regime(asOf: AsOf): Promise<RegimeResponse> {
     return apiFetch<RegimeResponse>('/api/terminal/regime', { as_of: asOf });
+  },
+  conditions(asOf: AsOf): Promise<ConditionsResponse> {
+    return apiFetch<ConditionsResponse>('/api/terminal/conditions', { as_of: asOf });
   },
   edges(asOf: AsOf): Promise<EdgesResponse> {
     return apiFetch<EdgesResponse>('/api/terminal/edges', { as_of: asOf });

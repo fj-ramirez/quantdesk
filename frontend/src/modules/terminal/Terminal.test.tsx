@@ -19,6 +19,7 @@ import { Board } from './pages/Board';
 import { Brief } from './pages/Brief';
 import { Graph } from './pages/Graph';
 import { Policy } from './pages/Policy';
+import { Regime } from './pages/Regime';
 import { zBand } from './components/ZCell';
 
 function renderTerminal(path = '/terminal') {
@@ -32,6 +33,7 @@ function renderTerminal(path = '/terminal') {
             <Route path="graph" element={<Graph />} />
             <Route path="policy" element={<Policy />} />
             <Route path="brief" element={<Brief />} />
+            <Route path="regime" element={<Regime />} />
           </Route>
         </Routes>
       </MemoryRouter>
@@ -198,5 +200,31 @@ describe('the brief', () => {
     expect(await screen.findByRole('heading', { name: 'What moved' })).toBeInTheDocument();
     expect(screen.getByRole('columnheader', { name: 'series' })).toBeInTheDocument();
     expect(screen.getByText('ust.5y.nominal')).toBeInTheDocument();
+  });
+});
+
+describe('the conditions panel', () => {
+  it('names the synthesis and shows every gamma leg and sentiment component', async () => {
+    renderTerminal('/terminal/regime');
+    const panel = await screen.findByRole('region', { name: 'Conditions' });
+    expect(within(panel).getByText('Stressed')).toBeInTheDocument();
+    expect(within(panel).getByText('negative gamma')).toBeInTheDocument();
+    expect(within(panel).getByText('-$1.8B net', { exact: false })).toBeInTheDocument();
+    expect(within(panel).getByText(/6 of 7 components/)).toBeInTheDocument();
+  });
+
+  it('shows a missing component as missing, never as a number', async () => {
+    renderTerminal('/terminal/regime');
+    const panel = await screen.findByRole('region', { name: 'Conditions' });
+    const row = within(panel).getByText('S&P leveraged-funds positioning').closest('tr')!;
+    expect(within(row).getByText('no data')).toBeInTheDocument();
+    expect(within(row).getAllByText('·')).toHaveLength(2);
+  });
+
+  it('gives no synthesis before the desk had gamma', async () => {
+    renderTerminal('/terminal/regime?as_of=2020-03-16T17:00:00.000Z');
+    const panel = await screen.findByRole('region', { name: 'Conditions' });
+    expect(within(panel).getByText('No synthesis')).toBeInTheDocument();
+    expect(within(panel).getAllByText('no data').length).toBeGreaterThanOrEqual(2);
   });
 });

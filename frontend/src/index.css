@@ -3069,6 +3069,40 @@ code {
   padding-top: 4px;
 }
 
+/* T172: the tape and the conditions line share the hero's right column. */
+.lx-hero__side {
+  justify-self: end;
+  display: grid;
+  gap: 16px;
+  justify-items: end;
+}
+
+.lx-conditions {
+  display: grid;
+  justify-items: end;
+  gap: 2px;
+  text-decoration: none;
+  color: inherit;
+  font-family: var(--lx-font);
+}
+
+.lx-conditions__caption {
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--lx-text-3);
+}
+
+.lx-conditions__label { font-size: 18px; font-weight: 700; }
+.lx-conditions__label--stressed,
+.lx-conditions__label--fragile { color: var(--status-negative); }
+.lx-conditions__label--unstable { color: var(--status-caution); }
+.lx-conditions__label--cushioned,
+.lx-conditions__label--orderly { color: var(--status-positive); }
+.lx-conditions__label--complacent { color: var(--status-info); }
+.lx-conditions__score { font-size: 12px; color: var(--lx-text-3); }
+
 .lx-tape__table {
   border-collapse: collapse;
   font-family: var(--mono);
@@ -3322,8 +3356,14 @@ code {
     gap: 28px;
   }
 
-  .lx-tape {
+  .lx-tape,
+  .lx-hero__side {
     justify-self: start;
+  }
+
+  .lx-hero__side,
+  .lx-conditions {
+    justify-items: start;
   }
 
   .lx-tape__caption {
@@ -3887,6 +3927,79 @@ code {
 
 .flag--conflict { color: var(--status-caution); font-weight: 600; }
 .flag--sig { color: var(--status-positive); }
+
+/* --- conditions panel (T172) -------------------------------------------------------------- */
+
+.conditions { display: grid; gap: var(--space-3); margin: var(--space-3) 0; }
+.conditions-muted { color: var(--text-muted); font-size: 0.85em; }
+
+.conditions-synthesis { padding: var(--space-4); }
+.conditions-synthesis p { margin: var(--space-1) 0 0; }
+.conditions-synthesis__label { font-size: 1.5rem; font-weight: 700; }
+.conditions-synthesis--stressed .conditions-synthesis__label,
+.conditions-synthesis--fragile .conditions-synthesis__label { color: var(--status-negative); }
+.conditions-synthesis--unstable .conditions-synthesis__label { color: var(--status-caution); }
+.conditions-synthesis--cushioned .conditions-synthesis__label,
+.conditions-synthesis--orderly .conditions-synthesis__label { color: var(--status-positive); }
+.conditions-synthesis--complacent .conditions-synthesis__label { color: var(--status-info); }
+.conditions-synthesis--none .conditions-synthesis__label { color: var(--text-muted); }
+
+.conditions-gammas {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: var(--space-3);
+}
+.conditions-gamma {
+  border: 1px solid var(--border-default);
+  border-left-width: 4px;
+  border-radius: 6px;
+  padding: var(--space-2) var(--space-3);
+}
+.conditions-gamma--negative { border-left-color: var(--status-negative); }
+.conditions-gamma--positive { border-left-color: var(--status-positive); }
+.conditions-gamma--none { border-left-color: var(--text-muted); }
+.conditions-gamma__head { display: flex; justify-content: space-between; gap: var(--space-2); }
+.conditions-gamma__body { margin: var(--space-1) 0 0; font-variant-numeric: tabular-nums; }
+
+.conditions-sentiment { padding: var(--space-4); overflow-x: auto; }
+.conditions-sentiment h2 { margin-top: 0; }
+.conditions-score { display: flex; align-items: baseline; gap: var(--space-3); flex-wrap: wrap; }
+.conditions-score__value { font-size: 2rem; font-weight: 700; font-variant-numeric: tabular-nums; }
+.conditions-score__band { font-weight: 600; }
+.conditions-score--extreme_fear .conditions-score__band,
+.conditions-score--fear .conditions-score__band { color: var(--status-negative); }
+.conditions-score--greed .conditions-score__band,
+.conditions-score--extreme_greed .conditions-score__band { color: var(--status-positive); }
+
+.conditions-scale {
+  position: relative;
+  height: 8px;
+  margin: var(--space-2) 0 var(--space-3);
+  border-radius: 4px;
+  background: linear-gradient(to right, var(--status-negative), var(--surface-raised) 50%, var(--status-positive));
+}
+.conditions-scale__marker {
+  position: absolute;
+  top: -4px;
+  width: 3px;
+  height: 16px;
+  margin-left: -1px;
+  background: var(--text-strong);
+}
+
+.conditions-table { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; }
+.conditions-table th, .conditions-table td { padding: var(--space-1) var(--space-2); text-align: left; }
+.conditions-table td:nth-child(2), .conditions-table td:nth-child(3) { text-align: right; }
+.conditions-row--missing th { color: var(--text-muted); }
+.conditions-bar {
+  display: inline-block;
+  width: 120px;
+  height: 6px;
+  border-radius: 3px;
+  background: var(--surface-raised);
+  vertical-align: middle;
+}
+.conditions-bar__fill { display: block; height: 100%; border-radius: 3px; background: var(--status-info); }
 
 /* --- regime page -------------------------------------------------------------------------- */
 

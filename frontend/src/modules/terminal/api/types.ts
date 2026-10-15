@@ -56,6 +56,61 @@ export interface RegimeResponse {
   evidence: Record<string, number | null>;
 }
 
+/** One sentiment component (T171). Numbers are null whenever `status` is not `ok`. */
+export interface SentimentComponent {
+  key: string;
+  label: string;
+  series: string[];
+  transform: string;
+  /** +1: a high value is greed. -1: a high value is fear. */
+  orientation: number;
+  /** ok | no_data | stale | short_history */
+  status: string;
+  value: number | null;
+  percentile: number | null;
+  /** The percentile oriented so 100 = greed: what the score averages. */
+  score: number | null;
+  value_date: string | null;
+  detail: string;
+}
+
+export interface SentimentResponse {
+  as_of: string;
+  /** ok | insufficient. Insufficient carries no score and no band. */
+  status: string;
+  score: number | null;
+  /** extreme_fear | fear | neutral | greed | extreme_greed */
+  band: string | null;
+  used: number;
+  min_components: number;
+  components: SentimentComponent[];
+  /** Shown, never scored (SKEW). */
+  display: Record<string, number | null>;
+}
+
+export interface GammaReading {
+  underlying: string;
+  /** ok | no_data | stale */
+  status: string;
+  sign: 'positive' | 'negative' | null;
+  net_gex: number | null;
+  /** (spot - flip) / spot, %. Positive = spot above the flip. */
+  flip_dist_pct: number | null;
+  value_date: string | null;
+  detail: string;
+}
+
+export interface ConditionsResponse {
+  as_of: string;
+  macro: RegimeResponse | null;
+  macro_detail: string;
+  gamma: GammaReading[];
+  sentiment: SentimentResponse;
+  /** stressed | unstable | fragile | cushioned | orderly | complacent, or null. */
+  synthesis: string | null;
+  synthesis_detail: string;
+}
+
 export interface EdgeRow {
   from_series: string;
   to_series: string;
