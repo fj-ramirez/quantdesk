@@ -113,4 +113,45 @@ which read history this load provides.
 
 ## Result
 
-(empty until T165 lands)
+### T165 pilot (2026-10-14, homeserver, after hours)
+
+The loader is `app/modules/gex/gex/intraday_history.py`, and the check is
+`scripts/intraday_pilot_validate.py`. Both were run inside the prod backend container from
+`/tmp`, with nothing deployed. Output went to Parquet under `/data/research/intraday_pilot/`.
+**No database tables yet:** the pilot needed no migration, and the tables come with T166.
+
+**The terminal, probed live:**
+- `greeks/first_order` history works at `interval=15m`: 27 stamps (09:30 → 16:00), columns as
+  the live endpoint, back to at least 2023-01-03.
+- `underlying_price` is filled for all six symbols. SPX is zero only at 09:30, before the index
+  prints, and that stamp is skipped.
+- One expiry per request; ranges up to a month, never past today. Today's OI is not in history
+  yet (400), so a session is loadable from the next day on.
+- 1-minute bars cost one request (0.1 s) per session.
+
+**SPY, 2026-09-25 → 10-13 (13 sessions, 336 live captures matched):**
+
+| Check | Result | Target |
+|---|---|---|
+| `ALL`: both walls equal live | **96.1 %** (call 98.2, put 97.9) | ≥ 90 % ✓ |
+| `ALL`: flip \|diff\| | median **0.004 %**, p90 0.020 % | ≤ 0.1 % ✓ |
+| `ALL`: net GEX | median ratio −0.1 % | — |
+| 5-min closes vs `gex.intraday_bars` | median **0.13 bp**, p90 0.26 bp | ≤ 1 bp ✓ |
+| highs / lows | understated by 0.78 bp median, 2.1–2.2 bp p90 | known bias; the touch tolerance is 5 bp |
+| `ZERO_DTE`: both walls equal | **84.0 %** (call 95.0, put 88.4) | ≥ 90 % ✗ |
+
+- **`ALL` passes.** That is the filter the frozen specs use. Its 13 misses are 0.7–2 % of spot:
+  the wall alternating between two far-apart strikes of nearly equal gamma, not noise around one
+  strike.
+- **`ZERO_DTE` fails the 90 % bar.** Its misses are mostly one strike (median 0.13 % of spot,
+  max 1.0 %). Live captures land 8–10 s after each boundary, so this is not timing. It is the
+  near-equal 0DTE gamma of neighbouring strikes, ranked off slightly different IVs (snapshot
+  against interval quotes). **Consequence for T167:** the `_0DTE` keys' backtest uses walls that
+  are one strike off about one capture in six. Report that with any `_0DTE` result, or leave
+  those keys to the forward record.
+- **Bug found and fixed in the pilot:** a bar's close must be the sample stamped at its close
+  (s+5), not the last one inside it. Before the fix, the closes were off by 1.6 bp median.
+  `tests/test_intraday_history.py` pins it.
+
+**Pace:** SPY **165–187 s a session** (40–48 requests, ~370k rows). The split between terminal
+time and engine time was not measured. One 0DTE expiry alone took 9 s from the terminal.
