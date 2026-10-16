@@ -456,10 +456,13 @@ def gex_track_record(key: str | None = None, since: str | None = None) -> str:
         "and wall break "
         "since the logger went live, per key, with the mean and the session-clustered standard "
         "error at 15/30/60 minutes and the close, and the excursion-path summary on the traded "
-        "CFD. Pass `recent` to list the latest events with their MAE/MFE swing sequences."
+        "CFD. Pass `recent` to list the latest events with their MAE/MFE swing sequences. Pass "
+        "`by_gamma` to split each key by the sign of the event's own net GEX (backlog 49)."
     )
 )
-def gex_level_events(key: str | None = None, since: str | None = None, recent: int = 0) -> str:
+def gex_level_events(
+    key: str | None = None, since: str | None = None, recent: int = 0, by_gamma: bool = False
+) -> str:
     """Per-key follow-through, clustered by session, plus optionally the latest swing paths.
 
     **The standard error is clustered by session** (T142). SPX, SPY and DIA cross the same flip
@@ -470,6 +473,10 @@ def gex_level_events(key: str | None = None, since: str | None = None, recent: i
     Returns are signed in the event's direction (up for `FLIP_CROSS_UP`, `PUT_WALL_BOUNCE` and
     `CALL_WALL_BREAK`).
     The flip-cross spec trades `FLIP_CROSS_UP` as a fade, so that key wins when it is negative.
+
+    `by_gamma` is the forward read of `docs/edges/gamma-conditioned-walls.md`: each key becomes
+    `KEY gamma+`, `KEY gamma-` or `KEY gamma?` by the sign of the net GEX the event was logged
+    with (its own capture, under its own filter). A null net GEX is unknown, never positive.
     """
     start = _parse_date(since, field="since")
     clauses = ["true"]
@@ -482,6 +489,13 @@ def gex_level_events(key: str | None = None, since: str | None = None, recent: i
         params["start"] = start
     where = " AND ".join(clauses)
 
+    group_key = (
+        "e.key || CASE WHEN e.net_gex > 0 THEN ' gamma+' WHEN e.net_gex < 0 THEN ' gamma-' "
+        "ELSE ' gamma?' END"
+        if by_gamma
+        else "e.key"
+    )
+
     def clustered(col: str, name: str) -> str:
         return (
             f"round(avg({col})::numeric, 1) AS {name}, "
@@ -490,7 +504,7 @@ def gex_level_events(key: str | None = None, since: str | None = None, recent: i
 
     sql = f"""
         WITH ev AS (
-            SELECT e.session_date, e.in_window, e.alerted, s.*, e.key AS k,
+            SELECT e.session_date, e.in_window, e.alerted, s.*, {group_key} AS k,
                    s.path_mae / nullif(s.path_unit, 0) AS mae_u,
                    s.path_mfe / nullif(s.path_unit, 0) AS mfe_u,
                    s.path_close / nullif(s.path_unit, 0) AS close_u,
