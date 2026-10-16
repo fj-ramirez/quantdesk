@@ -167,13 +167,14 @@ class OrderIntent(Base):
     key: Mapped[str] = mapped_column(String(96), unique=True, nullable=False)
     strategy: Mapped[str] = mapped_column(String(32), nullable=False)
     symbol: Mapped[str] = mapped_column(String(32), nullable=False)
-    action: Mapped[str] = mapped_column(String(8), nullable=False)  # open | close
+    action: Mapped[str] = mapped_column(String(8), nullable=False)  # open | close | decide
     side: Mapped[str] = mapped_column(String(4), nullable=False)  # buy | sell: the position's
     volume: Mapped[float] = mapped_column(Float, nullable=False)
     due_at: Mapped[dt.datetime] = mapped_column(UTCDateTime(), nullable=False)
     expires_at: Mapped[dt.datetime] = mapped_column(UTCDateTime(), nullable=False)
-    #: pending -> filled | rejected | expired | skipped. A close that fails stays pending and is
-    #: retried until it fills or there is nothing left to close.
+    #: pending -> filled | rejected | expired | skipped; a `decide` row -> decided, with what was
+    #: decided and on which values in `note`. A close that fails stays pending and is retried
+    #: until it fills or there is nothing left to close.
     status: Mapped[str] = mapped_column(String(10), nullable=False, default="pending")
     attempts: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     created_at: Mapped[dt.datetime] = mapped_column(UTCDateTime(), nullable=False)
