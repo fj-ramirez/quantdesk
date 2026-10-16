@@ -193,7 +193,8 @@ def eval_positions(name: str, sym: str, closes: pd.DataFrame, pos: pd.Series, n_
            "mean": float(x.mean()), "t": tstat(x), "is_mean": float(x[~oos].mean()),
            "oos_mean": float(x[oos].mean()), "is_t": tstat(x[~oos]), "oos_t": tstat(x[oos]),
            "sharpe": sharpe(pct), "bh_sharpe": sharpe(bh), "years_pos": int((yrs > 0).sum()),
-           "years_n": len(yrs), "bar": bar(n_tests), "total": float(pct.sum()), "bh_total": float(bh.sum())}
+           "years_n": len(yrs), "bar": bar(n_tests), "total": float(pct.sum()), "bh_total": float(bh.sum()),
+           "pct": pct, "bh_pct": bh}
     ok = (res["days"] >= 100 and entries >= 10 and res["is_mean"] > 0 and res["oos_mean"] > 0
           and res["years_pos"] > res["years_n"] / 2 and res["sharpe"] > res["bh_sharpe"])
     res["verdict"] = "pass" if ok and res["t"] >= res["bar"] else "lead" if ok and res["t"] >= 2 else "fail"

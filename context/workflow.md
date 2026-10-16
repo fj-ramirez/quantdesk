@@ -49,6 +49,9 @@ Hard-won additions, from `docs/supervision-report.md` §5–6 — include them f
 - **Define what "verified" means** and require the acceptance check to actually be run.
 - **Permit honest failure.** A clearly-labelled synthetic fixture plus a list of likely
   first-contact failures beats a fake green tick.
+- **Ask for findings, not hedging** ([risk-aversion.md](risk-aversion.md)). The report names
+  each concrete defect with its fix. Generic "test thoroughly" or "this may carry risk" lines
+  are dropped. Trade-offs come as a decision matrix with a recommendation.
 - **Never run two Opus agents concurrently** — it exhausts the session rate limit and kills
   both. One Opus alongside several Sonnets is fine.
 - **Pre-empt collisions** between parallel agents by writing the shared module yourself first.

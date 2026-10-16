@@ -1997,6 +1997,15 @@ Migration `c0d1e2f3a4b5` deletes the `pos.cot.*` rows stored with an earlier `as
 11,619 on the homeserver, 89 report weeks, counted read-only on 2026-10-13). That is the one
 sanctioned exception to invariant 10, by the user's decision (plans/cot/DECISIONS.md D4).
 
+## T149 · Opus · T144, T145 (filed 2026-10-09, finished 2026-10-14, [docs/edges/xau-range-rejection.md](../edges/xau-range-rejection.md))
+
+The stage-1 test of `xau-range-rejection`, frozen rule run once
+(`scripts/edges/2026-10-14-t149-xau-range-rejection.py`, ledger #532). **Fail:** 83 trades
+(2019-08 → 2026-10), mean +0.10R ± 0.10 after doubled spread (t 0.98), IS +0.19R and OOS
+(≥ 2024) −0.14R. The candidate is killed. The `1d` basis was rebuilt from XAUUSD M1 at the GLD
+close, because `broker.basis` only starts at T145. GLD bars come from Yahoo, the source of
+`gex.daily_bars`.
+
 ## T168–T172 · sentiment (filed and finished 2026-10-15, [plans/sentiment/](../../plans/sentiment/README.md))
 
 Market sentiment inputs and one desk-wide conditions reading. **T168** Cboe put/call adapter

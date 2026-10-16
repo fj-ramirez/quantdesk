@@ -28,18 +28,10 @@ gold-asia-drift, to measure the real rollover adjustments on the `.fs` CFDs.
 | S&P.fs hold | 22 | 34 | 32–36% | −$610 |
 | S&P.fs > SMA200 | 17 | 27 | 28% | −$504 |
 
-## $100/month arithmetic
+## Sizing
 
-```
-NAS100.fs > SMA200, haircut to the 2019+ rate: ~$40/month per 0.01 lot
-lots for $100/month           = 0.025 → round to 0.03 lot (≈ $120/month on 2019+ rates)
-historical max DD at 0.03 lot ≈ 3 × $731 = $2,193, and a 2022-style year without the filter ≈ $3,600
-account so that DD ≤ 20%      ≈ $11k
-```
-
-Combined with gold-asia-drift (about $30 a month per 0.01 lot after the haircut, uncorrelated
-by session), a $10–15k account at 0.02–0.03 lot each covers the desk's cost **on history**. On a
-smaller account it does not, and more leverage does not change that.
+**0.01 lot** through demo and micro live. Per 0.01 lot on NAS100.fs > SMA200: about $40 a month
+on 2019+ rates, with a historical maximum drawdown of −$731.
 
 ## Kill / regime rules
 
@@ -54,3 +46,4 @@ smaller account it does not, and more leverage does not change that.
 | Date | Event |
 |---|---|
 | 2026-10-09 | Written after pass 3 (#344–374) found no index timing edge. Holding is the profit source, and the SMA200 filter is a drawdown overlay. Next: 0.01 lot demo, check the December roll adjustment. |
+| 2026-10-14 | Overlay compared with the utilities rotation (#533–534, 2022-02 → 2026-10). NAS100.fs: SMA200 Sharpe 0.88, max DD −14.7%; utilities 0.77, −14.5%; hold 0.63, −32.6%. **SMA200 stays.** On S&P.fs utilities was better (0.84 and −11.4% vs 0.53 and −18.0%), on one span that is mostly 2022. Switching S&P.fs's overlay would be a new rule. Sizing set to 0.01 lot for testing; the $100/month arithmetic is removed until stage 4. |

@@ -13,8 +13,8 @@ disallowed-tools:
 
 # Market research mode
 
-Analysis and charts only. **This desk never routes orders** — that is a repo invariant, not a
-setting. If you find a bug while reading, report it and keep reading; do not fix it. No commits,
+Analysis and charts only. **This skill never places, modifies or closes an order**: the
+executor is the only order path (CLAUDE.md invariant 11), and a read is not a trade. If you find a bug while reading, report it and keep reading; do not fix it. No commits,
 and no writing files through shell redirection or heredocs either — the edit tools are gone, and
 that restriction is meant, not a gap to route around.
 
@@ -207,6 +207,9 @@ not say "crowded, expect a reversal".
 
 ## Output
 
-Lead with the answer. Freshness caveat early and short. Levels in tables. When fresh data
+Lead with the answer. Freshness caveat early and short. Levels in tables. No generic
+disclaimers ("not financial advice", "markets are risky"): every caveat names a specific
+defect in the data or the read, such as a stale series, a passed opex or n below 30, per
+[context/risk-aversion.md](../../../context/risk-aversion.md). When fresh data
 overturns something said earlier in the session, **correct it plainly and up front** — a review
 that quietly revises itself is worse than one that was wrong once and said so.

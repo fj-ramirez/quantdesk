@@ -31,8 +31,8 @@ on feature branches; T134–T136 on 2026-10-06 for [plans/signal-alerts/](plans/
 finished 2026-10-07, see the addendum; T139 filed 2026-10-07, split from T96, and finished 2026-10-08, see the addendum; T140 and T141 filed 2026-10-08; T142 filed 2026-10-08 from
 [docs/read-review-2026-10-08.md](docs/read-review-2026-10-08.md); T143–T147 filed 2026-10-08 on the
 `experiment/charter-mt5` branch for [plans/charter-mt5/](plans/charter-mt5/README.md); T148 filed
-2026-10-08 from T145's basis work; T149 filed 2026-10-09 for the `xau-range-rejection` edge candidate; T150 filed 2026-10-09 at
-the charter-mt5 merge; T155–T158 filed 2026-10-13 for [plans/cot/](plans/cot/README.md), T155 and T157 finished the same day; T159–T163 filed 2026-10-13/14 on `feat/broker-chart`; T164 filed 2026-10-14 from the first reel batch, the wall-break log; T165–T167 filed 2026-10-14 for [plans/gex-intraday-backfill/](plans/gex-intraday-backfill/README.md); T168–T173 filed 2026-10-15 for [plans/sentiment/](plans/sentiment/README.md), T168–T172 finished the same day, see the addendum; T174 filed 2026-10-15, an alert when the executor is not running.)
+2026-10-08 from T145's basis work; T149 filed 2026-10-09 for the `xau-range-rejection` edge candidate and finished 2026-10-14, see the addendum; T150 filed 2026-10-09 at
+the charter-mt5 merge; T155–T158 filed 2026-10-13 for [plans/cot/](plans/cot/README.md), T155 and T157 finished the same day; T159 filed 2026-10-13, charts back on the broker module; T160–T162 filed 2026-10-14 for [plans/reel-intake/](plans/reel-intake/README.md); T163 filed 2026-10-14, executor classes for wall-bounce and flip-cross; T164 filed 2026-10-14 from the first reel batch, the wall-break log; T165–T167 filed 2026-10-14 for [plans/gex-intraday-backfill/](plans/gex-intraday-backfill/README.md); T168–T173 filed 2026-10-15 for [plans/sentiment/](plans/sentiment/README.md), T168–T172 finished the same day, see the addendum; T174 filed 2026-10-15, an alert when the executor is not running.)
 
 ---
 
@@ -49,15 +49,6 @@ recorded as a trial.
 **Partial (2026-10-09):** the study ran. **None of the 288 trials passes stage 1**. See the
 plan's *Result*. Still open: the 288 trials are not yet recorded in `research.trials`, because
 the write to the homeserver was not run from dev. Run `pa_study --record` on the server.
-
-### T149 · Opus · T144, T145 (reuse T147's M1 R scoring if it has landed)
-**Stage-1 historical test of [`xau-range-rejection`](docs/edges/xau-range-rejection.md)**: rebuild
-the frozen rule on GLD daily bars, translate each session with the previous `1d` GLD basis, and
-simulate on XAUUSD M1 (15-minute trigger), charging each bar's recorded spread and **doubling**
-it for the cost gate. Report n, sessions, mean R ± session-clustered SE, yearly walk-forward
-signs, and on/off-regime results against the skill's stage-1 gate. The rule is frozen: **no
-parameter search**. A variant is a new candidate with its own slug. Write the result into the
-candidate file's stage log. A clean "no" closes the task.
 
 ### T151 · Opus · T143, T144
 **The executor (charter-mt5 step 4)**: the desk's one order path, trading
@@ -120,6 +111,23 @@ Anything that becomes a lead later is added to this table by the same rule.
   kill rules active;
 - its doc's stage log records the demo start date;
 - the forward summary query exists.
+
+### T163 · Opus · T151, T153
+**Executor classes for the intraday level strategies: wall-bounce and flip-cross.** Both are at
+stage 0 → 2 with frozen entries and exits ([wall-bounce.md](docs/edges/wall-bounce.md) exit
+frozen 2026-10-14; [flip-cross.md](docs/edges/flip-cross.md)), but nothing can trade them: the
+executor knows only `GoldAsiaDrift`. Each key (`PUT_WALL_BOUNCE`, `CALL_WALL_BOUNCE`,
+`FLIP_CROSS_DOWN`, `FLIP_CROSS_UP` and the `_0DTE` keys) becomes a strategy in
+`app/modules/broker/strategies.py` that:
+- takes its signal from the T153 logger's `gex.level_events` row as it is written (not re-derived);
+- computes the frozen exit at entry, matching the doc character for character;
+- trades 0.01 lot on demo (0.1 on US2000), one position per key;
+- enforces the doc's fixed kill rules per key.
+
+Also score wall-bounce's frozen exit in `gex.level_event_scores` (R per event, stop first on an
+ambiguous M1 bar), so the hypothetical record and the demo journal can be compared.
+**Acceptance:** each key journals legs in `broker.order_intents` on demo, and its doc's stage log
+records the demo start date.
 
 ### T164 · Opus · T153
 **Log wall breaks forward: `PUT_WALL_BREAK`, `CALL_WALL_BREAK` (+ `_0DTE`).** The other half of
@@ -807,6 +815,24 @@ horizons 5 and 20 sessions, thresholds score < 20 and > 80, instruments `S&P.fs`
 from 2007. Noise ceiling, doubled cost, walk-forward (invariant 9). The composite's own history
 must be rebuilt point-in-time, one `as_of` per session, never from today's vintages. Spec in
 [plans/sentiment/](plans/sentiment/README.md).
+
+---
+
+## Reel intake (2026-10-14)
+
+Full specs in [plans/reel-intake/](plans/reel-intake/README.md); the laptop side is the
+separate `projects/reeler` repo.
+
+### T160 · Sonnet · —
+**`intake` schema + `POST /api/intake/items`** — append-only items/claims/checks/reviews,
+token-guarded, idempotent on `source.key`.
+
+### T161 · Opus · T160
+**Point-in-time desk checks on each claim** — universe, price sanity, GEX structure,
+testability, at the reel's `posted_at`; missing data is `·`, never a fail.
+
+### T162 · Sonnet · T160, T161
+**Review queue** — `/intake` page, reviews endpoint, read-only MCP `intake_queue`.
 
 ---
 

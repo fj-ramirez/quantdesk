@@ -1,8 +1,8 @@
 # xau-range-rejection: short a rejection at the top of a gold range, in a downtrend
 
-**Stage:** 0, spec frozen 2026-10-09. **Stage 1 is possible**: the rule needs only GLD daily bars
-and XAUUSD M1, and both exist going back years (see *Stage 1 plan*).
-**Next gate:** stage 1. Until it passes, triggers are traded on **demo only**.
+**Stage:** **killed: stage 1 failed** (2026-10-14, T149, ledger #532). See the stage log.
+**Next gate:** none for this rule. A variant (another target, a different range length) is a new
+candidate with its own slug.
 **Source:** the conversation of 2026-10-08/09: GLD GEX levels + price action read, converted with
 the measured `broker.basis` ratio (T145).
 
@@ -67,12 +67,11 @@ A pause means back to demo with a fresh sample and the rule unchanged. Three pau
 
 ## Sizing
 
-0.01 lot ($1 per $1 move on Axi XAUUSD, 100 oz per lot), on demo, until stage 3. No mean R
-estimate exists, so the $100/month arithmetic has no input. With mean R taken as 0, no size
-covers costs.
+None: the rule failed stage 1, so it is not traded.
 
 ## Stage log
 
 | Date | Event |
 |---|---|
 | 2026-10-09 | Spec frozen. First instance computed: zone 4,186–4,205. Price 4,176 at 03:46 UTC after an Asian-session rally from 4,143. Stage 1 filed as T149, not yet run. |
+| 2026-10-14 | **Stage 1 failed** (T149, ledger #532; `scripts/edges/2026-10-14-t149-xau-range-rejection.py`), rule run once as frozen. GLD bars 2019-08 → 2026-10-09 (Yahoo, the source of `gex.daily_bars`), the `1d` ratio rebuilt from XAUUSD M1 at the GLD close (`broker.basis` starts at T145), no calendar blackout (no release history before T139). **Regime on: 83 trades, mean +0.10R ± 0.10 after doubled spread (t 0.98)**; IS (< 2024) +0.19R on 60, OOS −0.14R on 23; years 5/8 positive. Exits: 62 at the 20:30 UTC time stop, 20 at the stop, 1 at the target: the range-bottom target is almost never reached within the session. Gate: < 100 trades, < 2 SE, OOS negative → fail. Context: the same trigger with the regime off made −0.07R ± 0.05 on 331, so the regime filter separates the two, but not into a profit. Killed. |

@@ -156,7 +156,12 @@ plans/         one folder per multi-task initiative — see plans/README.md
 
 ## Context index
 
-Read the file whose trigger matches; don't load them all.
+How to evaluate a proposal and report a risk applies to every task, so it is imported here
+rather than indexed:
+
+@context/risk-aversion.md
+
+For the rest, read the file whose trigger matches; don't load them all.
 
 | Read this | When you are… |
 |---|---|
