@@ -23,7 +23,7 @@ How to use this file:
   `context/decisions.md` if it settled a rule. A finished block does not stay here.
 - New work gets the next free ID and is filed here, never fixed silently.
 
-**Next free ID: T177.** (T108 was allocated retroactively — see the archive's addendum;
+**Next free ID: T178.** (T108 was allocated retroactively — see the archive's addendum;
 T109–T114 were filed on 2026-09-22 from the task-history audit, T115–T121 from the logic audit;
 T122–T124 were filed and finished on 2026-09-23 — see the addendum; T125–T127 were filed on
 2026-09-25 for the ThetaData initiative, [plans/thetadata/](plans/thetadata/README.md); T128–T133
@@ -342,6 +342,16 @@ IS/OOS, noise ceiling, recorded as trials. **Also backlog row 49**
 ([gamma-conditioned-walls](docs/edges/gamma-conditioned-walls.md), declared 2026-10-16 before the
 history existed): 4 more tests, each cell reported by wall *and* gamma sign, because under `ALL`
 the sign is confounded with the wall.
+
+### T177 · Sonnet · T166
+**Signed 0DTE flow at the open: probe, 10-minute load, one run of backlog row 51**
+([gex-positioning-2026-10-16](docs/edges/gex-positioning-2026-10-16.md)). First a one-session
+probe of SPX 0DTE `trade_quote` that records requests, wall-clock, rows, and that Standard
+serves it at all (the docs table only implies it). Then load 09:30:00–09:39:59 trades with their
+NBBO for every daily-expiry session from 2022-05-11 into a research table, plus the 09:30
+`greeks/first_order` delta. Then run row 51 exactly as declared (quote-rule sign, net signed
+delta, S&P.fs 09:40 → 15:55, doubled spread, holdout 2026-09-21 →), once. Runs after T166 finishes:
+both use the terminal's 4 request slots.
 
 ### Real-time (re-pointed from Tradier to ThetaData)
 
