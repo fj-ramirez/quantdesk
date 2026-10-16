@@ -79,7 +79,7 @@ declared rule character for character, traded by the T151 executor at 0.01 lot:
 | Strategy | Status | Rule source | Decides at |
 |---|---|---|---|
 | gold-asia-drift | candidate (already `GoldAsiaDrift`) | [gold-asia-drift.md](docs/edges/gold-asia-drift.md) | 18:00 / 03:00 New York |
-| nas-mean-reversion | candidate | [nas-mean-reversion.md](docs/edges/nas-mean-reversion.md) | 16:00 close |
+| nas-mean-reversion | candidate, **class written 2026-10-15** (`nas_mr`, not enabled) | [nas-mean-reversion.md](docs/edges/nas-mean-reversion.md) | 16:00 close |
 | index-hold-sma200 (NAS100.fs) | risk premium | [index-hold-sma200.md](docs/edges/index-hold-sma200.md) | 16:00 close |
 | S&P mean-reversion composite | lead (#427, t 2.37 on 2000–19) | backlog 44, on S&P.fs | 16:00 close |
 | RSI(2) pullback, S&P.fs | lead (#334, t 3.13) | backlog 15 | 16:00 close |
@@ -111,6 +111,24 @@ Anything that becomes a lead later is added to this table by the same rule.
   kill rules active;
 - its doc's stage log records the demo start date;
 - the forward summary query exists.
+
+**Progress (2026-10-15, uncommitted on `docs/broker-chart-followup`): nas-mean-reversion done,
+not enabled.**
+- The executor now supports strategies that decide from prices:
+  - a `decide` leg at 16:00 New York reads `broker.bars` M1 and journals the decision with the
+    indicator values on the row (status `decided`);
+  - a close pairs with the strategy's latest filled open, however many days back;
+  - `pnl_pct` on `.fs` removes the roll steps `broker.rolls` had confirmed by the close;
+  - boot reconcile treats a held multi-day position as covered.
+- On holidays and early closes the leg is skipped quietly. A window missed with the market open
+  is journalled `expired` and alerted.
+- Parity with the backtest is exact on 1,794 broker sessions. Tests: `tests/test_broker_nas_mr.py`.
+- Remaining:
+  - enable it (`EXECUTOR_STRATEGIES=gold_asia,nas_mr` in the homeserver `.env`) and log the
+    demo start date;
+  - the three leads;
+  - the per-instrument cap, which must exist before index-hold-sma200 can share NAS100.fs;
+  - the forward summary query.
 
 ### T163 · Opus · T151, T153
 **Executor classes for the intraday level strategies: wall-bounce and flip-cross.** Both are at

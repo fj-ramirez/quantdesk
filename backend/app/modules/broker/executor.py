@@ -10,6 +10,12 @@ It trades the account the `mt5` container is logged into, whatever its mode, but
 * with one position per strategy. An open that finds one already there is skipped;
 * while the strategy is not paused. A tripped kill rule pauses it, and only a person resumes it.
 
+A strategy that decides from prices (`nas_mr`) schedules one `decide` leg per session. When it
+is due, the executor reads the strategy's M1 bars from `broker.bars`, asks `signal`, journals the
+answer on the `decide` row, and writes and sends the open or close it calls for. A close pairs
+with the strategy's latest filled open, which may be days old. On a `.fs` CFD the round trip's
+`pnl_pct` removes every roll step `broker.rolls` had confirmed by the close, as the backtests do.
+
 Every leg is written to `broker.order_intents` **before** it is sent. The fill, the quote around
 it and any error are recorded on the same row. A restart therefore picks up the pending rows,
 and the table is the trade journal. A close that fails stays pending and is retried every tick,
@@ -25,13 +31,14 @@ import datetime as dt
 import logging
 from collections.abc import Callable
 
+import pandas as pd
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, sessionmaker
 
 from app.modules.broker.client import BridgeClient, BridgeError
-from app.modules.broker.strategies import NY, ClosedTrade
-from app.modules.broker.tables import ExecutorHeartbeat, OrderIntent, StrategyState
+from app.modules.broker.strategies import NY, ClosedTrade, rth_daily
+from app.modules.broker.tables import Bar, ExecutorHeartbeat, OrderIntent, RollRow, StrategyState
 
 log = logging.getLogger(__name__)
 
@@ -94,7 +101,9 @@ class Executor:
                 if strat is None:
                     self._finish(s, intent, "skipped", f"strategy {intent.strategy} not enabled")
                     continue
-                if intent.action == "open":
+                if intent.action == "decide":
+                    await self._decide(s, strat, intent, now)
+                elif intent.action == "open":
                     await self._open(s, strat, intent, now)
                 else:
                     await self._close(s, strat, intent, now)
@@ -123,6 +132,73 @@ class Executor:
         if st is None or not st.paused:
             return None
         return st.reason or "paused"
+
+    # ---------------------------------------------------------------- decisions
+
+    def daily(self, s: Session, strat, now: dt.datetime) -> pd.DataFrame:
+        """The strategy's sessions from `broker.bars` M1, up to `now`."""
+        rows = s.execute(select(Bar.ts, Bar.open, Bar.high, Bar.low).where(
+            Bar.symbol == strat.symbol, Bar.timeframe == "M1",
+            Bar.ts >= now - strat.history, Bar.ts <= now,
+        ).order_by(Bar.ts)).all()
+        m1 = pd.DataFrame(rows, columns=["ts", "open", "high", "low"])
+        m1.index = pd.DatetimeIndex(pd.to_datetime(m1.pop("ts"), utc=True))
+        return rth_daily(m1)
+
+    def holding(self, s: Session, strat) -> bool:
+        """Whether the journal has the strategy long: a filled open with no close written
+        after it. A position a disaster stop has taken still counts until the rule's own exit,
+        so the rule never re-enters early; that close then finds nothing and says so."""
+        opened = self._last_open(s, strat.name)
+        if opened is None:
+            return False
+        return s.scalar(select(OrderIntent.id).where(
+            OrderIntent.strategy == strat.name, OrderIntent.action == "close",
+            OrderIntent.due_at > opened.due_at)) is None
+
+    async def _decide(self, s: Session, strat, intent: OrderIntent, now: dt.datetime) -> None:
+        day = intent.due_at.astimezone(NY).date()
+
+        def bar_in(lo: dt.timedelta, hi: dt.timedelta) -> bool:
+            return s.scalar(select(Bar.ts).where(
+                Bar.symbol == strat.symbol, Bar.timeframe == "M1",
+                Bar.ts >= intent.due_at + lo, Bar.ts < intent.due_at + hi).limit(1)) is not None
+
+        if now > intent.expires_at:
+            if not bar_in(-dt.timedelta(minutes=30), strat.decide_window):
+                # The market was shut around 16:00 (a holiday or an early close): the backtest
+                # has no session on such a day either.
+                self._finish(s, intent, "skipped", "no 16:00 session (holiday or early close)")
+                return
+            held = self.holding(s, strat)
+            self._finish(s, intent, "expired", "decision window passed before it could be made")
+            self.notify(f"{strat.name}: no decision on {day}: the window passed (executor down, "
+                        "or the 16:00 bar late)" + ("; the position stays open" if held else ""))
+            return
+        # Cheap first: until the 16:00 bar is in, there is nothing to decide on.
+        daily = (self.daily(s, strat, now) if bar_in(dt.timedelta(0), strat.decide_window)
+                 else None)
+        if daily is None or daily.empty or daily.index[-1] != day:
+            intent.note = "waiting for the 16:00 bar"
+            s.commit()
+            return
+        action, why = strat.signal(daily, self.holding(s, strat))
+        if action is None:
+            self._finish(s, intent, "decided", f"no trade: {why}")
+            return
+        window = strat.entry_window if action == "open" else strat.exit_window
+        leg = OrderIntent(
+            key=intent.key.removesuffix(":decide") + f":{action}", strategy=strat.name,
+            symbol=strat.symbol, action=action, side=strat.side, volume=self.volume,
+            due_at=now, expires_at=now + window, status="pending", attempts=0, created_at=now)
+        s.add(leg)
+        self._finish(s, intent, "decided", f"{action}: {why}")
+        if action == "open":
+            await self._open(s, strat, leg, now)
+        else:
+            await self._close(s, strat, leg, now)
+
+    # ---------------------------------------------------------------- legs
 
     async def _open(self, s: Session, strat, intent: OrderIntent, now: dt.datetime) -> None:
         if now > intent.expires_at:
@@ -163,8 +239,7 @@ class Executor:
                     f"(spread {_spread(intent)}, stop {intent.sl}, {account.trade_mode})")
 
     async def _close(self, s: Session, strat, intent: OrderIntent, now: dt.datetime) -> None:
-        opened = s.scalar(select(OrderIntent).where(
-            OrderIntent.key == intent.key.removesuffix(":close") + ":open"))
+        opened = self._opening(s, intent)
         try:
             positions = await self.client.positions(symbol=strat.symbol, magic=strat.magic)
         except BridgeError as e:
@@ -191,13 +266,41 @@ class Executor:
         r = fills[-1]
         intent.ticket, intent.fill_price = positions[-1]["ticket"], r["price"]
         intent.quote_bid, intent.quote_ask = r["quote_bid"], r["quote_ask"]
+        note = None
         if opened is not None and opened.fill_price:
             sign = 1 if strat.side == "buy" else -1
-            intent.pnl_pct = sign * (r["price"] - opened.fill_price) / opened.fill_price * 100
-        self._finish(s, intent, "filled", None)
+            steps = self._roll_steps(s, strat.symbol, opened.sent_at or opened.due_at, now)
+            intent.pnl_pct = sign * ((r["price"] - opened.fill_price) / opened.fill_price
+                                     - sum(steps)) * 100
+            if steps:
+                note = f"roll steps removed: {', '.join(f'{x * 100:+.2f}%' for x in steps)}"
+        self._finish(s, intent, "filled", note)
         self.notify(f"{strat.name}: closed @ {r['price']}, "
                     f"{'n/a' if intent.pnl_pct is None else f'{intent.pnl_pct:+.3f}%'}")
         self._check_kill(s, strat, now)
+
+    def _last_open(self, s: Session, strategy: str, before: dt.datetime | None = None):
+        q = select(OrderIntent).where(OrderIntent.strategy == strategy,
+                                      OrderIntent.action == "open", OrderIntent.status == "filled")
+        if before is not None:
+            q = q.where(OrderIntent.due_at < before)
+        return s.scalar(q.order_by(OrderIntent.due_at.desc()).limit(1))
+
+    def _opening(self, s: Session, close: OrderIntent) -> OrderIntent | None:
+        """The open a close belongs to: the same session's open for a fixed-time strategy,
+        else the strategy's latest filled open before the close."""
+        same = s.scalar(select(OrderIntent).where(
+            OrderIntent.key == close.key.removesuffix(":close") + ":open"))
+        return same if same is not None else self._last_open(s, close.strategy, close.due_at)
+
+    def _roll_steps(self, s: Session, symbol: str, since: dt.datetime,
+                    now: dt.datetime) -> list[float]:
+        """Roll steps in `symbol` between the open and `now`, as far as was confirmed by now."""
+        if not symbol.endswith(".fs"):
+            return []
+        return list(s.scalars(select(RollRow.step).where(
+            RollRow.cfd_symbol == symbol, RollRow.rolled_at > since, RollRow.rolled_at <= now,
+            RollRow.confirmed_at <= now).order_by(RollRow.rolled_at)))
 
     def _retry(self, s: Session, strat, intent: OrderIntent, now: dt.datetime, why: str) -> None:
         intent.note = why[:512]
@@ -215,8 +318,7 @@ class Executor:
         ).order_by(OrderIntent.due_at)).all()
         out = []
         for c in rows:
-            o = s.scalar(select(OrderIntent).where(
-                OrderIntent.key == c.key.removesuffix(":close") + ":open"))
+            o = self._opening(s, c)
             out.append(ClosedTrade(c.pnl_pct, _spread(o) if o is not None else None))
         return out
 
@@ -247,7 +349,10 @@ class Executor:
                 pending_close = s.scalar(select(OrderIntent.id).where(
                     OrderIntent.strategy == strat.name, OrderIntent.action == "close",
                     OrderIntent.status == "pending"))
-                if open_ and pending_close is None:
+                # A decide-leg strategy holds across sessions: its next decision covers it.
+                covered = pending_close is not None or (
+                    hasattr(strat, "signal") and self.holding(s, strat))
+                if open_ and not covered:
                     problems.append(f"{strat.name}: {len(open_)} open position(s) with no "
                                     "pending close")
         for p in problems:
