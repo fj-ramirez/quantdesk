@@ -338,7 +338,10 @@ through 09:15–17:00 ET, pipelined, resumable). Still open: deploy it and start
 ### T167 · Opus · T166
 **Stage 1 for the level rules**: one declared run per frozen key (flip-cross, wall-bounce,
 wall-break, + `_0DTE`). P&L on the CFD's M1 bars at the doubled spread, SE clustered by session,
-IS/OOS, noise ceiling, recorded as trials.
+IS/OOS, noise ceiling, recorded as trials. **Also backlog row 49**
+([gamma-conditioned-walls](docs/edges/gamma-conditioned-walls.md), declared 2026-10-16 before the
+history existed): 4 more tests, each cell reported by wall *and* gamma sign, because under `ALL`
+the sign is confounded with the wall.
 
 ### Real-time (re-pointed from Tradier to ThetaData)
 

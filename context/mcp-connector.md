@@ -85,7 +85,7 @@ a malicious one.
 | `gex_levels(symbol?, date?, history?, limit?)` | flip point, walls, net gamma — latest per symbol by default; `history` for one symbol's series (T105) |
 | `gex_decisions(symbol?, key?, since?, thesis?, limit?)` | the decision log and its resolved outcomes |
 | `gex_track_record(key?, since?)` | per-key record with the standard error beside every mean (T106) |
-| `gex_level_events(key?, since?, recent?)` | the flip-cross and wall-bounce forward record: session-clustered returns at 15/30/60 min and the close, the CFD excursion-path summary, and with `recent` the latest MAE/MFE swing sequences (T142, T153) |
+| `gex_level_events(key?, since?, recent?, by_gamma?)` | the flip-cross and wall-bounce forward record: session-clustered returns at 15/30/60 min and the close, the CFD excursion-path summary, and with `recent` the latest MAE/MFE swing sequences (T142, T153). `by_gamma` splits each key by the sign of the event's net GEX, the forward read of [gamma-conditioned-walls](../docs/edges/gamma-conditioned-walls.md) |
 | `research_leaderboard(market?, top_n?, min_trades_oos?)` | survivors, **with the noise ceiling** |
 | `research_trial(hash)` | one trial, params and both splits |
 | `research_paper(limit?)` | the forward-tracking watchlist |
