@@ -23,7 +23,7 @@ How to use this file:
   `context/decisions.md` if it settled a rule. A finished block does not stay here.
 - New work gets the next free ID and is filed here, never fixed silently.
 
-**Next free ID: T175.** (T108 was allocated retroactively — see the archive's addendum;
+**Next free ID: T177.** (T108 was allocated retroactively — see the archive's addendum;
 T109–T114 were filed on 2026-09-22 from the task-history audit, T115–T121 from the logic audit;
 T122–T124 were filed and finished on 2026-09-23 — see the addendum; T125–T127 were filed on
 2026-09-25 for the ThetaData initiative, [plans/thetadata/](plans/thetadata/README.md); T128–T133
@@ -32,7 +32,7 @@ finished 2026-10-07, see the addendum; T139 filed 2026-10-07, split from T96, an
 [docs/read-review-2026-10-08.md](docs/read-review-2026-10-08.md); T143–T147 filed 2026-10-08 on the
 `experiment/charter-mt5` branch for [plans/charter-mt5/](plans/charter-mt5/README.md); T148 filed
 2026-10-08 from T145's basis work; T149 filed 2026-10-09 for the `xau-range-rejection` edge candidate and finished 2026-10-14, see the addendum; T150 filed 2026-10-09 at
-the charter-mt5 merge; T155–T158 filed 2026-10-13 for [plans/cot/](plans/cot/README.md), T155 and T157 finished the same day; T159 filed 2026-10-13, charts back on the broker module; T160–T162 filed 2026-10-14 for [plans/reel-intake/](plans/reel-intake/README.md); T163 filed 2026-10-14, executor classes for wall-bounce and flip-cross; T164 filed 2026-10-14 from the first reel batch, the wall-break log; T165–T167 filed 2026-10-14 for [plans/gex-intraday-backfill/](plans/gex-intraday-backfill/README.md); T168–T173 filed 2026-10-15 for [plans/sentiment/](plans/sentiment/README.md), T168–T172 finished the same day, see the addendum; T174 filed 2026-10-15, an alert when the executor is not running.)
+the charter-mt5 merge; T155–T158 filed 2026-10-13 for [plans/cot/](plans/cot/README.md), T155 and T157 finished the same day; T159 filed 2026-10-13, charts back on the broker module; T160–T162 filed 2026-10-14 for [plans/reel-intake/](plans/reel-intake/README.md); T163 filed 2026-10-14, executor classes for wall-bounce and flip-cross; T164 filed 2026-10-14 from the first reel batch, the wall-break log; T165–T167 filed 2026-10-14 for [plans/gex-intraday-backfill/](plans/gex-intraday-backfill/README.md); T168–T173 filed 2026-10-15 for [plans/sentiment/](plans/sentiment/README.md), T168–T172 finished the same day, see the addendum; T174 filed 2026-10-15, an alert when the executor is not running; T175 and T176 filed 2026-10-15, the per-broker instrument catalogue and the end of EdgeLab's random search.)
 
 ---
 
@@ -193,6 +193,46 @@ An outage alerts once per New York day while it lasts, and a fresh heartbeat aft
 sends "executor heartbeat is back". `EXECUTOR_EXPECTED` defaults to `EXECUTOR_ENABLED` in
 compose. Still open: deploy the backend (for the migration), the executor and capture-watch,
 then see one alert with the executor stopped before an entry.
+
+### T175 · Sonnet · T144
+**An instrument catalogue per broker: every symbol the account offers, with its contract spec.**
+Filed 2026-10-15 at the user's request. They may use other brokers later and want each
+broker's symbols and specs retrievable. Today `broker.symbol_specs` covers only the six symbols
+`broker-ingest` reads.
+
+Verified facts (2026-10-15, read by hand through the bridge's `symbols` op):
+- The demo login (`Axi-US50-Demo`) lists **155 symbols**: 74 FX, 30 crypto, 17 cash indices,
+  13 `.fs` index futures (including VIX.fs and USDINDEX.fs), 7 `.fs` commodities (Brent, WTI,
+  natgas, copper, cocoa, coffee, soybean, but no corn), 6 metals, 2 cash oils and 6 perpetuals.
+- **No single-stock CFDs** on this login. The live account may list different symbols, and the
+  catalogue is what will show it.
+- The bridge's `symbols` op returns name, path, description and visibility. `spec` returns
+  `SPEC_FIELDS` and calls `symbol_select`, which adds the symbol to Market Watch. That is a
+  harmless side effect, but it affects 155 symbols, not 6.
+- `BROKER_BRIDGE_ADDR` is set in `broker-ingest`, not in the backend container.
+
+Scope:
+- **Key by broker and server**, not by symbol alone, so demo and live can be compared and a
+  second broker adds rows rather than a redesign. Derive the broker key from the account
+  (`company`/`server`), never from configuration.
+- **Membership:** one row per (server, symbol), with path, description, an asset class parsed
+  from the path (fx, crypto, index_cash, index_future, commodity_future, metal, oil_cash,
+  perpetual), and `first_seen` / `last_seen`. A symbol that disappears keeps its row, with
+  `last_seen` frozen.
+- **Specs:** extend `broker.symbol_specs` to every catalogued symbol, keyed by server as well.
+  Keep its rule of writing a row only when a field changes.
+- **Schedule:** a daily job in `broker-ingest`. 155 `spec` calls once a day is fine; the
+  existing hourly spec check stays for the traded six.
+- **Read path:** an MCP tool (`broker_instruments(asset_class?, server?)`), or the documented
+  `query_sql` shape, so "what can I trade on this account and what does it cost" is one call.
+- **One implementation.** The MT5 bridge, behind a small catalogue interface (list instruments,
+  get a spec). No second broker's adapter until an account exists.
+- The read path is part of the bridge's read-only ops. `tests/test_broker_bridge.py` must stay
+  green.
+
+**Acceptance:** after one run on the homeserver, the catalogue holds the 155 demo symbols with
+specs and asset classes. Rerunning writes no new spec rows. The MCP read answers "which `.fs`
+commodities, with contract size and swap" in one call.
 
 ### T150 · Sonnet · —
 **`gex.snapshots` session_date index: the model's name and the database's disagree.** Found at
@@ -864,6 +904,36 @@ testability, at the reel's `posted_at`; missing data is `·`, never a fail.
 > **Now fed by T26** (2026-09-25): years of EOD levels instead of weeks of self-capture, so this
 > is worth running. Largely overtaken by EdgeLab (T77). Before dispatching, decide whether a GEX-level backtest
 > still belongs here or as an EdgeLab strategy family; a documented "superseded" closes it.
+
+### T176 · Sonnet · T77, T83
+**Stop EdgeLab's random search; keep scoring the paper watchlist.** Filed 2026-10-15 on the
+user's decision: random search is not kept, nor repointed at the CFDs.
+
+Why:
+- No EdgeLab row has cleared its noise ceiling: 0 of the top 15 at 176,591 trials.
+- None of the desk's candidates came from it; they came from the declared tests in `docs/edges/`.
+- Its one family read followed up, RTY=F 1h z-score, failed stage 1 (#535).
+- Each nightly cycle raises the ceiling and promotes more rows that are indistinguishable from
+  noise.
+
+The paper watchlist's forward record is the one part worth keeping: 24 candidates, about 100
+days each. It is the only EdgeLab data no selection step has touched.
+
+- **Setting:** `RESEARCH_MODE=search|score`, default `score`. In `score` mode the nightly job
+  calls `run_cycle(cfg, report_only=True)`, which skips search and promotion, so `forward_stats`
+  still appends `paper_scores` and the report is still written. `search` keeps today's
+  behaviour for a deliberate hand run.
+- The registry stays as it is. N is frozen at whatever it is when this lands, and the noise
+  ceiling the leaderboard quotes stops moving.
+- The hourly and daily signal jobs in the same worker are untouched.
+- **Checkpoint 2027-01-15:** read the 24 forward Sharpes together, as a mean with its SE.
+  Treat them as one correlated sample: 8 are corn and correlation is capped at 0.6. If they
+  do not separate from zero, retire the search code path and keep the registry as history.
+  Record the read in `docs/edges/search-log.md`.
+
+**Acceptance:** after deploy, the next nightly run adds no rows to `research.trials` and adds
+one `research.paper_scores` row per watchlist candidate. `desk_status` shows the same trial
+count the next day.
 
 ---
 
