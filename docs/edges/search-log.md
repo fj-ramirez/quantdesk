@@ -1,11 +1,11 @@
 # Edge search log
 
 The ledger for every hypothesis tested against the desk's history, **failures included**. It
-is the denominator that makes a pass mean something: a strategy that clears 2 SE after 300
-tries is about what chance produces. The research loop (see *Loop protocol*) appends here.
+keeps every family's denominator honest (a rule that clears 2 SE after 300 variants of itself is
+about what chance produces) and gives the programme-level count of expected false passes. The research loop (see *Loop protocol*) appends here.
 
-**Cumulative tests: 544** (288 T147 + 18 effect tests on 2026-10-09, the session decomposition
-included, + the loop's rows below, + 84 T156 COT trials on 2026-10-13, + 11 on 2026-10-14, + 1 on 2026-10-15, + 9 on 2026-10-16). Update this line with every entry.
+**Cumulative tests: 565** (288 T147 + 18 effect tests on 2026-10-09, the session decomposition
+included, + the loop's rows below, + 84 T156 COT trials on 2026-10-13, + 11 on 2026-10-14, + 1 on 2026-10-15, + 9 on 2026-10-16, + 3 in pass 13, + 18 in pass 14). Update this line with every entry.
 
 ## Pass bar
 
@@ -13,9 +13,10 @@ A hypothesis becomes a candidate (`docs/edges/<slug>.md`, stage 1 passed) only i
 
 1. ≥ 100 trades over ≥ 30 sessions, after doubled recorded spread (and swap, if it is held across
    the 17:00 New York rollover).
-2. **t ≥ max(2, sqrt(2 ln N))**, where N is the cumulative test count *including this one*.
-   (N = 306 → 3.38.) This is the expected maximum of N noise t-statistics, the same idea as
-   EdgeLab's noise ceiling expressed on t instead of Sharpe.
+2. **t ≥ max(2, sqrt(2 ln k))**, where k is the size of the set this result was *picked from*
+   (see *Selection count* below). For a single pre-declared cell, k = 1 and the bar is t ≥ 2.
+   This is the expected maximum of k noise t-statistics, the same idea as EdgeLab's noise
+   ceiling expressed on t instead of Sharpe.
 3. Mean > 0 both in-sample (< 2024-01-01) and out-of-sample (≥ 2024-01-01).
 4. Positive in more than half of the calendar years.
 5. Not explained by buy-and-hold drift. It must beat the same exposure held at random times, or
@@ -29,6 +30,45 @@ rule. When a short-hold event rule cannot reach 100 trades on the broker span, r
 independent history (Yahoo daily before 2019-07, as #356–357 and #427–428 did) rather than
 marking it blocked. Backlog rows 3, 4, 5 and 11 sat blocked from 2026-10-09 to 2026-10-14 for
 this reason.
+
+### Selection count (replaces the cumulative N, 2026-10-16)
+
+The bar used to be t ≥ max(2, sqrt(2 ln N)) with N the cumulative count of every test in this
+log. That charged a test for *when* it ran, not for what it was chosen from: the same rule faced
+2.0 as test #1 and 3.55 as test #544, and a COT test paid for 80 unrelated ORB filters. The tests
+here have no order. They are declared from separate mechanisms, so the cumulative count was a
+penalty on the ledger's length. The #427–428 precedent and [rty-zscore-dip](rty-zscore-dip.md)
+already ran on the right rule; this section makes it the rule.
+
+A multiple-testing correction protects against **picking the best of k results**, so k is the
+size of the set the result was selected from:
+
+| Situation | k |
+|---|---|
+| A declared test with several cells (instruments, horizons, parameter values) where any one passing would be taken | the number of cells |
+| A cell that must pass *together* with the others (e.g. "all three index CFDs") | 1 |
+| A variant, filter, re-tune or "fix" of an earlier rule | its **family's** cells so far, this one included |
+| A rule lifted from an EdgeLab search or any other scan | that scan's trial count (EdgeLab's leaderboard ceiling, invariant 9) |
+
+**Family** = tests of the same mechanism with the same core rule. It is written into the backlog
+row **when the row is declared**, before any data is seen, as `Family: <name>, k = <n>`, and a
+family's k never goes down. A new mechanism starts a new family. Deciding the family after seeing
+the result is the one thing that makes this bar dishonest. When in doubt, the row joins the
+existing family.
+
+Rows before #545 carry no family label, and their verdicts stand as recorded. A past lead that
+would pass under k is not promoted retroactively: it becomes a candidate only through a new,
+declared run, as #427–428 did.
+
+### Programme-level check (reported, not a gate)
+
+The cumulative count still matters, but for the programme, not a single test. Under pure noise,
+each test clears t ≥ 2 one-sided with probability about 0.023, so across N tests about
+**0.023 × N false passes** are expected from chance on the t gate alone (the IS/OOS, years and
+drift gates reduce that, so it is an upper bound). Report it beside the candidate list at the end
+of every pass: *N tests, about E false passes expected, P passes recorded.* When P is not well
+above E, the forward stages (demo, micro-live) are what separate the edges from the luck, and
+none is sized up before they do.
 
 ### Position rules (added 2026-10-09, before backlog pass 2 ran)
 
@@ -45,7 +85,7 @@ than per trade:
 The bar becomes:
 
 1. ≥ 100 days in the market and ≥ 10 separate entries.
-2. t on the in-market daily P&L ≥ max(2, sqrt(2 ln N)).
+2. t on the in-market daily P&L ≥ max(2, sqrt(2 ln k)), k as in *Selection count*.
 3. Positive in IS and OOS.
 4. Positive in most years.
 5. **A higher Sharpe than buy-and-hold of the same CFD over the same span.** A long-only rule
@@ -61,8 +101,8 @@ whatever its t, so the entry count is reported with every result.
    the cited source. Nothing is tuned.
 2. Run it on the local M1 export, with one script per hypothesis in `scripts/edges/`. Refresh the
    export from `broker.bars` if it is more than 7 days old (read-only).
-3. Increment N and record n, mean, t, IS/OOS, the yearly signs and the verdict
-   (`fail` / `lead` / `pass`).
+3. Increment N, the family's k, and record n, mean, t, the bar used (k), IS/OOS, the yearly signs
+   and the verdict (`fail` / `lead` / `pass`).
 4. On a **pass**: write `docs/edges/<slug>.md` in the gold-asia-drift format (frozen spec,
    evidence, sizing, bootstrap kill rules, stage log) and add it to `README.md`.
 5. A variant of a tested hypothesis is a **new backlog row**, appended at the bottom. It never
@@ -226,3 +266,7 @@ leads (RSI(2), IBS) are the most promising index work. A combined test on 2000�
 | 543–544 | 2026-10-16 | Backlog 48, even weeks of the FOMC cycle (Cieslak, Morse and Vissing-Jorgensen 2019): long the returns of days −1..3, 9..13, 19..23, 29..33 after each scheduled announcement, flat otherwise and in days −6..−2. Position rule, 55 meetings, after the paper's sample. | S&P.fs, NAS100.fs | 965 days, 170 entries | −0.009 / +0.017% a day | −0.23 / +0.37 | ≈ 0 / ≈ 0 | 5/8, 6/8 | **fail. The FOMC-cycle premium is not present after publication** (2019–26), the same decay as pre-FOMC drift (#524–525). Sharpe −0.09 / 0.14 vs buy-and-hold 0.66 / 0.79 | `scripts/edges/2026-10-16-48-fomc-cycle.py` |
 | 545–546 | 2026-10-16 | Backlog 50, rest-of-day momentum only when dealers are short gamma (Baltussen et al. 2021, Table 7): on sessions where SqueezeMetrics `gex` for t−1 < 0, trade 15:30 → 16:00 in the direction of previous 16:00 → 15:30, no floor. | S&P.fs, NAS100.fs | 199 / 199 | +0.049 / +0.048% (gross +0.092 / +0.082) | 0.91 / 0.79 | + / + | 3/8, 5/8 | **fail.** The sign matches the paper: gross +0.09% in short gamma against −0.003% on the 1,594 long-gamma sessions (context, not counted; net −0.039%, t −6.2, the spread). But 2020 carries the whole total (+12.0 / +10.1 of +10.0 / +9.5%); without it the sum is −2.0 / −0.6%. The effect is real in a crash and too rare and too small after costs to trade | `scripts/edges/2026-10-16-50-rod-short-gamma.py` |
 | 547 | 2026-10-16 | Backlog 52, the #428 mean-reversion composite with entries only when SqueezeMetrics `gex` for t−1 > 0. ^NDX 2011-05 → 2026-10, position rule. | ^NDX | 1,612 days, 425 entries | +0.097% a day | 3.47 | + / + | 13/16 | **fail, the wrong way round.** The filter removes 3 of 428 entries and lowers the mean (unfiltered +0.098%, t 3.49). The excluded short-gamma entries do *better*: +0.31% a day over 29 entries (t 2.09). Long gamma is not the regime for buying dips; if anything, short-gamma dips rebound harder. That reading is post-hoc on 29 entries and is not a rule | `scripts/edges/2026-10-16-52-mr-positive-gamma.py` |
+| 548–549 | 2026-10-16 | Backlog 53, the user's 4h desk strategy (family `4h-ema-macd-trend`, k = 2, bar 2.0): 4h candles from 17:00 NY; long at a close > EMA20 with EMA20 > EMA50 and MACD(8,17) > 0; initial stop one spread below the signal candle's low; recovered pullbacks lift the stop; exit on the stop or a 4h close < EMA20. Position rule on daily P&L, per-trade R beside it. Cell A = three indices together, cell B = XAUUSD | 3 index CFDs; XAUUSD | 506–735 trades, 650–1,014 days | R −0.05 / **+0.25** / −0.20; gold −0.02 (corrected in #554–559) | daily −0.09 / 2.07 / −0.64; gold 0.99 | S&P − / +, NAS + / +, DJ − / −, gold − / + | 6/8, 7/8, 2/6, 5/8 | **fail, both cells.** 78–82% of trades stop out within ~½ day (median −1R): the signal-candle-low stop sits inside one candle's range. NAS100.fs clears t but loses to buy-and-hold on Sharpe (0.78 vs 0.82) with less than half its return, the daily trend rules' pattern again. [4h-desk-trend](4h-desk-trend.md) | `scripts/edges/2026-10-16-53-4h-desk-trend.py` |
+| 550–553 | 2026-10-16 | Backlog 54, #548–549 with a wider initial stop (family `4h-ema-macd-trend`, k = 6, bar 2.0): (a) entry − 2 × ATR(14) of 4h; (b) lowest low of the last 5 candles − one spread. Everything else unchanged | 3 index CFDs; XAUUSD | 362–583 trades | (a) R −0.01 / +0.07 / −0.03, gold +0.07; (b) −0.01 / **+0.28** / −0.12, gold +0.08 (corrected in #554–559) | daily (a) 0.34 / 1.65 / −0.30, gold 0.74; (b) 0.22 / 1.89 / −0.09, gold 0.99 | NAS + / + both; S&P and gold IS −; DJ OOS − | (a) 6/8, 6/8, 3/6, 4/8; (b) 6/8, 6/8, 3/6, 4/8 | **fail, all four.** Stop-outs fall from ~80% to 47–62% and the hold doubles, but daily P&L does not improve: NAS100.fs daily t drops from 2.07 to 1.65 / 1.89, and every cell stays below buy-and-hold Sharpe (NAS 0.62 / 0.71 vs 0.82). The tight stop was not what held the rule back; the gross edge is the index drift. [4h-desk-trend](4h-desk-trend.md) | `scripts/edges/2026-10-16-53-4h-desk-trend.py <data> atr2\|swing5` |
+| 554–559 | 2026-10-16 | Backlog 55, #548–553 plus a take-profit at entry + 0.5 × initial risk (stop first if one M1 bar touches both), for the three stops (family `4h-ema-macd-trend`, k = 12, **bar 2.23**) | 3 index CFDs; XAUUSD | 758–2,728 trades | candle −0.22 / −0.12 / −0.16, gold −0.10; atr2 −0.03 / −0.01 / −0.04, gold −0.01; swing5 −0.09 / −0.02 / −0.07, gold −0.02 | daily candle −5.05 / −2.24 / −3.21, gold −0.68; atr2 −0.82 / 0.10 / −1.13, gold −0.71; swing5 −1.58 / 0.14 / −0.88, gold 0.18 | − in IS for all but NAS (atr2, swing5) | 0–5 of 6–8 | **fail, all six, and worse than no target.** Win rates 54–65% against the ≈ 67% a 0.5:1 payoff needs before costs; gross per trade +0.006 to +0.041% against 0.017–0.036% of doubled spread. The target cuts off the rare long trend that carried the no-target NAS100 runs (mean MFE 2.7R → 0.4R). Also corrects #548–553's per-trade R: gap fills (entry at or below the stop) had a negative initial risk, which flipped their R positive; R is now undefined for them. NAS100 +0.26 → +0.25R (candle), +0.29 → +0.28R (swing5); verdicts unchanged (they rest on daily P&L). [4h-desk-trend](4h-desk-trend.md) | `scripts/edges/2026-10-16-53-4h-desk-trend.py <data> <stop> 0.5` |
+| 560–565 | 2026-10-16 | Backlog 56, #548 (candle stop, EMA20 exit) with exits that keep open profit: (a) be1 breakeven at +1R; (b) atr3 chandelier, highest 4h high − 3 × ATR(14); (c) be1atr3. Random-entry control: 200 draws per cell, same stop and exits. Family `4h-ema-macd-trend`, k = 18, **bar 2.40** | 3 index CFDs; XAUUSD | 436–930 trades | NAS100 %/trade +0.060 / **+0.124** / +0.085 (random p95 +0.049 / +0.090 / +0.060); S&P −0.009 / +0.007 / +0.003; DJ −0.024 / −0.030 / −0.029; gold +0.017 / +0.059 / +0.024 | daily NAS 1.87 / **2.25** / 2.05; S&P −0.37 / 0.17 / 0.08; DJ −1.05 / −0.82 / −1.06; gold 0.53 / 1.24 / 0.71 | NAS + / + all; gold IS − all | NAS 7/8 all | **fail, all six cells; NAS100.fs atr3 is a lead** (IS/OOS +, 7/8 years, Sharpe 0.85 > B&H 0.82, signal at the 99th random percentile; only t 2.25 < 2.40, and cell A needs all three indices). **The NAS100 entry beats random entries with every exit, row 53's included (p99–p100)**; S&P.fs (p64–83), DJ30.fs (p26–32) and gold (p60–80) do not. Breakeven hurts everywhere: stop-outs at entry, re-entries, more spread. Exits still keep only 4–13% of MFE. [4h-desk-trend](4h-desk-trend.md) | `scripts/edges/2026-10-16-56-4h-desk-exits.py`, `_desk4h.py` |

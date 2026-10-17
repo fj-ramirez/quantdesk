@@ -6,6 +6,11 @@ earns +0.25% (^GSPC) and +0.45% (^NDX) per trade after the doubled CFD spread, w
 clear the search bar of 3.55. Its margin over an ordinary 3-day hold is t 1.85 / 1.75. On the
 CFDs (2019–26, #295–297) it is positive with t < 1.2.
 
+*Under the selection-count bar (2026-10-16, `search-log.md`):* its family is #295–297 + #539–540,
+so k = 5 and the t bar is 2.0, which both rows clear. The verdict is not changed retroactively.
+What stands between it and a candidate is criterion 5: the margin over an ordinary 3-day hold is
+t 1.85 / 1.75. Promoting it takes a new, declared run.
+
 ## Spec (frozen; the #295–297 rule, unchanged)
 
 | Field | Value |

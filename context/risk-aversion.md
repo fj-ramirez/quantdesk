@@ -20,7 +20,14 @@ one area of the code.
 4. **Edge questions** ("will this strategy work?") are judged by EdgeLab's gates (invariant 9):
    the noise ceiling, the doubled-cost gate, walk-forward and the roll-gap caveat, then the
    `edge-research` skill's forward tests. That skepticism is the product, not pessimism. Clean
-   code does not make a backtest an edge.
+   code does not make a backtest an edge. **The goal is profit**: the gates protect money, and a
+   strategy that later decays is a kill-rule matter, not a reason to reject it.
+
+   **Judge a backtest at the trade level.** Every one ships a per-trade workbook with MAE and
+   MFE (points, $ at 0.01 lot, R) in `backend/data/edges/`, and runs a random-entry control
+   with the same exits. Before calling a rule dead, read its MFE give-back: if winners are
+   handed back, the exit is the defect, so declare exit variants first. Never close a family
+   on a mean and a t alone (T178, 2026-10-16).
 
 5. **Trade-offs as a decision matrix**, not as a warning against proceeding: for example memory
    against speed in the GEX engine, or throughput against latency in a worker. Give a
