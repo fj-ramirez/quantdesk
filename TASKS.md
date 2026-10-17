@@ -23,7 +23,7 @@ How to use this file:
   `context/decisions.md` if it settled a rule. A finished block does not stay here.
 - New work gets the next free ID and is filed here, never fixed silently.
 
-**Next free ID: T181.** (T108 was allocated retroactively — see the archive's addendum;
+**Next free ID: T183.** (T108 was allocated retroactively — see the archive's addendum;
 T109–T114 were filed on 2026-09-22 from the task-history audit, T115–T121 from the logic audit;
 T122–T124 were filed and finished on 2026-09-23 — see the addendum; T125–T127 were filed on
 2026-09-25 for the ThetaData initiative, [plans/thetadata/](plans/thetadata/README.md); T128–T133
@@ -32,7 +32,7 @@ finished 2026-10-07, see the addendum; T139 filed 2026-10-07, split from T96, an
 [docs/read-review-2026-10-08.md](docs/read-review-2026-10-08.md); T143–T147 filed 2026-10-08 on the
 `experiment/charter-mt5` branch for [plans/charter-mt5/](plans/charter-mt5/README.md); T148 filed
 2026-10-08 from T145's basis work; T149 filed 2026-10-09 for the `xau-range-rejection` edge candidate and finished 2026-10-14, see the addendum; T150 filed 2026-10-09 at
-the charter-mt5 merge; T155–T158 filed 2026-10-13 for [plans/cot/](plans/cot/README.md), T155 and T157 finished the same day; T159 filed 2026-10-13, charts back on the broker module; T160–T162 filed 2026-10-14 for [plans/reel-intake/](plans/reel-intake/README.md); T163 filed 2026-10-14, executor classes for wall-bounce and flip-cross; T164 filed 2026-10-14 from the first reel batch, the wall-break log; T165–T167 filed 2026-10-14 for [plans/gex-intraday-backfill/](plans/gex-intraday-backfill/README.md); T168–T173 filed 2026-10-15 for [plans/sentiment/](plans/sentiment/README.md), T168–T172 finished the same day, see the addendum; T174 filed 2026-10-15, an alert when the executor is not running; T175 and T176 filed 2026-10-15, the per-broker instrument catalogue and the end of EdgeLab's random search; T178 filed 2026-10-16, the trade-level re-audit of every tested strategy; T179 filed 2026-10-16, exit variants for the 4h desk strategy; T180 filed 2026-10-16, nas-4h-atr3 in the executor.)
+the charter-mt5 merge; T155–T158 filed 2026-10-13 for [plans/cot/](plans/cot/README.md), T155 and T157 finished the same day; T159 filed 2026-10-13, charts back on the broker module; T160–T162 filed 2026-10-14 for [plans/reel-intake/](plans/reel-intake/README.md); T163 filed 2026-10-14, executor classes for wall-bounce and flip-cross; T164 filed 2026-10-14 from the first reel batch, the wall-break log; T165–T167 filed 2026-10-14 for [plans/gex-intraday-backfill/](plans/gex-intraday-backfill/README.md); T168–T173 filed 2026-10-15 for [plans/sentiment/](plans/sentiment/README.md), T168–T172 finished the same day, see the addendum; T174 filed 2026-10-15, an alert when the executor is not running; T175 and T176 filed 2026-10-15, the per-broker instrument catalogue and the end of EdgeLab's random search; T178 filed 2026-10-16, the trade-level re-audit of every tested strategy; T179 filed 2026-10-16, exit variants for the 4h desk strategy; T180 filed 2026-10-16, nas-4h-atr3 in the executor; T181 and T182 filed 2026-10-17 from its enable, the false missed-trade alerts and the bot token in the logs.)
 
 ---
 
@@ -997,16 +997,53 @@ broker stop-outs from `deals`, the Telegram entry alert; bridge `modify_sl` (rai
 `ORDER_PATH`) and read-only `deals`. Tests: `tests/test_broker_nas_4h.py`, parity
 `tests/test_broker_nas_4h_parity.py` (560 trades of #562, exact times).
 
-Left for the user / the homeserver:
-- Deploy the `mt5` image (the bridge changed) and the backend.
-- Enable: `EXECUTOR_STRATEGIES=gold_asia,nas_4h_atr3` (plus `nas_mr` if wanted) in the
-  homeserver `.env`. Start it with `EXECUTOR_ENABLED=false` for a day to see the decide rows and
-  the dry-run alert, then `true`.
+**2026-10-17:** merged (#36, `17e657f`), deployed, and enabled on `#10067647 Axi-US50-Demo`
+with `EXECUTOR_STRATEGIES=gold_asia,nas_4h_atr3,nas_mr` (no dry run: `EXECUTOR_ENABLED` is
+global and would have paused `gold_asia`). The first pending decision is Friday's 13–17 bin,
+decided at Sunday 18:00 New York. The enable surfaced T181 and T182.
+
+Still open:
 - First live `modify_sl` on the real terminal: confirm the SL moves in MT5 and the row is
   `filled`.
 
 **Acceptance:** a `decide` row for every 4h bin on a trading day; the first entry alerted on
 Telegram and filled with a stop below the signal candle's low; a trail moving the broker SL.
+
+### T181 · Sonnet · T151, T174
+**False "MISSED TRADE" alerts when a strategy is added to the executor.** Filed 2026-10-17
+from the T180 enable on the homeserver. `modules/broker/executor.py:80` journals yesterday's and
+today's legs for every configured strategy, so a strategy that is new to the executor gets past
+legs written and marked expired ("decided too late", "decision window passed"). Then
+`workers/capture_watch.py:125` sends a Telegram "MISSED TRADE" for each one. Adding
+`nas_4h_atr3` and `nas_mr` on 2026-10-16 at 23:55 New York sent 12 false alerts (rows 5–14,
+16–17 of `broker.order_intents`). The executor's own "bin was not decided" notice may have fired
+for the same rows.
+
+- For a strategy with **no rows yet** in `broker.order_intents`, plan only legs with
+  `due_at >= now`. A strategy that already has rows keeps today's behaviour, since a gap there is
+  a real miss (the executor was down).
+- A test: the first tick for a new strategy writes no expired rows and sends no alert; a
+  restart after a gap still expires and alerts.
+
+**Acceptance:** adding a strategy to `EXECUTOR_STRATEGIES` and redeploying sends no MISSED TRADE
+alert.
+
+### T182 · Sonnet · —
+**The Telegram bot token is written to the worker logs.** Filed 2026-10-17. httpx logs every
+request at INFO with the full URL, and the Bot API puts the token in the path
+(`/bot<token>/sendMessage`). `app.core.notify` posts through httpx, so every alert writes the
+token to the `capture-watch` and `executor` container logs, and anything that reads them gets it
+(this session did).
+
+- Set `logging.getLogger("httpx").setLevel(logging.WARNING)` (and `httpcore`) once, in
+  `app/core/notify.py` at import, so every entry point that sends is covered, not each
+  `basicConfig` call.
+- A test: `notify.send` with a captured log emits no record containing the token.
+- **The user's step:** revoke and reissue the token in BotFather and update `.env` on the
+  homeserver, because the current one is in the logs.
+
+**Acceptance:** after a deploy, an alert leaves no `api.telegram.org/bot` line in
+`docker compose logs`.
 
 ### T179 · Opus · T178
 **4h desk strategy: exits that cut the MFE give-back.** Filed 2026-10-16 for later, on the
