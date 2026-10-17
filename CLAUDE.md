@@ -137,13 +137,16 @@ plans/         one folder per multi-task initiative — see plans/README.md
     records per row how that `as_of` was established — the per-row column is the authority, not
     the series' dominant basis. Anything that makes `as_of` updatable (an upsert, a
     "correction", a dedupe) destroys the only thing this module has that a price feed does not.
-11. (T151, replacing "no order routing, ever", by the user's decision on 2026-10-09) **Orders
-    go through one path only:** `app/workers/executor.py` → `modules/broker/executor.py` → the
-    bridge's `order_market` / `close_position`. It trades whichever account the `mt5` terminal
+11. (T151, replacing "no order routing, ever", by the user's decision on 2026-10-09; amended
+    2026-10-16, T180) **Orders go through one path only:** `app/workers/executor.py` →
+    `modules/broker/executor.py` → the bridge's `order_market` / `close_position` / `modify_sl`
+    (raise-only: it can tighten a stop, never loosen or remove one). It trades whichever account the `mt5` terminal
     is logged into, demo or live, with no demo-only lock. The safeguards are code, not
     configuration:
     - only strategies in `modules/broker/strategies.py`, each the frozen spec of a candidate
-      that passed its stage-1 gate in `docs/edges/`;
+      that passed its stage-1 gate in `docs/edges/`, **or a stage-1 lead the user admitted by
+      name**, recorded with the date in `docs/edges/README.md` (the first: `nas_4h_atr3`,
+      2026-10-16);
     - every leg written to `broker.order_intents` before it is sent;
     - a stop-loss on every order, enforced by the executor and again by the bridge;
     - a hard volume cap;

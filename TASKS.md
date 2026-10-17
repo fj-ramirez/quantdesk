@@ -23,7 +23,7 @@ How to use this file:
   `context/decisions.md` if it settled a rule. A finished block does not stay here.
 - New work gets the next free ID and is filed here, never fixed silently.
 
-**Next free ID: T177.** (T108 was allocated retroactively — see the archive's addendum;
+**Next free ID: T181.** (T108 was allocated retroactively — see the archive's addendum;
 T109–T114 were filed on 2026-09-22 from the task-history audit, T115–T121 from the logic audit;
 T122–T124 were filed and finished on 2026-09-23 — see the addendum; T125–T127 were filed on
 2026-09-25 for the ThetaData initiative, [plans/thetadata/](plans/thetadata/README.md); T128–T133
@@ -32,7 +32,7 @@ finished 2026-10-07, see the addendum; T139 filed 2026-10-07, split from T96, an
 [docs/read-review-2026-10-08.md](docs/read-review-2026-10-08.md); T143–T147 filed 2026-10-08 on the
 `experiment/charter-mt5` branch for [plans/charter-mt5/](plans/charter-mt5/README.md); T148 filed
 2026-10-08 from T145's basis work; T149 filed 2026-10-09 for the `xau-range-rejection` edge candidate and finished 2026-10-14, see the addendum; T150 filed 2026-10-09 at
-the charter-mt5 merge; T155–T158 filed 2026-10-13 for [plans/cot/](plans/cot/README.md), T155 and T157 finished the same day; T159 filed 2026-10-13, charts back on the broker module; T160–T162 filed 2026-10-14 for [plans/reel-intake/](plans/reel-intake/README.md); T163 filed 2026-10-14, executor classes for wall-bounce and flip-cross; T164 filed 2026-10-14 from the first reel batch, the wall-break log; T165–T167 filed 2026-10-14 for [plans/gex-intraday-backfill/](plans/gex-intraday-backfill/README.md); T168–T173 filed 2026-10-15 for [plans/sentiment/](plans/sentiment/README.md), T168–T172 finished the same day, see the addendum; T174 filed 2026-10-15, an alert when the executor is not running; T175 and T176 filed 2026-10-15, the per-broker instrument catalogue and the end of EdgeLab's random search.)
+the charter-mt5 merge; T155–T158 filed 2026-10-13 for [plans/cot/](plans/cot/README.md), T155 and T157 finished the same day; T159 filed 2026-10-13, charts back on the broker module; T160–T162 filed 2026-10-14 for [plans/reel-intake/](plans/reel-intake/README.md); T163 filed 2026-10-14, executor classes for wall-bounce and flip-cross; T164 filed 2026-10-14 from the first reel batch, the wall-break log; T165–T167 filed 2026-10-14 for [plans/gex-intraday-backfill/](plans/gex-intraday-backfill/README.md); T168–T173 filed 2026-10-15 for [plans/sentiment/](plans/sentiment/README.md), T168–T172 finished the same day, see the addendum; T174 filed 2026-10-15, an alert when the executor is not running; T175 and T176 filed 2026-10-15, the per-broker instrument catalogue and the end of EdgeLab's random search; T178 filed 2026-10-16, the trade-level re-audit of every tested strategy; T179 filed 2026-10-16, exit variants for the 4h desk strategy; T180 filed 2026-10-16, nas-4h-atr3 in the executor.)
 
 ---
 
@@ -342,6 +342,16 @@ IS/OOS, noise ceiling, recorded as trials. **Also backlog row 49**
 ([gamma-conditioned-walls](docs/edges/gamma-conditioned-walls.md), declared 2026-10-16 before the
 history existed): 4 more tests, each cell reported by wall *and* gamma sign, because under `ALL`
 the sign is confounded with the wall.
+
+### T177 · Sonnet · T166
+**Signed 0DTE flow at the open: probe, 10-minute load, one run of backlog row 51**
+([gex-positioning-2026-10-16](docs/edges/gex-positioning-2026-10-16.md)). First a one-session
+probe of SPX 0DTE `trade_quote` that records requests, wall-clock, rows, and that Standard
+serves it at all (the docs table only implies it). Then load 09:30:00–09:39:59 trades with their
+NBBO for every daily-expiry session from 2022-05-11 into a research table, plus the 09:30
+`greeks/first_order` delta. Then run row 51 exactly as declared (quote-rule sign, net signed
+delta, S&P.fs 09:40 → 15:55, doubled spread, holdout 2026-09-21 →), once. Runs after T166 finishes:
+both use the terminal's 4 request slots.
 
 ### Real-time (re-pointed from Tradier to ThetaData)
 
@@ -937,6 +947,85 @@ days each. It is the only EdgeLab data no selection step has touched.
 **Acceptance:** after deploy, the next nightly run adds no rows to `research.trials` and adds
 one `research.paper_scores` row per watchlist candidate. `desk_status` shows the same trial
 count the next day.
+
+### T178 · Opus · —
+**Re-audit every tested strategy at the trade level: exits, MAE/MFE, random-entry control.**
+Filed 2026-10-16 on the user's decision, after the 4h desk strategy
+([4h-desk-trend](docs/edges/4h-desk-trend.md)): its exits gave back most of the open profit
+(on NAS100.fs, 18 trades reached +300 to +1,000 pts and closed at −633 pts net), and the
+family was closed after testing only stops and a tight target. The user does not trust verdicts
+that were reached without seeing the trades.
+
+Why the old verdicts may be wrong:
+- Most rows in `docs/edges/search-log.md` were scored only on a mean and a t. Nobody looked at
+  MAE/MFE, so a rule with a good entry and a bad exit was killed as "no edge".
+- None had a random-entry control, so nothing separates "the entry has information" from
+  "the exit machinery plus the index drift".
+- The 4h run found a per-trade R bug (gap fills with negative risk scored as wins). Other
+  scripts compute R their own way and have not been checked for it.
+
+Scope, per tested candidate in `docs/edges/README.md` and every ledger family with ≥ 100 trades:
+- **Trade workbook** in the 4h format (`DATA_DIR/edges/<slug>-trades.xlsx`): one row per
+  trade, entry/exit times (NY and UTC), prices, stop, reason, spread, roll, swap, gross, cost,
+  net, R, MAE and MFE in points, $ at 0.01 lot and R, with formulas for derived columns and a
+  summary sheet.
+- **Charts** (format still to be decided with the user): MAE vs MFE scatter coloured by
+  outcome; a heatmap (e.g. entry hour × weekday, or MFE bucket × exit reason).
+- **Random-entry control** with the rule's own exits: the signal's mean net per trade against
+  the 95th percentile of ≥ 100 random-entry runs.
+- **Exit read:** where MFE shows large give-back, declare exit variants (breakeven, ATR
+  trail, targets) as new backlog rows with the family's k, rather than killing the entry.
+- Re-check each script's R and cost arithmetic against the shared helpers.
+
+Order: the index CFD trend and mean-reversion families first (the user's instruments), then
+gold, then the rest. Verdicts that change are written into the candidate file first, with the
+old one left in place and marked superseded.
+
+**Acceptance:** every candidate in `docs/edges/README.md` has a trade workbook and its
+random-entry percentile recorded in its file. Every family whose MFE give-back exceeds 50% has
+a declared exit row in the backlog.
+
+### T180 · Opus · T151, T174
+**nas-4h-atr3 in the executor; enable and forward-test it.** Filed 2026-10-16 on the user's
+decisions to demo NAS100.fs with the ATR3 trail and to amend invariant 11 so a stage-1 lead may
+enter the executor. Plan: [plans/nas-4h-atr3/](plans/nas-4h-atr3/README.md). Spec and kill
+rules: [nas-4h-atr3](docs/edges/nas-4h-atr3.md).
+
+**Code written 2026-10-16** (branch `feat/t180-nas-4h-atr3`): class `Nas4hAtr3`
+(`nas_4h_atr3`, magic 260903); executor 4h decide legs, signal-candle stop, `modify` legs,
+broker stop-outs from `deals`, the Telegram entry alert; bridge `modify_sl` (raise-only, in
+`ORDER_PATH`) and read-only `deals`. Tests: `tests/test_broker_nas_4h.py`, parity
+`tests/test_broker_nas_4h_parity.py` (560 trades of #562, exact times).
+
+Left for the user / the homeserver:
+- Deploy the `mt5` image (the bridge changed) and the backend.
+- Enable: `EXECUTOR_STRATEGIES=gold_asia,nas_4h_atr3` (plus `nas_mr` if wanted) in the
+  homeserver `.env`. Start it with `EXECUTOR_ENABLED=false` for a day to see the decide rows and
+  the dry-run alert, then `true`.
+- First live `modify_sl` on the real terminal: confirm the SL moves in MT5 and the row is
+  `filled`.
+
+**Acceptance:** a `decide` row for every 4h bin on a trading day; the first entry alerted on
+Telegram and filled with a stop below the signal candle's low; a trail moving the broker SL.
+
+### T179 · Opus · T178
+**4h desk strategy: exits that cut the MFE give-back.** Filed 2026-10-16 for later, on the
+user's decision. On NAS100.fs the entry beats random entries at p99–100 with every exit tried
+(#560–565), but the best exit (ATR3 chandelier) keeps only ~12% of the trades' total MFE, and
+breakeven at +1R made every instrument worse. See [4h-desk-trend](docs/edges/4h-desk-trend.md).
+
+- Declare the variants as one backlog row **before** running, family `4h-ema-macd-trend`
+  (k = 18 so far, so the bar rises with every cell): e.g. a partial close at +2R with the rest
+  on the ATR3 trail; a wider chandelier (4 × and 5 × ATR); the ATR trail without the EMA20 exit;
+  a time exit.
+- NAS100.fs first (the only instrument whose entry has information); run S&P.fs / DJ30.fs /
+  XAUUSD only as the declared cells, not to rescue them.
+- Same scoring as row 56, including the random-entry control, and the trade workbook in
+  `backend/data/edges/` (`scripts/edges/workbooks/`).
+- If a variant beats ATR3 on NAS100.fs, it becomes a new candidate; it does not replace the
+  NAS100 ATR3 forward test already running.
+
+**Acceptance:** the row's results in `search-log.md` and `4h-desk-trend.md`, with the workbook.
 
 ---
 

@@ -12,6 +12,10 @@ description: >
 
 ## The goal, and the boundary
 
+**The purpose is profit**, not a canonically correct method. The gates exist because a lucky
+backtest loses real money, not for their own sake. A strategy that works for a while and then
+stops is acceptable: catching that is what the kill rules are for.
+
 **The long-term goal is a desk that pays for itself.** It costs about **$100/month** (as of
 2026-10-08: ThetaData Options Standard at $80 plus hosting and the rest). That is a **future
 goal, not a gate**: it is not used to judge, size or reject a candidate now. Profit comes from
@@ -27,9 +31,11 @@ we can see when the condition is gone or the edge has decayed **before the accou
 damaged**. Every strategy needs a written kill rule before its first live trade.
 
 **Orders go through the executor only** (CLAUDE.md invariant 11, T151). This skill designs,
-tests, sizes and monitors. A candidate reaches the executor only after it passes stage 1: its
-frozen spec becomes a class in `app/modules/broker/strategies.py`, matching the spec character
-for character, with the spec's kill rules. Changing that class's rule makes a new candidate.
+tests, sizes and monitors. A candidate reaches the executor only after it passes stage 1, or
+as a stage-1 **lead the user admits by name** (invariant 11 as amended 2026-10-16; recorded with
+the date in `docs/edges/README.md`, and forward-tested on the longer stage-2 gate): its frozen
+spec becomes a class in `app/modules/broker/strategies.py`, matching the spec character for
+character, with the spec's kill rules. Changing that class's rule makes a new candidate.
 Never place, modify or close an order from a session, a script or a tool. The executor is the
 one process that does, and `broker.order_intents` is its journal.
 
@@ -92,13 +98,35 @@ Gate (all of them):
 - **≥ 100 trades and ≥ 30 independent sessions.** Count clustered events once.
 - **Mean R > 0 after doubled costs.** This is EdgeLab's doubled-cost gate, applied to the CFD's
   real cost, not the underlying's.
-- **Mean > 2 standard errors, clustered by session.** A per-event SE overstates certainty.
+- **Mean > max(2, sqrt(2 ln k)) standard errors, clustered by session.** A per-event SE
+  overstates certainty. k is the number of results this one was picked from: the cells of its
+  declaration plus every earlier test in its family (variants, filters, re-tunes). A single
+  pre-declared cell has k = 1. The family is written down when the test is declared, never after
+  the result. It is not the cumulative count of unrelated tests (see `docs/edges/search-log.md`,
+  *Selection count*).
 - **Walk-forward:** split the history into consecutive windows. The edge has the same sign in
   most of them, with no re-tuning between windows.
 - **Regimes:** it works in ≥ 2 distinct regimes, or the regime condition correctly isolates the
   periods where it works and it stays flat outside them.
 - If it went through EdgeLab, it is **above its noise ceiling**, and the OOS-reuse caveat
   applies.
+- **Random-entry control:** the same stop, exits and costs on ≥ 100 random-entry draws (any
+  bar while flat, the rate calibrated to the signal's trade count). The signal's mean net per
+  trade must be above the draws' 95th percentile, per instrument. This is what separates "the
+  entry has information" from "the exit machinery plus the index drift".
+
+**Read the trades before the verdict.** Every stage-1 run produces the trade workbook (see
+*Record keeping*) and is judged on it, not only on a mean and a t:
+
+- **MFE give-back.** If trades that reached +1R or more close at or below zero, or the rule
+  keeps a small share of its total MFE, the exit is the defect. Declare exit variants
+  (chandelier/ATR trail, partial close, targets, time exits) as new backlog rows, k counted,
+  **before** closing the family. Breakeven stops are one option, not the default.
+- **A family is closed only after** its exits have been examined trade by trade and the
+  random-entry control has run. "No edge" from a rule whose winners were given back is a
+  verdict on the exit, not on the entry.
+- **R is undefined when the initial risk is ≤ 0** (a gap fill at or below the stop). Leave it
+  blank; the trade stays in the P&L at full cost.
 
 Fail → write the result in the candidate file and stop. A clean "no" is a useful output.
 No history obtainable → go to stage 2 with the longer gate below.
@@ -219,6 +247,14 @@ re-fitted to bring it back. Three pauses → kill and write up why.
 
 ## Record keeping
 
+**Every backtest ships a trade workbook**, `backend/data/edges/<slug>-trades.xlsx` (local, not
+in git; builders in `scripts/edges/workbooks/`), one sheet per tested variant, one row per
+trade: entry and exit time (New York and UTC), entry, initial stop, exit, exit reason, spread,
+roll, swap, gross, cost, net in points / % / $ at 0.01 lot / R, **MAE and MFE in points, $ and
+R** with the time each was reached, and the share of MFE kept. Derived columns are formulas;
+a Summary sheet aggregates per variant and instrument, and a sheet holds the random-entry
+control. The user reads the trades themselves; give them the path.
+
 Each candidate has `docs/edges/<slug>.md` (spec, stage log with dates, gate results, pauses)
 and a trade journal `docs/edges/<slug>-trades.csv`. One row per signal, **including signals not
 taken**:
@@ -234,8 +270,9 @@ rule. Keep a list of active candidates and their stages in `docs/edges/README.md
 ## Honesty rules (inherited, and the reason this skill exists)
 
 - **Noise ceiling, doubled costs, walk-forward, roll-gap caveat** (EdgeLab, invariant 9).
-- **Report the search count** with every result. Ten variants tried and one passed at 2 SE is
-  roughly what chance produces.
+- **Report the search count** with every result: the family's k, and at the end of a pass the
+  programme-level line (N tests, about 0.023 × N false passes expected, P recorded). Ten variants
+  tried and one passed at 2 SE is roughly what chance produces.
 - **Cluster by session.** Correlated instruments firing together are one event.
 - **Point-in-time.** Use only what was known at signal time. Pass `as_of` to terminal tools for
   past moments.
@@ -249,7 +286,8 @@ rule. Keep a list of active candidates and their stages in `docs/edges/README.md
 ## Output
 
 Lead with **the candidate's stage, the next gate, and what is missing to pass it** (trades,
-months, data). Then the evidence: n, mean R ± clustered SE, search count, costs used. If a
+months, data). Then the evidence: n, mean R ± clustered SE, search count, costs used, the
+**random-entry percentile**, the **MFE give-back** and $ at 0.01 lot, and the workbook path. If a
 size is recommended, show the arithmetic. End with the kill rules in force. Keep a
 recommendation to scale separate from the evidence, and never base it on a single good week.
 
