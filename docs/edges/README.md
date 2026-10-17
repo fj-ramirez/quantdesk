@@ -22,6 +22,7 @@ with its own slug and start date.
 | [rod-momentum](rod-momentum.md) | — → 3 index CFDs | **stage 1 failed** (#536–538): −0.03 to −0.05% per trade, gross ≈ 0 | None for this rule | 2026-10-16 | backlog 45 |
 | [month-end-rebalancing](month-end-rebalancing.md) | — → S&P.fs, NAS100.fs | **stage 1 failed** (#541–542): Sharpe 0.10 / 0.00 vs B&H 0.66 / 0.79 | None for this rule | 2026-10-16 | backlog 47 |
 | [fomc-cycle](fomc-cycle.md) | — → S&P.fs, NAS100.fs | **stage 1 failed** (#543–544): gone after publication | None for this rule | 2026-10-16 | backlog 48 |
+| [nas-4h-atr3](nas-4h-atr3.md) | — → NAS100.fs | **1 lead, admitted by the user 2026-10-16** (invariant 11 as amended) | Executor class `nas_4h_atr3` written (T180), parity exact; enable it, then forward: ≥ 50 trades over ≥ 2 months | 2026-10-16 | #562 in 4h-desk-trend |
 | [4h-desk-trend](4h-desk-trend.md) | — → S&P.fs, NAS100.fs, DJ30.fs; XAUUSD | **stage 1 failed** (#548–565); **NAS100.fs + ATR3 trail is a lead** (#562: t 2.25 vs bar 2.40, Sharpe 0.85 vs B&H 0.82, entry beats random at p99) | User's decision: demo NAS100.fs-only as a new candidate, or not; T178 re-audit | 2026-10-16 | the user's rule |
 | [eurusd-burst-fade](eurusd-burst-fade.md) | — → EURUSD | **stage 1 failed** (2026-10-11, #429–430): the frozen z-fade loses −2.0 pips per trade, 0/8 years | None for this rule. The provider's entry selector is still unexplained; it becomes a test again only as a new, pre-declared rule | 2026-10-10 | the user's copy account: provider "the holy grail" |
 

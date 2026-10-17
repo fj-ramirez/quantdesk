@@ -139,6 +139,9 @@ number to be true, it belongs in a plan file's *Result* heading or behind an MCP
 - Every backtest is judged at the trade level: a per-trade workbook with MAE/MFE in
   `backend/data/edges/`, a random-entry control with the same exits, and exit variants declared
   before a family is closed for giving back its winners. — `edge-research` skill, T178, 2026-10-16.
+- The executor may trade a stage-1 **lead** the user admits by name, not only a stage-1 pass;
+  the order path gains a raise-only `modify_sl` for trailing stops. — invariant 11 as amended,
+  T180, `plans/nas-4h-atr3/`, 2026-10-16.
 - The ported science stays diffable against the original (scoped lint ignores, not rewrites). — T77.
 - Paper candidates are scored forward from `promoted_at`, one row per cycle. — T108.
 

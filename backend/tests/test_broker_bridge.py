@@ -34,6 +34,7 @@ class FakeMT5:
     TIMEFRAME_H1, TIMEFRAME_H4, TIMEFRAME_D1 = 16385, 16388, 16408
     COPY_TICKS_ALL = -1
     TRADE_ACTION_DEAL, ORDER_TYPE_BUY, ORDER_TYPE_SELL, ORDER_TIME_GTC = 1, 0, 1, 0
+    TRADE_ACTION_SLTP = 6
     ORDER_FILLING_FOK, ORDER_FILLING_IOC, ORDER_FILLING_RETURN = 0, 1, 2
     TRADE_RETCODE_DONE = 10009
 
@@ -45,6 +46,7 @@ class FakeMT5:
         self.sent: list[dict] = []
         self.open: dict[int, SimpleNamespace] = {}
         self.retcode = self.TRADE_RETCODE_DONE
+        self.deals: list[SimpleNamespace] = []
 
     def positions_get(self, symbol=None, ticket=None):
         rows = list(self.open.values())
@@ -54,11 +56,16 @@ class FakeMT5:
             rows = [p for p in rows if p.ticket == ticket]
         return tuple(rows)
 
+    def history_deals_get(self, position=None):
+        return tuple(d for d in self.deals if d.position_id == position)
+
     def order_send(self, request):
         self.sent.append(request)
-        price = request["price"]
+        price = request.get("price", 0.0)
         if self.retcode == self.TRADE_RETCODE_DONE:
-            if "position" in request:
+            if request["action"] == self.TRADE_ACTION_SLTP:
+                self.open[request["position"]].sl = request["sl"]
+            elif "position" in request:
                 self.open.pop(request["position"], None)
             else:
                 ticket = 1000 + len(self.sent)
@@ -67,7 +74,7 @@ class FakeMT5:
                     volume=request["volume"], price_open=price, sl=request["sl"], tp=0.0,
                     price_current=price, swap=0.0, profit=0.0, magic=request["magic"],
                     comment=request["comment"], time=1_000)
-        return SimpleNamespace(retcode=self.retcode, deal=7, order=8, volume=request["volume"],
+        return SimpleNamespace(retcode=self.retcode, deal=7, order=8, volume=request.get("volume", 0.0),
                                price=price, comment="done" if self.retcode == 10009 else "no")
 
     def initialize(self, path=None, **kw):
@@ -214,11 +221,11 @@ async def test_unreachable_bridge_raises():
 
 
 #: The only functions that may name an MT5 trading call (T151).
-ORDER_PATH = {"op_positions", "op_order_market", "op_close_position", "_send"}
+ORDER_PATH = {"op_positions", "op_order_market", "op_close_position", "op_modify_sl", "_send"}
 
 
 def test_trading_calls_live_only_in_the_order_path():
-    """T151: the bridge's order path is three ops (plus their shared `_send`). Checked on the
+    """T151, T180: the bridge's order path is four ops (plus their shared `_send`). Checked on the
     syntax tree, so a trading call added anywhere else fails here."""
     tree = ast.parse(SERVER_PY.read_text(encoding="utf-8"))
     trading = ("order_send", "order_check", "positions_get", "orders_get", "position_close")
@@ -264,3 +271,39 @@ async def test_a_rejected_order_is_an_error_answer(bridge_addr, fake):
             await c.order_market("XAUUSD", "buy", 0.01, sl=6200.0, magic=1)
         with pytest.raises(BridgeError, match="no open position"):
             await c.close_position(12345)
+
+
+async def test_modify_sl_only_tightens_and_stays_below_the_bid(bridge_addr, fake):
+    """T180: a trail may raise a buy's stop, never lower it or put it through the market."""
+    async with BridgeClient(*bridge_addr) as c:
+        await c.order_market("XAUUSD", "buy", 0.01, sl=6200.0, magic=9)
+        (pos,) = await c.positions(magic=9)
+        await c.modify_sl(pos["ticket"], 6300.0)
+        assert (await c.positions(magic=9))[0]["sl"] == 6300.0
+        with pytest.raises(BridgeError, match="does not tighten"):
+            await c.modify_sl(pos["ticket"], 6250.0)
+        with pytest.raises(BridgeError, match="does not tighten"):
+            await c.modify_sl(pos["ticket"], 6300.0)
+        with pytest.raises(BridgeError, match="wrong side of the market"):
+            await c.modify_sl(pos["ticket"], 6600.1)  # at the bid
+        with pytest.raises(BridgeError, match="no open position"):
+            await c.modify_sl(12345, 6400.0)
+        with pytest.raises(BridgeError, match="ticket and sl"):
+            await c.request("modify_sl", ticket=pos["ticket"])
+    sltp = [r for r in fake.sent if r["action"] == FakeMT5.TRADE_ACTION_SLTP]
+    assert len(sltp) == 1 and sltp[0]["position"] == pos["ticket"] and sltp[0]["sl"] == 6300.0
+
+
+async def test_deals_reads_one_positions_history(bridge_addr, fake):
+    fake.deals = [
+        SimpleNamespace(ticket=2, order=3, time=2_000, type=1, entry=1, price=6290.0, volume=0.01,
+                        profit=-3.1, swap=0.0, commission=0.0, reason=4, magic=9, position_id=5),
+        SimpleNamespace(ticket=1, order=1, time=1_000, type=0, entry=0, price=6600.6, volume=0.01,
+                        profit=0.0, swap=0.0, commission=0.0, reason=3, magic=9, position_id=5),
+        SimpleNamespace(ticket=9, order=9, time=1_500, type=0, entry=0, price=1.0, volume=0.01,
+                        profit=0.0, swap=0.0, commission=0.0, reason=3, magic=9, position_id=6),
+    ]
+    async with BridgeClient(*bridge_addr) as c:
+        deals = await c.deals(5)
+    assert [d["ticket"] for d in deals] == [1, 2]
+    assert deals[-1]["entry"] == 1 and deals[-1]["price"] == 6290.0 and deals[-1]["reason"] == 4

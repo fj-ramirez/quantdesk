@@ -179,3 +179,4 @@ What it shows:
 | 2026-10-16 | 1 failed | Row 54, wider stops: #550–553 all fail |
 | 2026-10-16 | 1 failed | Row 55, 0.5R target: #554–559 all fail; per-trade R corrected for gap fills. Family at k = 12 |
 | 2026-10-16 | 1 failed, lead | Row 56, exits + random control: #560–565 fail; NAS100.fs atr3 a lead, NAS100 entry beats random at p99–100. Family at k = 18 |
+| 2026-10-16 | admitted | The user admitted #562 to the executor as [nas-4h-atr3](nas-4h-atr3.md) (T180) |

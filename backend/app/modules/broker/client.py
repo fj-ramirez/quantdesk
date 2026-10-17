@@ -155,6 +155,14 @@ class BridgeClient:
         return await self.request("close_position", ticket=ticket, comment=comment,
                                   deviation=deviation)
 
+    async def modify_sl(self, ticket: int, sl: float) -> Reply:
+        """Tighten one position's stop-loss; the bridge refuses a looser one (T180)."""
+        return await self.request("modify_sl", ticket=ticket, sl=sl)
+
+    async def deals(self, position: int) -> list[dict]:
+        """One position's deals, oldest first (read-only history)."""
+        return (await self.request("deals", position=position)).result
+
     async def ticks(self, symbol: str, start: int, end: int) -> pd.DataFrame:
         """Ticks with `time_msc` in [start, end) seconds, server time; at most 26 hours."""
         r = (await self.request("ticks_range", symbol=symbol, **{"from": start, "to": end})).result

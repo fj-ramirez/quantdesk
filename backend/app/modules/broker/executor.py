@@ -12,7 +12,14 @@ It trades the account the `mt5` container is logged into, whatever its mode, but
 
 A strategy that decides from prices (`nas_mr`) schedules one `decide` leg per session. When it
 is due, the executor reads the strategy's M1 bars from `broker.bars`, asks `signal`, journals the
-answer on the `decide` row, and writes and sends the open or close it calls for. A close pairs
+answer on the `decide` row, and writes and sends the open or close it calls for.
+
+A 4h strategy (`nas_4h_atr3`, T180) schedules a `decide` leg at the end of every 4h bin and
+decides it when the first M1 bar after the bin is in `broker.bars`, since that bar's open is the
+backtest's fill. Its stop comes from the signal candle (`initial_stop`) and is trailed with a
+`modify` leg: written before it is sent like every other leg, sent through the bridge's
+raise-only `modify_sl`. A position the broker's stop has closed is journalled as a close at the
+exit price `deals` reports. Every entry signal goes to Telegram, in a dry run too. A close pairs
 with the strategy's latest filled open, which may be days old. On a `.fs` CFD the round trip's
 `pnl_pct` removes every roll step `broker.rolls` had confirmed by the close, as the backtests do.
 
@@ -37,7 +44,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, sessionmaker
 
 from app.modules.broker.client import BridgeClient, BridgeError
-from app.modules.broker.strategies import NY, ClosedTrade, rth_daily
+from app.modules.broker.strategies import NY, ClosedTrade, Held, rth_daily
 from app.modules.broker.tables import Bar, ExecutorHeartbeat, OrderIntent, RollRow, StrategyState
 
 log = logging.getLogger(__name__)
@@ -101,8 +108,14 @@ class Executor:
                 if strat is None:
                     self._finish(s, intent, "skipped", f"strategy {intent.strategy} not enabled")
                     continue
-                if intent.action == "decide":
+                if intent.action == "decide" and hasattr(strat, "h4_bars"):
+                    await self._decide_h4(s, strat, intent, now)
+                elif intent.action == "decide":
                     await self._decide(s, strat, intent, now)
+                elif intent.action == "modify":
+                    # Only a crash between writing and sending leaves one pending. The next 4h
+                    # decision recomputes the trail, so this one is never sent late.
+                    self._finish(s, intent, "expired", "not sent; the next decision recomputes it")
                 elif intent.action == "open":
                     await self._open(s, strat, intent, now)
                 else:
@@ -198,6 +211,160 @@ class Executor:
         else:
             await self._close(s, strat, leg, now)
 
+
+    # ---------------------------------------------------------------- 4h decisions (T180)
+
+    def h4(self, s: Session, strat, until: dt.datetime) -> pd.DataFrame:
+        """The strategy's 4h bins from `broker.bars` M1 before `until`."""
+        rows = s.execute(select(Bar.ts, Bar.open, Bar.high, Bar.low, Bar.close).where(
+            Bar.symbol == strat.symbol, Bar.timeframe == "M1",
+            Bar.ts >= until - strat.history, Bar.ts < until,
+        ).order_by(Bar.ts)).all()
+        m1 = pd.DataFrame(rows, columns=["ts", "open", "high", "low", "close"])
+        m1.index = pd.DatetimeIndex(pd.to_datetime(m1.pop("ts"), utc=True))
+        return strat.h4_bars(m1)
+
+    def _stop_now(self, s: Session, strat, opened: OrderIntent) -> float | None:
+        """The position's stop as journalled: the latest filled `modify` after the open."""
+        last = s.scalar(select(OrderIntent.sl).where(
+            OrderIntent.strategy == strat.name, OrderIntent.action == "modify",
+            OrderIntent.status == "filled", OrderIntent.due_at > opened.due_at,
+        ).order_by(OrderIntent.due_at.desc()).limit(1))
+        return last if last is not None else opened.sl
+
+    async def _held(self, s: Session, strat, now: dt.datetime):
+        """(the open row, `Held`, the position ticket) for a strategy the journal has long, after
+        journalling a broker stop-out if the position is gone; (None, None, None) when flat.
+        Raises BridgeError when the bridge cannot say."""
+        if not self.holding(s, strat):
+            return None, None, None
+        opened = self._last_open(s, strat.name)
+        positions = await self.client.positions(symbol=strat.symbol, magic=strat.magic)
+        if not positions:
+            await self._stopped(s, strat, opened, now)
+            return None, None, None
+        stop = self._stop_now(s, strat, opened)
+        return opened, Held(opened.sent_at or opened.due_at, opened.fill_price, stop), \
+            positions[-1]["ticket"]
+
+    async def _stopped(self, s: Session, strat, opened: OrderIntent, now: dt.datetime) -> None:
+        """Journal the close the broker's stop made, at the price its deals report."""
+        price, note = None, "closed by the broker's stop"
+        try:
+            outs = [d for d in await self.client.deals(opened.ticket) if d["entry"] == 1]
+            price = outs[-1]["price"] if outs else None
+        except BridgeError as e:
+            note += f"; deals unavailable: {e}"
+        if price is None:
+            price = self._stop_now(s, strat, opened)
+            note += "; exit price taken as the journalled stop"
+        steps = self._roll_steps(s, strat.symbol, opened.sent_at or opened.due_at, now)
+        pnl = ((price - opened.fill_price) / opened.fill_price - sum(steps)) * 100
+        s.add(OrderIntent(
+            key=opened.key.removesuffix(":open") + ":stopped", strategy=strat.name,
+            symbol=strat.symbol, action="close", side=strat.side, volume=opened.volume,
+            due_at=now, expires_at=now, status="filled", attempts=0, created_at=now,
+            ticket=opened.ticket, fill_price=price, pnl_pct=pnl, note=note[:512]))
+        s.commit()
+        self.notify(f"{strat.name}: stopped out @ {price} ({pnl:+.3f}%)")
+        self._check_kill(s, strat, now)
+
+    async def _decide_h4(self, s: Session, strat, intent: OrderIntent, now: dt.datetime) -> None:
+        end = intent.due_at
+
+        def first_bar(lo: dt.datetime, hi: dt.datetime | None = None):
+            q = select(Bar.ts).where(Bar.symbol == strat.symbol, Bar.timeframe == "M1",
+                                     Bar.ts >= lo)
+            if hi is not None:
+                q = q.where(Bar.ts < hi)
+            return s.scalar(q.order_by(Bar.ts).limit(1))
+
+        nxt = first_bar(end)
+        if nxt is None:
+            if now > intent.expires_at:
+                self._finish(s, intent, "skipped", "no bar after the bin")
+            else:
+                intent.note = "waiting for the first bar after the bin"
+                s.commit()
+            return
+        if first_bar(end - dt.timedelta(hours=4), end) is None:
+            self._finish(s, intent, "skipped", "no bars in the bin (market shut)")
+            return
+        nxt = nxt if nxt.tzinfo else nxt.replace(tzinfo=dt.UTC)
+        if now - nxt > strat.act_within:
+            self._finish(s, intent, "expired", f"decided too late: the next bar opened {nxt:%H:%M} UTC")
+            self.notify(f"{strat.name}: the {end.astimezone(NY):%a %H:%M} NY bin was not decided "
+                        "in time (executor down, or bars late)")
+            return
+        h4 = self.h4(s, strat, end)
+        if h4.empty or h4.index[-1] != strat.bin_of(end - dt.timedelta(minutes=1)):
+            self._finish(s, intent, "skipped", "the bin has no bars in broker.bars")
+            return
+        try:
+            _opened, held, ticket = await self._held(s, strat, now)
+        except BridgeError as e:
+            intent.note = f"positions: {e}"[:512]
+            s.commit()
+            return
+        action, why, px = strat.signal(h4, held)
+        if action is None:
+            self._finish(s, intent, "decided", f"no trade: {why}")
+            return
+        base = intent.key.removesuffix(":decide")
+        if action == "trail":
+            await self._modify(s, strat, intent, base, ticket, px, why, now)
+            return
+        window = strat.entry_window if action == "open" else strat.exit_window
+        leg = OrderIntent(
+            key=f"{base}:{action}", strategy=strat.name, symbol=strat.symbol, action=action,
+            side=strat.side, volume=self.volume, due_at=now, expires_at=now + window,
+            status="pending", attempts=0, created_at=now,
+            # Until it is sent, an open's `sl` holds the signal candle's low: the stop's anchor.
+            sl=px if action == "open" else None)
+        s.add(leg)
+        self._finish(s, intent, "decided", f"{action}: {why}")
+        if action == "open":
+            self._entry_alert(strat, h4, px)
+            await self._open(s, strat, leg, now)
+        else:
+            await self._close(s, strat, leg, now)
+
+    def _entry_alert(self, strat, h4: pd.DataFrame, anchor: float) -> None:
+        """Telegram on every entry signal. In a dry run nothing is held, so the condition stays
+        true bin after bin; there only a fresh signal (the previous bin was off) is sent."""
+        last = h4.iloc[-1]
+        if not self.enabled and len(h4) > 1 and strat.entry_on(h4.iloc[-2]):
+            return
+        risk = last.close - anchor
+        mode = "" if self.enabled else " (dry run: no order)"
+        self.notify(
+            f"{strat.name}: ENTRY signal{mode} on the {h4.index[-1]:%a %H:%M} NY "
+            f"4h bin: buy {strat.symbol} at the next open, ~{last.close:.2f}; stop {anchor:.2f} "
+            f"less the spread (risk ~{risk:.1f} pts, ~${risk * strat.usd_per_point:.2f} at 0.01 "
+            f"lot). Close {last.close:.2f} > EMA20 {last.ema20:.2f} > EMA50 {last.ema50:.2f}, "
+            f"MACD {last.macd:+.2f}; trail = 4h high since entry - {strat.atr_mult:g} x ATR "
+            f"{last.atr14:.2f}")
+
+    async def _modify(self, s: Session, strat, decide: OrderIntent, base: str, ticket: int,
+                      sl: float, why: str, now: dt.datetime) -> None:
+        leg = OrderIntent(
+            key=f"{base}:modify", strategy=strat.name, symbol=strat.symbol, action="modify",
+            side=strat.side, volume=self.volume, due_at=now, expires_at=now + strat.act_within,
+            status="pending", attempts=0, created_at=now, sl=sl, ticket=ticket)
+        s.add(leg)
+        self._finish(s, decide, "decided", f"trail: {why}")
+        if not self.enabled:
+            self._finish(s, leg, "skipped", "EXECUTOR_ENABLED is false (dry run)")
+            return
+        leg.attempts, leg.sent_at = 1, now
+        try:
+            await self.client.modify_sl(ticket, sl)
+        except BridgeError as e:
+            self._finish(s, leg, "rejected", str(e))
+            self.notify(f"{strat.name}: trail to {sl} REJECTED: {e}; the stop stays where it was")
+            return
+        self._finish(s, leg, "filled", None)
+
     # ---------------------------------------------------------------- legs
 
     async def _open(self, s: Session, strat, intent: OrderIntent, now: dt.datetime) -> None:
@@ -223,7 +390,14 @@ class Executor:
             account = await self.client.account()
             quote = (await self.client.tick(strat.symbol)).result
             ref = quote["ask"] if strat.side == "buy" else quote["bid"]
-            intent.sl = strat.stop_for(ref)
+            if hasattr(strat, "initial_stop"):
+                intent.sl = strat.initial_stop(intent.sl, quote["bid"], quote["ask"])
+                if intent.sl >= quote["bid"]:  # the backtest's gap rule: no risk, no trade
+                    self._finish(s, intent, "skipped",
+                                 f"gap: stop {intent.sl} is not below the bid {quote['bid']}")
+                    return
+            else:
+                intent.sl = strat.stop_for(ref)
             r = (await self.client.order_market(
                 strat.symbol, strat.side, intent.volume, intent.sl, magic=strat.magic,
                 comment=intent.key[-28:])).result

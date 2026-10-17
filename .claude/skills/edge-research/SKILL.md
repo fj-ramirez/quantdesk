@@ -31,9 +31,11 @@ we can see when the condition is gone or the edge has decayed **before the accou
 damaged**. Every strategy needs a written kill rule before its first live trade.
 
 **Orders go through the executor only** (CLAUDE.md invariant 11, T151). This skill designs,
-tests, sizes and monitors. A candidate reaches the executor only after it passes stage 1: its
-frozen spec becomes a class in `app/modules/broker/strategies.py`, matching the spec character
-for character, with the spec's kill rules. Changing that class's rule makes a new candidate.
+tests, sizes and monitors. A candidate reaches the executor only after it passes stage 1, or
+as a stage-1 **lead the user admits by name** (invariant 11 as amended 2026-10-16; recorded with
+the date in `docs/edges/README.md`, and forward-tested on the longer stage-2 gate): its frozen
+spec becomes a class in `app/modules/broker/strategies.py`, matching the spec character for
+character, with the spec's kill rules. Changing that class's rule makes a new candidate.
 Never place, modify or close an order from a session, a script or a tool. The executor is the
 one process that does, and `broker.order_intents` is its journal.
 

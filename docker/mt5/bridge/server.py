@@ -10,11 +10,14 @@ Standard library only, apart from `MetaTrader5` itself.
     answer    {"re": 1, "ok": true, "utc_ms": 1759990000123, "result": {...}}
               {"re": 1, "ok": false, "utc_ms": ..., "error": "..."}
 
-**The order path is three operations and nothing else** (T151, step 4 of the plan):
-`positions`, `order_market` and `close_position`. They are the only place in this file that may
-name a trading function, and `tests/test_broker_bridge.py` checks that on the syntax tree. The
-`executor` worker is their only intended caller. `order_market` refuses an order without a
-stop-loss on the correct side of the price. The executor attaches one anyway, and this is the
+**The order path is four operations and nothing else** (T151, step 4 of the plan; T180):
+`positions`, `order_market`, `close_position` and `modify_sl`. They are the only place in this
+file that may name a trading function, and `tests/test_broker_bridge.py` checks that on the
+syntax tree. The `executor` worker is their only intended caller. `order_market` refuses an
+order without a stop-loss on the correct side of the price. `modify_sl` only **tightens** a
+stop (raises a buy's, lowers a sell's) and keeps it on the correct side of the price, so a bug
+can move protection closer, never remove it. `deals` is read-only history: how a position
+ended, when the broker's stop closed it. The executor attaches one anyway, and this is the
 second line of that rule. Whether the terminal may trade at all is the terminal's own setting
 (`MT5_ALLOW_TRADING` in `entrypoint.sh`). Off, MT5 rejects every order with "AutoTrading
 disabled", which this bridge reports as an error answer.
@@ -323,6 +326,46 @@ class Bridge:
             "magic": p.magic, "comment": str(req.get("comment", ""))[:31],
             "type_time": mt5.ORDER_TIME_GTC, "type_filling": self._filling(p.symbol),
         })
+
+
+    def op_modify_sl(self, req: dict) -> dict:
+        """Move one position's stop-loss, in the protective direction only (T180)."""
+        mt5 = self.mt5
+        try:
+            ticket, sl = int(req["ticket"]), float(req["sl"])
+        except (KeyError, TypeError, ValueError):
+            raise BridgeError("ticket and sl are required") from None
+        rows = mt5.positions_get(ticket=ticket)
+        if not rows:
+            raise BridgeError(f"no open position #{ticket}")
+        p = rows[0]
+        buy = p.type == 0
+        if p.sl and ((buy and not sl > p.sl) or (not buy and not sl < p.sl)):
+            raise BridgeError(f"stop-loss {sl} does not tighten the current {p.sl}")
+        tick = mt5.symbol_info_tick(p.symbol)
+        if tick is None:
+            self._fail("symbol_info_tick")
+        if (buy and not sl < tick.bid) or (not buy and not sl > tick.ask):
+            raise BridgeError(f"stop-loss {sl} is on the wrong side of the market "
+                              f"({tick.bid}/{tick.ask})")
+        return self._send({
+            "action": mt5.TRADE_ACTION_SLTP, "symbol": p.symbol, "position": ticket,
+            "sl": sl, "tp": p.tp, "magic": p.magic,
+        })
+
+    def op_deals(self, req: dict) -> list[dict]:
+        """The deals of one position, oldest first: read-only history (T180)."""
+        try:
+            position = int(req["position"])
+        except (KeyError, TypeError, ValueError):
+            raise BridgeError("position is required") from None
+        rows = self.mt5.history_deals_get(position=position)
+        if rows is None:
+            self._fail("history_deals_get")
+        return [{"ticket": d.ticket, "order": d.order, "server_time": d.time, "type": d.type,
+                 "entry": d.entry, "price": d.price, "volume": d.volume, "profit": d.profit,
+                 "swap": d.swap, "commission": d.commission, "reason": d.reason,
+                 "magic": d.magic} for d in sorted(rows, key=lambda d: d.time)]
 
 
 def _py(v):
